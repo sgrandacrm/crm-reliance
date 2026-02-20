@@ -776,8 +776,12 @@ async function bootApp(){
       return;
     }
 
-    // 3. Listas OK — cargar app
+    // 3. Listas OK — pre-cargar usuarios SP para que el login los tenga disponibles
     localStorage.setItem('sp_setup_done','1');
+    try{
+      const spUsers = await spGetAll('usuarios');
+      _cache.usuarios = spUsers;
+    }catch(e){ console.warn('No se pudo pre-cargar usuarios SP:', e); }
     hideLoader();
     await initApp();
 
