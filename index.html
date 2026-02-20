@@ -1054,6 +1054,35 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   // Arrancar — MSAL ya está disponible (archivo local)
   bootApp();
+
+  // Watchdog: si en 4s no se muestra setup/login, forzar fallback visual
+  setTimeout(() => {
+    try{
+      const app = document.querySelector('.app');
+      const setup = document.getElementById('sp-setup');
+      const loader = document.getElementById('sp-loader');
+      const login = document.getElementById('login-screen');
+
+      const appHidden = app && (app.style.display === 'none' || getComputedStyle(app).display === 'none');
+      const setupEmpty = setup && (!setup.innerHTML || setup.innerHTML.trim() === '');
+      const loaderHidden = loader && (loader.style.display === 'none' || getComputedStyle(loader).display === 'none');
+
+      if(appHidden && setupEmpty && loaderHidden){
+        console.warn('Watchdog: UI quedó en blanco. Mostrando login local como fallback.');
+        if(app) app.style.display = 'block';
+        if(login) login.style.display = 'flex';
+
+        const err = document.getElementById('login-err');
+        if(err){
+          err.textContent = 'No se pudo inicializar SharePoint/MSAL. Revisa Console (F12) → errores en rojo.';
+          err.style.color = '#c84b1a';
+        }
+      }
+    }catch(e){
+      console.error('Watchdog error:', e);
+    }
+  }, 4000);
+
 });
 
 async function spLogout(){
