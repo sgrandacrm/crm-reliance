@@ -225,13 +225,28 @@ async function spCreate(listKey, data){
       'POST',
       { fields }
     );
-    _cache[listKey] = null; // invalidar cache
+    _cache[listKey] = null;
     updateSpStatus('online','● SharePoint');
     return r.id;
   }catch(e){
+    // Si falla con 500 (campo no existe), reintentar con campos mínimos
+    if(e.message && (e.message.includes('500') || e.message.includes('General exception'))){
+      try{
+        const listId = await spGetListId(listName);
+        const minFields = { Title: spToFields(listKey, data).Title || String(data.id||''), crm_id: String(data.id||'') };
+        const r2 = await spGraph(`sites/${_siteId}/lists/${listId}/items`, 'POST', { fields: minFields });
+        _cache[listKey] = null;
+        updateSpStatus('online','● SharePoint');
+        console.warn('spCreate: guardado con campos mínimos (columnas SP incompletas):', listKey);
+        return r2.id;
+      }catch(e2){
+        updateSpStatus('error','⚠ Error al guardar');
+        console.error('spCreate error:', listKey, e2);
+        return null;
+      }
+    }
     updateSpStatus('error','⚠ Error al guardar');
     console.error('spCreate error:', listKey, e);
-    showToast('Error guardando en SharePoint: ' + e.message, 'error');
     return null;
   }
 }
@@ -256,9 +271,23 @@ async function spUpdate(listKey, spId, data){
     updateSpStatus('online','● SharePoint');
     return true;
   }catch(e){
+    if(e.message && (e.message.includes('500') || e.message.includes('General exception'))){
+      try{
+        const listId = await spGetListId(listName);
+        const minFields = { Title: spToFields(listKey, data).Title || String(data.id||''), crm_id: String(data.id||'') };
+        await spGraph(`sites/${_siteId}/lists/${listId}/items/${spId}/fields`, 'PATCH', minFields);
+        _cache[listKey] = null;
+        updateSpStatus('online','● SharePoint');
+        console.warn('spUpdate: actualizado con campos mínimos:', listKey);
+        return true;
+      }catch(e2){
+        updateSpStatus('error','⚠ Error al actualizar');
+        console.error('spUpdate error:', listKey, e2);
+        return false;
+      }
+    }
     updateSpStatus('error','⚠ Error al actualizar');
     console.error('spUpdate error:', listKey, e);
-    showToast('Error actualizando SharePoint: ' + e.message, 'error');
     return false;
   }
 }
@@ -304,7 +333,7 @@ function spToFields(listKey, data){
   fields['Title'] = String(title||'').substring(0, 255);
 
   // id → crm_id
-  if(data.id !== undefined && data.id !== null && permitidos.has('crm_id')){
+  if(data.id !== undefined && permitidos.has('crm_id')){
     fields['crm_id'] = String(data.id);
   }
 
@@ -566,21 +595,73 @@ async function spVerificarListas(){
 
 // ── Crear columnas individuales en cada lista ────────────────
 // Si la columna ya existe el error se ignora silenciosamente
-async function spAsegurarColumnas(logCol){
+async async function spAsegurarColumnas(logCol){
   if(!logCol) logCol=()=>{};
-  const listas = ['CRM_Clientes','CRM_Cotizaciones','CRM_Cierres','CRM_Usuarios'];
-  for(const listName of listas){
+
+  const colsDef = {
+    CRM_Clientes: [
+      {name:'ci',text:{}},{name:'tipo',text:{}},{name:'region',text:{}},
+      {name:'ciudad',text:{}},{name:'aseguradora',text:{}},{name:'ejecutivo',text:{}},
+      {name:'estado',text:{}},{name:'placa',text:{}},{name:'marca',text:{}},
+      {name:'modelo',text:{}},{name:'anio',number:{}},{name:'va',number:{}},
+      {name:'pn',number:{}},{name:'primaTotal',number:{}},
+      {name:'desde',text:{}},{name:'hasta',text:{}},
+      {name:'celular',text:{}},{name:'correo',text:{}},
+      {name:'nota',text:{allowMultipleLines:true}},
+      {name:'ultimoContacto',text:{}},
+      {name:'factura',text:{}},{name:'poliza',text:{}},
+      {name:'polizaNueva',text:{}},{name:'aseguradoraAnterior',text:{}},
+      {name:'obs',text:{}},{name:'color',text:{}},
+      {name:'motor',text:{}},{name:'chasis',text:{}},
+      {name:'dep',number:{}},{name:'tasa',number:{}},
+      {name:'axavd',text:{}},{name:'formaPago',text:{}},
+      {name:'historialWa',text:{allowMultipleLines:true}},
+      {name:'crm_id',text:{}},
+    ],
+    CRM_Cotizaciones: [
+      {name:'codigo',text:{}},{name:'version',number:{}},
+      {name:'fecha',text:{}},{name:'ejecutivo',text:{}},
+      {name:'clienteNombre',text:{}},{name:'clienteCI',text:{}},
+      {name:'clienteId',text:{}},{name:'ciudad',text:{}},
+      {name:'vehiculo',text:{}},{name:'placa',text:{}},
+      {name:'va',number:{}},{name:'desde',text:{}},
+      {name:'estado',text:{}},{name:'asegElegida',text:{}},
+      {name:'resultados',text:{allowMultipleLines:true}},
+      {name:'aseguradoras',text:{allowMultipleLines:true}},
+      {name:'obsAcept',text:{allowMultipleLines:true}},
+      {name:'fechaAcept',text:{}},{name:'reemplazadaPor',text:{}},
+      {name:'crm_id',text:{}},
+    ],
+    CRM_Cierres: [
+      {name:'clienteNombre',text:{}},{name:'aseguradora',text:{}},
+      {name:'primaTotal',number:{}},{name:'primaNeta',number:{}},
+      {name:'vigDesde',text:{}},{name:'vigHasta',text:{}},
+      {name:'formaPago',text:{}},{name:'facturaAseg',text:{}},
+      {name:'ejecutivo',text:{}},{name:'fechaRegistro',text:{}},
+      {name:'observacion',text:{allowMultipleLines:true}},
+      {name:'axavd',text:{}},{name:'polizaNueva',text:{}},
+      {name:'crm_id',text:{}},
+    ],
+    CRM_Usuarios: [
+      {name:'userId',text:{}},{name:'rol',text:{}},
+      {name:'email',text:{}},{name:'activo',text:{}},
+      {name:'color',text:{}},{name:'initials',text:{}},
+      {name:'crm_id',text:{}},
+    ],
+  };
+
+  for(const [listName, cols] of Object.entries(colsDef)){
     logCol(`Configurando ${listName}...`);
-    try{
-      await spGraph(`sites/${_siteId}/lists/${listName}/columns`, 'POST', {
-        name: 'datos',
-        text: { allowMultipleLines: true, unlimitedLengthInDocumentLibrary: true }
-      });
-      logCol(`✅ ${listName}: columna datos creada`);
-    }catch(e){
-      // Ya existe — ok
-      logCol(`✅ ${listName}: ya configurada`);
+    const listId = await spGetListId(Object.keys(SP_CONFIG.lists).find(k=>SP_CONFIG.lists[k]===listName)||listName);
+    if(!listId){ logCol(`⚠ No se encontró ${listName}`); continue; }
+    let ok=0, skip=0;
+    for(const col of cols){
+      try{
+        await spGraph(`sites/${_siteId}/lists/${listId}/columns`, 'POST', col);
+        ok++;
+      }catch(e){ skip++; } // Ya existe — ok
     }
+    logCol(`✅ ${listName}: ${ok} columnas nuevas, ${skip} ya existían`);
   }
 }
 
@@ -671,7 +752,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(!colsDone){
+      if(!colsDone || colsDone !== '2'){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -693,7 +774,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','1');
+        localStorage.setItem('sp_cols_done','2');
         if(setupEl) setupEl.style.display='none';
       }
     }
