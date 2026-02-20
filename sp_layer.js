@@ -184,7 +184,9 @@ async function spGetAll(listKey){
         if(typeof val === 'string' && (val.startsWith('[') || val.startsWith('{'))){
           try{ val = JSON.parse(val); }catch(e){}
         }
-        obj[k] = val;
+        // Revertir prefijo crm_ a nombre original
+        const realKey = k.startsWith('crm_') ? k.slice(4) : k;
+        obj[realKey] = val;
       });
       if(f.Title && !obj.nombre) obj.nombre = f.Title;
       if(f.Title && listKey==='cotizaciones') obj.codigo = f.Title;
@@ -266,10 +268,19 @@ async function spDelete(listKey, spId){
 }
 
 // ── Convertir objeto JS → campos de lista SP ─────────────────
+// Campos reservados de SharePoint que no se pueden usar directamente
+const SP_RESERVED = new Set(['id','ID','title','author','editor','created','modified',
+  'ContentType','Attachments','_UIVersionString','owshiddenversion','FileDirRef',
+  'FileLeafRef','FileRef','FSObjType','UniqueId','GUID','WorkflowVersion','MetaInfo']);
+
 function spToFields(listKey, data){
   const fields = {};
   Object.keys(data).forEach(k => {
     if(k.startsWith('_')) return;
+    // Renombrar campos reservados
+    let fieldName = k;
+    if(SP_RESERVED.has(k)) fieldName = 'crm_' + k;
+    
     let val = data[k];
     if(val !== null && val !== undefined && typeof val === 'object'){
       val = JSON.stringify(val);
@@ -277,8 +288,9 @@ function spToFields(listKey, data){
     if(k==='nombre' && listKey==='clientes')     { fields['Title'] = String(val||'').substring(0,255); return; }
     if(k==='codigo' && listKey==='cotizaciones') { fields['Title'] = String(val||'').substring(0,255); return; }
     if(k==='nombre' && listKey==='usuarios')     { fields['Title'] = String(val||'').substring(0,255); return; }
+    if(k==='polizaNueva' && listKey==='cierres') { fields['Title'] = String(val||'').substring(0,255); }
     if(typeof val === 'string') val = val.substring(0, 3999);
-    fields[k] = val;
+    fields[fieldName] = val;
   });
   return fields;
 }
@@ -303,7 +315,7 @@ async function spSetupLists(onProgress){
       {name:'motor',type:'Text'},{name:'chasis',type:'Text'},
       {name:'dep',type:'Number'},{name:'tasa',type:'Number'},
       {name:'axavd',type:'Text'},{name:'formaPago',type:'Text'},
-      {name:'historialWa',type:'Note'},{name:'id',type:'Text'},
+      {name:'historialWa',type:'note'},{name:'crm_id',type:'text'},
     ],
     CRM_Cotizaciones: [
       {name:'codigo',type:'Text'},{name:'version',type:'Number'},
@@ -547,7 +559,7 @@ async function spAsegurarColumnas(logCol){
       {name:'motor',type:'text'},{name:'chasis',type:'text'},
       {name:'dep',type:'number'},{name:'tasa',type:'number'},
       {name:'axavd',type:'text'},{name:'formaPago',type:'text'},
-      {name:'id',type:'text'},{name:'polizaNueva',type:'text'},
+      {name:'crm_id',type:'text'},{name:'polizaNueva',type:'text'},
       {name:'aseguradoraAnterior',type:'text'},{name:'historialWa',type:'note'},
     ],
     CRM_Cotizaciones: [
@@ -560,7 +572,7 @@ async function spAsegurarColumnas(logCol){
       {name:'estado',type:'text'},{name:'asegElegida',type:'text'},
       {name:'resultados',type:'note'},{name:'aseguradoras',type:'note'},
       {name:'obsAcept',type:'note'},{name:'fechaAcept',type:'text'},
-      {name:'reemplazadaPor',type:'text'},{name:'id',type:'text'},
+      {name:'reemplazadaPor',type:'text'},{name:'crm_id',type:'text'},
     ],
     CRM_Cierres: [
       {name:'clienteNombre',type:'text'},{name:'aseguradora',type:'text'},
@@ -569,7 +581,7 @@ async function spAsegurarColumnas(logCol){
       {name:'formaPago',type:'text'},{name:'facturaAseg',type:'text'},
       {name:'ejecutivo',type:'text'},{name:'fechaRegistro',type:'text'},
       {name:'observacion',type:'note'},{name:'axavd',type:'text'},
-      {name:'id',type:'text'},{name:'polizaNueva',type:'text'},
+      {name:'crm_id',type:'text'},{name:'polizaNueva',type:'text'},
     ],
     CRM_Usuarios: [
       {name:'userId',type:'text'},{name:'rol',type:'text'},
