@@ -137,7 +137,7 @@ async function doLogin(){
   if(_spReady && _cache.usuarios && _cache.usuarios.length){
     _cache.usuarios.forEach(spU => {
       const spId = spU.userId || spU.crm_id || spU.id;
-      const local = USERS.find(x => x.id===spId || x.email===spU.email);
+      const local = USERS.find(x => String(x.id)===String(spId) || x.email===spU.email);
       if(local){
         if(spU.rol)      local.rol      = spU.rol;
         if(spU.color)    local.color    = spU.color;
@@ -157,7 +157,7 @@ async function doLogin(){
     });
   }
 
-  const user = USERS.find(x => (x.email.toLowerCase()===u || x.id===u) && x.pass===p);
+  const user = USERS.find(x => (x.email.toLowerCase()===u || String(x.id)===String(u)) && x.pass===p);
   if(!user){ document.getElementById('login-err').textContent='Usuario o contraseña incorrectos'; return; }
   currentUser = user;
   document.getElementById('login-screen').style.display = 'none';
@@ -182,7 +182,7 @@ function doLogout(){
 function fmt(n){return '$'+Number(n||0).toLocaleString('es-EC',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function myClientes(){
   if(!currentUser) return [];
-  return currentUser.rol==='admin' ? DB : DB.filter(c=>c.ejecutivo===currentUser.id);
+  return currentUser.rol==='admin' ? DB : DB.filter(c=>String(c.ejecutivo)===String(currentUser.id));
 }
 function daysUntil(dateStr){
   if(!dateStr) return 9999;
@@ -361,11 +361,11 @@ function filterClientes(){
       <td class="${daysCls}"><span class="mono" style="font-size:11px;font-weight:600">${daysText}</span></td>
       <td>${estadoBadge(c.estado||'PENDIENTE')}</td>
       <td><div style="display:flex;gap:4px">
-        <button class="btn btn-ghost btn-xs" onclick="showClienteModal(${c.id})">👁</button>
-        <button class="btn btn-ghost btn-xs" onclick="openEditar(${c.id})">✏</button>
-        <button class="btn btn-ghost btn-xs" onclick="openSeguimiento(${c.id})">📞</button>
-        <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp(${c.id},'vencimiento')" title="WhatsApp">💬</button>
-        ${(['RENOVADO','EMITIDO'].includes(c.estado)&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente(${c.id})" title="Registrar cierre de venta">📋</button>`:''}
+        <button class="btn btn-ghost btn-xs" onclick="showClienteModal('${c.id}')">👁</button>
+        <button class="btn btn-ghost btn-xs" onclick="openEditar('${c.id}')">✏</button>
+        <button class="btn btn-ghost btn-xs" onclick="openSeguimiento('${c.id}')">📞</button>
+        <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')" title="WhatsApp">💬</button>
+        ${(['RENOVADO','EMITIDO'].includes(c.estado)&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')" title="Registrar cierre de venta">📋</button>`:''}
         ${c.factura?`<span title="Cierre registrado: ${c.factura}" style="font-size:14px;cursor:default">✅</span>`:''}
       </div></td>
     </tr>`;
@@ -383,7 +383,7 @@ function initFilters(){
 //  DETALLE MODAL
 // ══════════════════════════════════════════════════════
 function showClienteModal(id){
-  const c=DB.find(x=>x.id===id); if(!c) return;
+  const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
   document.getElementById('modal-cliente-title').textContent=c.nombre;
   const exec=USERS.find(u=>u.id===c.ejecutivo);
   document.getElementById('modal-cliente-body').innerHTML=`
@@ -473,7 +473,7 @@ function showClienteModal(id){
 //  EDITAR CLIENTE
 // ══════════════════════════════════════════════════════
 function openEditar(id){
-  const c=DB.find(x=>x.id===id); if(!c) return;
+  const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
   document.getElementById('modal-editar-body').innerHTML=`
     <div class="form-grid form-grid-2" style="gap:12px">
       <div class="form-group full"><label class="form-label">Nombre</label><input class="form-input" id="ed-nombre" value="${c.nombre||''}"></div>
@@ -543,9 +543,9 @@ function renderVencimientos(){
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
           ${estadoBadge(c.estado||'PENDIENTE')}
-          <button class="btn btn-ghost btn-xs" onclick="openSeguimiento(${c.id})">📞 Gestionar</button>
-          <button class="btn btn-ghost btn-xs" onclick="prefillCotizador_show(${c.id})">🧮 Cotizar</button>
-          <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp(${c.id},'vencimiento')">💬 WhatsApp</button>
+          <button class="btn btn-ghost btn-xs" onclick="openSeguimiento('${c.id}')">📞 Gestionar</button>
+          <button class="btn btn-ghost btn-xs" onclick="prefillCotizador_show('${c.id}')">🧮 Cotizar</button>
+          <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')">💬 WhatsApp</button>
         </div>
       </div>` }).join('')
     : '<div class="empty-state"><div class="empty-icon">✅</div><p>No hay vencimientos en este rango</p></div>';
@@ -644,9 +644,9 @@ function filterSeguimiento(){
       <td style="font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.nota||''}">${c.nota||'—'}</td>
       <td><span class="mono" style="font-size:11px">${c.ultimoContacto||'—'}</span></td>
       <td><div style="display:flex;gap:4px;flex-wrap:wrap">
-        <button class="btn btn-blue btn-xs" onclick="openSeguimiento(${c.id})">📞 Actualizar</button>
-        <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp(${c.id},'vencimiento')">💬 WA</button>
-        ${(c.estado==='RENOVADO'&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente(${c.id})">📋 Cierre</button>`:''}
+        <button class="btn btn-blue btn-xs" onclick="openSeguimiento('${c.id}')">📞 Actualizar</button>
+        <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')">💬 WA</button>
+        ${(c.estado==='RENOVADO'&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')">📋 Cierre</button>`:''}
         ${c.factura?`<span class="badge badge-green" style="font-size:10px">✅ Cerrado</span>`:''}
       </div></td>
     </tr>`;
@@ -659,7 +659,7 @@ function filterSegEstado(e,el){
   filterSeguimiento();
 }
 function openSeguimiento(id){
-  const c=DB.find(x=>x.id===id); if(!c) return;
+  const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
   currentSegIdx=id; currentSegEstado=c.estado||'PENDIENTE';
   document.getElementById('modal-seg-nombre').textContent=c.nombre;
   document.getElementById('seg-nota').value=c.nota||'';
@@ -678,7 +678,7 @@ function setEstado(e){
   const banner=document.getElementById('seg-cierre-banner');
   if(banner) banner.style.display=(e==='RENOVADO')?'block':'none';
   if(e==='RENOVADO'){
-    const cli=DB.find(x=>x.id===currentSegIdx); if(!cli) return;
+    const cli=DB.find(x=>String(x.id)===String(currentSegIdx)); if(!cli) return;
     cli.estado='RENOVADO';
     cli.ultimoContacto=new Date().toISOString().split('T')[0];
     saveDB();
@@ -689,7 +689,7 @@ function setEstado(e){
   }
 }
 function guardarSeguimiento(){
-  const c=DB.find(x=>x.id===currentSegIdx); if(!c) return;
+  const c=DB.find(x=>String(x.id)===String(currentSegIdx)); if(!c) return;
   c.estado=currentSegEstado;
   c.nota=document.getElementById('seg-nota').value;
   c.ultimoContacto=new Date().toISOString().split('T')[0];
@@ -699,7 +699,7 @@ function guardarSeguimiento(){
   showToast('Seguimiento actualizado');
 }
 function guardarSeguimientoYCierre(){
-  const c=DB.find(x=>x.id===currentSegIdx); if(!c) return;
+  const c=DB.find(x=>String(x.id)===String(currentSegIdx)); if(!c) return;
   c.estado='RENOVADO';
   c.nota=document.getElementById('seg-nota').value;
   c.ultimoContacto=new Date().toISOString().split('T')[0];
@@ -927,7 +927,7 @@ function prefillCotizador(c){
   if(document.getElementById('cot-aseg-anterior')) document.getElementById('cot-aseg-anterior').value=c.aseguradoraAnterior||c.aseguradora||'';
 }
 function prefillCotizador_show(id){
-  const c=DB.find(x=>x.id===id); if(!c) return;
+  const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
   prefillCotizador(c); showPage('cotizador'); setTimeout(calcCotizacion,200);
 }
 
@@ -1057,7 +1057,7 @@ function calcCotizacion(){
 // ── CIERRE DE VENTA ──────────────────────────────────
 let cierreVentaData={};
 function abrirCierreDesdeCliente(id){
-  const c=DB.find(x=>x.id===id); if(!c) return;
+  const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
   if(!['RENOVADO','EMITIDO'].includes(c.estado)){showToast('El estado debe ser RENOVADO o EMITIDO para registrar un cierre','error');return;}
   currentSegIdx=id;
   const aseg=c.aseguradora||'';
@@ -1395,7 +1395,7 @@ function guardarCierreVenta(){
 
   // Actualizar cliente en DB — busca por id si viene de cliente directo, si no por nombre
   // Actualizar cliente en DB
-  const c=cierreVentaData.clienteId ? DB.find(x=>x.id===cierreVentaData.clienteId) : DB.find(x=>x.nombre.trim().toUpperCase()===clienteNombre.trim().toUpperCase());
+  const c=cierreVentaData.clienteId ? DB.find(x=>String(x.id)===String(cierreVentaData.clienteId)) : DB.find(x=>x.nombre.trim().toUpperCase()===clienteNombre.trim().toUpperCase());
   if(c){
     c.polizaNueva=poliza; c.factura=factura; c.aseguradora=aseg;
     c.desde=desde; c.hasta=hasta; c.formaPago=pago;
@@ -1410,7 +1410,7 @@ function guardarCierreVenta(){
 
   if(cierreVentaData.editandoCierreId){
     // MODO EDICIÓN — actualizar cierre existente preservando id y fecha original
-    const idx=allCierres.findIndex(x=>x.id===cierreVentaData.editandoCierreId);
+    const idx=allCierres.findIndex(x=>String(x.id)===String(cierreVentaData.editandoCierreId));
     if(idx>=0){
       allCierres[idx]={...allCierres[idx], ...cierre,
         id:cierreVentaData.editandoCierreId,
@@ -1785,7 +1785,7 @@ function exportarCotizAceptadas(){
   const esAdmin = currentUser?.rol==='admin';
 
   const lista = all.filter(c=>{
-    if(!esAdmin && c.ejecutivo !== currentUser?.id) return false;
+    if(!esAdmin && String(c.ejecutivo) !== String(currentUser?.id||"")) return false;
     return ['ACEPTADA','EN EMISIÓN','EMITIDA'].includes(c.estado);
   }).sort((a,b)=>b.fecha.localeCompare(a.fecha));
 
@@ -1957,7 +1957,7 @@ function renderCotizaciones(){
 
   const mostrarReemp = fEstado==='REEMPLAZADA';
   let lista = all.filter(c=>{
-    if(!esAdmin && c.ejecutivo !== currentUser?.id) return false;
+    if(!esAdmin && String(c.ejecutivo) !== String(currentUser?.id||"")) return false;
     if(c.estado==='REEMPLAZADA' && !mostrarReemp) return false;
     if(q && !c.clienteNombre.toLowerCase().includes(q) && !c.clienteCI?.includes(q) && !(c.codigo||'').toLowerCase().includes(q)) return false;
     if(fEstado && c.estado!==fEstado) return false;
@@ -2234,7 +2234,7 @@ function confirmarAceptacion(){
   const cotiz = all[idx];
   const hoy = new Date().toISOString().split('T')[0];
   let clienteDB = null;
-  if(cotiz.clienteId)  clienteDB = DB.find(x=>x.id===cotiz.clienteId);
+  if(cotiz.clienteId)  clienteDB = DB.find(x=>String(x.id)===String(cotiz.clienteId));
   if(!clienteDB && cotiz.clienteCI && cotiz.clienteCI.length>3)
     clienteDB = DB.find(x=>(x.ci||'')===cotiz.clienteCI);
   if(!clienteDB)
@@ -2270,7 +2270,7 @@ function irAEmision(id){
   const r = (cotiz.resultados||[]).find(x=>x.name===cotiz.asegElegida)||{};
 
   // Buscar cliente
-  let cliente = cotiz.clienteId ? DB.find(x=>x.id===cotiz.clienteId) : null;
+  let cliente = cotiz.clienteId ? DB.find(x=>String(x.id)===String(cotiz.clienteId)) : null;
   if(!cliente && cotiz.clienteCI && cotiz.clienteCI.length>3)
     cliente = DB.find(x=>(x.ci||'')===cotiz.clienteCI);
   if(!cliente)
@@ -2520,10 +2520,10 @@ function renderImportHistorial(){
   </table>`;
 }
 function confirmarEliminarEjecutivo(execId){
-  const u=USERS.find(x=>x.id===execId); if(!u) return;
+  const u=USERS.find(x=>String(x.id)===String(execId)); if(!u) return;
   const nClientes=DB.filter(c=>c.ejecutivo===execId).length;
   if(!confirm(`¿Eliminar al ejecutivo ${u.name}? Tiene ${nClientes} clientes asignados.`)) return;
-  const idx=USERS.findIndex(x=>x.id===execId);
+  const idx=USERS.findIndex(x=>String(x.id)===String(execId));
   if(idx>=0) USERS.splice(idx,1);
   saveUsers(); renderAdmin();
   showToast(`Ejecutivo ${u.name} eliminado`,'error');
@@ -2581,7 +2581,7 @@ function restaurarBackup(event){
   reader.readAsText(file);
 }
 function showExecClientes(execId){
-  const u=USERS.find(x=>x.id===execId);
+  const u=USERS.find(x=>String(x.id)===String(execId));
   showToast(`Mostrando cartera de ${u?u.name:'—'}. Filtre en Clientes.`,'info');
   showPage('clientes');
 }
@@ -2816,7 +2816,7 @@ function exportToExcel(){
 // ══════════════════════════════════════════════════════
 function renderCierres(){
   let cierres=_getCierres();
-  if(currentUser && currentUser.rol!=='admin') cierres=cierres.filter(c=>c.ejecutivo===currentUser.id);
+  if(currentUser && currentUser.rol!=='admin') cierres=cierres.filter(c=>String(c.ejecutivo)===String(currentUser.id));
   cierres.sort((a,b)=>new Date(b.fechaRegistro)-new Date(a.fechaRegistro));
 
   // Poblar filtro de meses
@@ -2884,7 +2884,7 @@ function renderCierres(){
       <td>${axavdBadge}</td>
       <td><div style="display:flex;gap:4px">
         <button class="btn btn-ghost btn-xs" onclick="verDetalleCierre(${i})">👁 Ver</button>
-        <button class="btn btn-blue btn-xs" onclick="editarCierre(${c.id})">✏ Editar</button>
+        <button class="btn btn-blue btn-xs" onclick="editarCierre('${c.id}')">✏ Editar</button>
         <button class="btn btn-red btn-xs" onclick="eliminarCierre(${i})">✕</button>
       </div></td>
     </tr>`;
@@ -2892,7 +2892,7 @@ function renderCierres(){
 }
 function verDetalleCierre(idx){
   let cierres=_getCierres();
-  if(currentUser&&currentUser.rol!=='admin') cierres=cierres.filter(c=>c.ejecutivo===currentUser.id);
+  if(currentUser&&currentUser.rol!=='admin') cierres=cierres.filter(c=>String(c.ejecutivo)===String(currentUser.id));
   const c=cierres.sort((a,b)=>new Date(b.fechaRegistro)-new Date(a.fechaRegistro))[idx];
   if(!c) return;
   const fp=c.formaPago||{};
@@ -2944,7 +2944,7 @@ function verDetalleCierre(idx){
 }
 function editarCierre(cierreId){
   const allCierres=_getCierres();
-  const c=allCierres.find(x=>x.id===cierreId); if(!c) return;
+  const c=allCierres.find(x=>String(x.id)===String(cierreId)); if(!c) return;
   const fp=c.formaPago||{};
   // Marcar modo edición
   cierreVentaData={
@@ -3023,7 +3023,7 @@ function editarCierre(cierreId){
 function eliminarCierre(idx){
   if(!confirm('¿Eliminar este cierre?')) return;
   let cierres=_getCierres();
-  if(currentUser&&currentUser.rol!=='admin') cierres=cierres.filter(c=>c.ejecutivo===currentUser.id);
+  if(currentUser&&currentUser.rol!=='admin') cierres=cierres.filter(c=>String(c.ejecutivo)===String(currentUser.id));
   const sorted=cierres.sort((a,b)=>new Date(b.fechaRegistro)-new Date(a.fechaRegistro));
   const toDelete=sorted[idx];
   const allCierres=_getCierres();
@@ -3149,7 +3149,7 @@ function primerNombre(nombre){
 }
 
 function openWhatsApp(id, tipoInicial='vencimiento'){
-  const c = DB.find(x=>x.id===id); if(!c) return;
+  const c = DB.find(x=>String(x.id)===String(id)); if(!c) return;
   waClienteId = id;
   const exec = currentUser ? currentUser.name : 'Ejecutivo RELIANCE';
   // Número: limpiar y asegurar formato internacional
@@ -3175,7 +3175,7 @@ function openWhatsApp(id, tipoInicial='vencimiento'){
 function selWaPlantilla(tipo, el){
   document.querySelectorAll('#wa-tipo-pills .pill').forEach(p=>p.classList.remove('active'));
   if(el) el.classList.add('active');
-  const c = DB.find(x=>x.id===waClienteId);
+  const c = DB.find(x=>String(x.id)===String(waClienteId));
   if(!c) return;
   const exec = currentUser ? currentUser.name : 'Ejecutivo RELIANCE';
   const fn = WA_PLANTILLAS[tipo];
@@ -3191,7 +3191,7 @@ function enviarWhatsApp(){
   if(!num){ showToast('Ingresa el número de WhatsApp','error'); return; }
   if(!msg){ showToast('El mensaje no puede estar vacío','error'); return; }
   // Registrar en historial del cliente
-  const c = DB.find(x=>x.id===waClienteId);
+  const c = DB.find(x=>String(x.id)===String(waClienteId));
   if(c){
     if(!c.historialWa) c.historialWa=[];
     c.historialWa.push({ fecha: new Date().toISOString().split('T')[0], tipo: 'WhatsApp', resumen: msg.substring(0,80)+'…', ejecutivo: currentUser?.id||'' });
@@ -3594,7 +3594,7 @@ async function initApp(){
 
   // Mezclar usuarios SP con los hardcodeados (SP tiene prioridad)
   spUsers.forEach(u=>{
-    const local=USERS.find(x=>x.id===(u.userId||u.id));
+    const local=USERS.find(x=>String(x.id)===String(u.userId||u.id));
     if(local) Object.assign(local, u);
     else USERS.push({...u, id:u.userId||u.id});
   });
