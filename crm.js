@@ -26,18 +26,21 @@ function loadDB(){ return _cache.clientes || []; }
 
 async function loadDBAsync(){
   const data = await spGetAll('clientes');
-  DB = data.length ? data : getDefaultClientes();
+  // Solo cargar demo si SP no está listo (offline)
+  if(data.length > 0){
+    DB = data;
+  } else if(!_spReady){
+    DB = getDefaultClientes();
+  } else {
+    DB = []; // SP listo pero sin clientes — no cargar demo
+  }
   _cache.clientes = DB;
 }
 
 function saveDB(){
   localStorage.setItem('reliance_clientes', JSON.stringify(DB)); // fallback
   _cache.clientes = [...DB];
-  if(_spReady){
-    // Marcar como dirty los que no tienen _spId o fueron modificados
-    DB.forEach(c => { if(!c._spId || c._dirty) c._dirty = true; });
-    _flushDB();
-  }
+  if(_spReady) _flushDB();
 }
 
 async function _flushDB(){
@@ -52,7 +55,7 @@ async function _flushDB(){
 
 // Helpers para cotizaciones y cierres (cache + SP + localStorage fallback)
 function _getCotizaciones(){
-  return _cache.cotizaciones || _getCotizaciones();
+  return _cache.cotizaciones || [];
 }
 function _saveCotizaciones(all){
   _cache.cotizaciones = all;
@@ -69,11 +72,11 @@ async function _flushCotizaciones(all){
   }
 }
 function _getCierres(){
-  return _cache.cierres || _getCierres();
+  return _cache.cierres || [];
 }
 function _saveCierres(all){
   _cache.cierres = all;
-  _saveCierres(all);
+  localStorage.setItem('reliance_cierres', JSON.stringify(all));
   if(_spReady) _flushCierres(all);
 }
 async function _flushCierres(all){
@@ -91,11 +94,18 @@ function loadUsers(){ /* usuarios cargados en initApp desde SP */ }
 function saveUsers(){
   localStorage.setItem('reliance_users', JSON.stringify(USERS));
   if(_spReady){
-    USERS.forEach(async u=>{
-      const rem=(_cache.usuarios||[]).find(r=>(r.userId||r.id)===u.id);
-      if(rem?._spId) await spUpdate('usuarios', rem._spId, {...u, userId:u.id});
-      else await spCreate('usuarios', {...u, userId:u.id});
-    });
+    (async()=>{
+      for(const u of USERS){
+        try{
+          const rem=(_cache.usuarios||[]).find(r=>(r.userId||r.crm_id)===u.id);
+          if(rem?._spId) await spUpdate('usuarios', rem._spId, {...u, userId:u.id});
+          else {
+            const id = await spCreate('usuarios', {...u, userId:u.id});
+            if(id && rem) rem._spId = id;
+          }
+        }catch(e){ console.error('Error guardando usuario SP:', u.id, e); }
+      }
+    })();
   }
 }
 
@@ -125,50 +135,18 @@ function getDefaultClientes(){
 // ══════════════════════════════════════════════════════
 //  AUTH
 // ══════════════════════════════════════════════════════
-async function doLogin(){
+function doLogin(){
   const u = document.getElementById('login-user').value.trim().toLowerCase();
   const p = document.getElementById('login-pass').value;
-  document.getElementById('login-err').textContent = '';
-
-  // Cargar usuarios desde SP para incluir los creados manualmente
-  if(_spReady && _cache.usuarios){
-    _cache.usuarios.forEach(spU => {
-      const local = USERS.find(x => x.id===(spU.userId||spU.crm_id||spU.id));
-      if(local){
-        // Actualizar datos del usuario local con los de SP
-        if(spU.email) local.email = spU.email;
-        if(spU.rol)   local.rol   = spU.rol;
-        if(spU.color) local.color = spU.color;
-        if(spU.initials) local.initials = spU.initials;
-        if(spU.activo !== undefined) local.activo = spU.activo;
-      } else {
-        // Usuario nuevo solo en SP — agregar a USERS
-        const nuevoUser = {
-          id:       spU.userId || spU.crm_id || spU.id,
-          name:     spU.nombre || spU.Title || spU.email,
-          email:    spU.email || '',
-          pass:     spU.pass || spU.userId || spU.crm_id || '',
-          rol:      spU.rol || 'ejecutivo',
-          color:    spU.color || '#1a4c84',
-          initials: spU.initials || (spU.email||'?')[0].toUpperCase(),
-          activo:   spU.activo !== 'false',
-        };
-        if(nuevoUser.id) USERS.push(nuevoUser);
-      }
-    });
-  }
-
   const user = USERS.find(x => (x.email.toLowerCase()===u || x.id===u) && x.pass===p);
   if(!user){ document.getElementById('login-err').textContent='Usuario o contraseña incorrectos'; return; }
-  if(user.activo === false || user.activo === 'false'){
-    document.getElementById('login-err').textContent='Usuario inactivo'; return;
-  }
   currentUser = user;
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('sidebar-avatar').textContent = user.initials;
   document.getElementById('sidebar-avatar').style.background = `linear-gradient(135deg,${user.color},${user.color}99)`;
   document.getElementById('sidebar-name').textContent = user.name;
   document.getElementById('sidebar-role').textContent = user.rol==='admin'?'Administrador':'Ejecutivo Comercial';
+  // Admin-only nav
   document.querySelectorAll('.admin-only').forEach(el=>el.style.display=user.rol==='admin'?'':'none');
   initApp();
 }
@@ -2139,7 +2117,11 @@ function migrarCotizacionesIds(){
     all.forEach(c=>{
       if(typeof c.id === 'number'){ c.id = 'CQ'+c.id; changed=true; }
     });
-    if(changed) _saveCotizaciones(all);
+    if(changed){
+      _cache.cotizaciones = all;
+      localStorage.setItem('reliance_cotizaciones', JSON.stringify(all));
+      // No hacer flush a SP al migrar IDs — evitar escrituras innecesarias
+    }
   }catch(e){}
 }
 
@@ -2226,6 +2208,7 @@ function confirmarAceptacion(){
   all[idx].obsAcept    = obs;
   all[idx].fechaAcept  = new Date().toISOString().split('T')[0];
   all[idx].estado      = 'EN EMISIÓN';
+  all[idx]._dirty      = true;
   _saveCotizaciones(all);
 
   // 2. Actualizar cliente en cartera → EMISIÓN
