@@ -14,7 +14,6 @@ const SP_CONFIG = {
     cotizaciones:  'CRM_Cotizaciones',
     cierres:       'CRM_Cierres',
     usuarios:      'CRM_Usuarios',
-    historial:     'CRM_ImportHistorial',
   }
 };
 
@@ -32,7 +31,6 @@ const _cache = {
   cotizaciones: null,
   cierres:      null,
   usuarios:     null,
-  historial:    null,
 };
 
 // ── Inicializar MSAL ─────────────────────────────────────────
@@ -288,19 +286,30 @@ function spToFields(listKey, data){
   if(listKey==='usuarios')     title = data.nombre || data.email || '';
   fields['Title'] = String(title).substring(0, 255);
 
-  // Mapear data.id → crm_id (nombre real en SharePoint)
+  // Mapear data.id → crm_id
   if(data.id !== undefined) fields['crm_id'] = String(data.id);
 
-  // Campos que NO se escriben directamente (ya mapeados arriba o metadatos)
+  // Campos numéricos reales (se envían como number, no string)
+  const camposNum = new Set(['anio','va','pn','primaTotal','dep','tasa','version','primaTotal','primaNeta']);
+
+  // Campos que NO se escriben (ya mapeados o metadatos)
   const ignorar = new Set(['id','_spId','_dirty','_spEtag']);
-  if(listKey==='clientes')     ignorar.add('nombre');
-  if(listKey==='usuarios')     ignorar.add('nombre');
+  if(listKey==='clientes')  ignorar.add('nombre');
+  if(listKey==='usuarios')  ignorar.add('nombre');
 
   Object.keys(data).forEach(k => {
     if(ignorar.has(k) || k.startsWith('_')) return;
     let val = data[k];
+
+    // Serializar arrays/objetos como JSON string
     if(val !== null && val !== undefined && typeof val === 'object'){
       val = JSON.stringify(val);
+    }
+    // Convertir booleanos a string
+    if(typeof val === 'boolean') val = String(val);
+    // Campos numéricos: convertir a número
+    if(camposNum.has(k) && val !== undefined && val !== null && val !== ''){
+      val = parseFloat(val) || 0;
     }
     if(val === undefined || val === null) return;
     if(typeof val === 'string') val = val.substring(0, 3999);
@@ -359,10 +368,6 @@ async function spSetupLists(onProgress){
       {name:'userId',type:'Text'},{name:'rol',type:'Text'},
       {name:'email',type:'Text'},{name:'activo',type:'Boolean'},
     ],
-    CRM_ImportHistorial: [
-      {name:'fecha',type:'DateTime'},{name:'archivo',type:'Text'},
-      {name:'registros',type:'Number'},{name:'usuario',type:'Text'},
-    ],
   };
 
   for(const [listName, columns] of Object.entries(listDefs)){
@@ -416,7 +421,6 @@ async function spMigrateFromLocal(onProgress){
     ['reliance_cotizaciones', 'cotizaciones'],
     ['reliance_cierres',      'cierres'],
     ['reliance_users',        'usuarios'],
-    ['reliance_import_historial','historial'],
   ];
 
   for(const [lsKey, spKey] of maps){
