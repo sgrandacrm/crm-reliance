@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM Reliance — Seguros Vehiculares</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- Librerías externas -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+
+<!-- Estilos CRM -->
+<link rel="stylesheet" href="crm.css">
+
+<style>
+/* Loader y Setup */
+#sp-loader { position:fixed;inset:0;background:#fafaf7;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:16px }
+.sp-spinner { width:36px;height:36px;border:3px solid #e8e2d6;border-top-color:#c94a2a;border-radius:50%;animation:sp-spin .8s linear infinite }
+@keyframes sp-spin { to { transform:rotate(360deg) } }
+#sp-setup { display:none;position:fixed;inset:0;background:#fafaf7;align-items:center;justify-content:center;z-index:9998 }
+.setup-card { background:#fff;border:1px solid #e8e2d6;border-radius:16px;padding:40px;max-width:480px;width:90%;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.08) }
+.setup-card h2 { font-family:'DM Serif Display',serif;font-size:24px;margin-bottom:8px }
+.setup-card p { color:#888;font-size:13px;margin-bottom:24px;line-height:1.6 }
+.setup-steps { text-align:left;margin-bottom:24px;display:flex;flex-direction:column;gap:8px }
+.setup-step { display:flex;align-items:center;gap:10px;font-size:13px;padding:8px 12px;border-radius:8px;background:#f5f0e8 }
+.setup-step.done { background:#d4edda;color:#2d6a4f }
+.setup-step.active { background:#e8f0fb;color:#1a4c84 }
+.setup-step.error { background:#fde8e0;color:#b71c1c }
+.sp-status { display:flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;border-radius:20px;background:#f5f0e8;color:#888 }
+.sp-status.online { background:#d4edda;color:#2d6a4f }
+.sp-status.syncing { background:#fff3e0;color:#e65100 }
+.sp-status.error { background:#fde8e0;color:#b71c1c }
+</style>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="sp-loader">
+  <div style="font-family:'DM Serif Display',serif;font-size:28px;color:#c94a2a">RELIANCE</div>
+  <div class="sp-spinner"></div>
+  <div id="sp-loader-msg" style="font-size:13px;color:#888">Conectando con Microsoft...</div>
+</div>
+
+<!-- SETUP / LOGIN -->
+<div id="sp-setup"></div>
+
+<!-- APP (oculta hasta que SP cargue) -->
+<div class="app" style="display:none">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════
+     LOGIN SCREEN
+═══════════════════════════════════════════════ -->
+<div class="login-screen" id="login-screen">
+  <div class="login-bg-text">RELIANCE</div>
+  <div class="login-box">
+    <div class="login-logo">RELIANCE</div>
+    <div class="login-sub">CRM — Seguros Vehiculares</div>
+    <label class="login-label">Usuario</label>
+    <input class="login-input" id="login-user" placeholder="usuario@reliance.ec" onkeydown="if(event.key==='Enter')doLogin()">
+    <label class="login-label">Contraseña</label>
+    <input class="login-input" type="password" id="login-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" onclick="doLogin()">Ingresar al Sistema</button>
+    <div class="login-err" id="login-err"></div>
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);text-align:center">
+      🔒 Acceso restringido · Solo personal autorizado<br>
+      <span style="opacity:.6">Próximamente: login con cuenta @reliance.ec</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     SIDEBAR
+═══════════════════════════════════════════════ -->
+<div class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">RELIANCE</div>
+    <div class="logo-sub">Asesores de Seguros</div>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-section">Principal</div>
+    <div class="nav-item active" onclick="showPage('dashboard')"><span class="icon">◈</span><span>Dashboard</span></div>
+    <div class="nav-item" onclick="showPage('clientes')"><span class="icon">◉</span><span>Clientes / Vencimientos</span><span class="nav-badge" id="badge-clientes">—</span></div>
+    <div class="nav-item" onclick="showPage('calendario')"><span class="icon">📅</span><span>Calendario</span></div>
+    <div class="nav-item" onclick="showPage('seguimiento')"><span class="icon">◎</span><span>Seguimiento</span></div>
+    <div class="nav-item" onclick="showPage('cierres')"><span class="icon">✓</span><span>Cierres de Venta</span><span class="nav-badge" style="background:var(--green)" id="badge-cierres">0</span></div>
+    <div class="nav-section">Herramientas</div>
+    <div class="nav-item" onclick="showPage('cotizaciones')"><span class="icon">📋</span><span>Cotizaciones</span><span class="nav-badge" style="background:var(--accent2)" id="badge-cotizaciones">0</span></div>
+    <div class="nav-item" onclick="showPage('cotizador')"><span class="icon">◆</span><span>Cotizador</span></div>
+    <div class="nav-item" onclick="showPage('comparativo')"><span class="icon">◇</span><span>Comparativo</span></div>
+    <div class="nav-item" onclick="showPage('tasas')"><span class="icon">%</span><span>Tasas</span></div>
+    <div class="nav-section admin-only" id="nav-admin-section">Admin</div>
+    <div class="nav-item admin-only" id="nav-admin" onclick="showPage('admin')"><span class="icon">⚙</span><span>Panel Admin</span></div>
+    <div class="nav-item admin-only" onclick="showPage('reportes')"><span class="icon">📊</span><span>Reportes</span></div>
+    <div class="nav-item" onclick="showPage('nuevo-cliente')"><span class="icon">⊕</span><span>Nuevo Cliente</span></div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="agent-card">
+      <div class="agent-avatar" id="sidebar-avatar">—</div>
+      <div>
+        <div class="agent-name" id="sidebar-name">—</div>
+        <div class="agent-role" id="sidebar-role">—</div>
+      </div>
+    </div>
+    <button class="logout-btn" onclick="doLogout()">↩ Cerrar sesión</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     MAIN
+═══════════════════════════════════════════════ -->
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title" id="page-title">Dashboard</div>
+    <div class="topbar-actions">
+      <span class="text-muted mono" style="font-size:11px" id="current-date"></span>
+      <button class="btn btn-secondary btn-sm no-print" onclick="showPage('cotizador')">🧮 Cotizar</button>
+      <button class="btn btn-primary no-print" onclick="showPage('nuevo-cliente')">+ Nuevo Cliente</button>
+    </div>
+  </div>
+
+  <!-- ══ DASHBOARD ══ -->
+  <div class="page active" id="page-dashboard">
+    <div class="stats-grid">
+      <div class="stat-card s1"><div class="stat-icon">◉</div><div class="stat-label">Mi Cartera</div><div class="stat-value" id="stat-total">—</div><div class="stat-sub" id="stat-mes">Cargando…</div></div>
+      <div class="stat-card s2"><div class="stat-icon">◆</div><div class="stat-label">Renovaciones</div><div class="stat-value" id="stat-renov">—</div><div class="stat-sub">Este mes</div></div>
+      <div class="stat-card s3"><div class="stat-icon">◈</div><div class="stat-label">Nuevos</div><div class="stat-value" id="stat-nuevo">—</div><div class="stat-sub">Pólizas emitidas</div></div>
+      <div class="stat-card s5"><div class="stat-icon">⏰</div><div class="stat-label">Vencen en 30 días</div><div class="stat-value text-accent" id="stat-venc30">—</div><div class="stat-sub">Requieren acción</div></div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Próximos Vencimientos</div><button class="btn btn-ghost btn-sm" onclick="showPage('clientes');setTimeout(()=>switchClienteTab('vencimientos'),50)">Ver todos →</button></div>
+        <div class="card-body" style="padding:12px" id="dash-vencimientos"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Estado de Seguimiento</div></div>
+        <div class="card-body" id="dash-seguimiento"></div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Distribución por Aseguradora</div></div>
+        <div class="card-body" style="padding:12px"><table style="width:100%"><thead><tr><th style="text-align:left;padding:6px 10px;font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase">Aseguradora</th><th style="text-align:right;padding:6px 10px;font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase">Clientes</th><th style="padding:6px 10px;font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase">%</th></tr></thead><tbody id="aseg-dist-table"></tbody></table></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Actividad Reciente</div></div>
+        <div class="card-body"><div class="timeline" id="activity-feed"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ CLIENTES ══ -->
+  <div class="page" id="page-clientes">
+
+    <!-- TABS -->
+    <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px">
+      <button id="tab-cartera" onclick="switchClienteTab('cartera')"
+        style="padding:10px 22px;border:none;background:none;font-size:13px;font-weight:600;
+               color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-2px;cursor:pointer">
+        ◉ Cartera
+      </button>
+      <button id="tab-vencimientos" onclick="switchClienteTab('vencimientos')"
+        style="padding:10px 22px;border:none;background:none;font-size:13px;font-weight:600;
+               color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer">
+        ⏰ Vencimientos <span class="nav-badge orange" id="badge-venc" style="position:relative;top:-1px">—</span>
+      </button>
+    </div>
+
+    <!-- TAB CARTERA -->
+    <div id="subtab-cartera">
+      <div class="search-bar">
+        <div class="search-wrap"><span class="search-icon">🔍</span><input type="text" class="search-input" placeholder="Buscar nombre, CI, placa, aseguradora…" id="search-clientes" oninput="filterClientes()"></div>
+        <select class="form-select" id="filter-tipo" onchange="filterClientes()" style="width:130px"><option value="">Todos los tipos</option><option value="NUEVO">Nuevos</option><option value="RENOVACION">Renovaciones</option></select>
+        <select class="form-select" id="filter-aseg" onchange="filterClientes()" style="width:170px"><option value="">Todas las aseg.</option></select>
+        <select class="form-select" id="filter-region" onchange="filterClientes()" style="width:110px"><option value="">Región</option><option value="SIERRA">Sierra</option><option value="COSTA">Costa</option></select>
+        <select class="form-select" id="filter-estado" onchange="filterClientes()" style="width:170px"><option value="">Todos los estados</option><option value="PENDIENTE">⚪ Pendiente</option><option value="INSPECCIÓN">🔍 Inspección</option><option value="EMISIÓN">📝 Emisión</option><option value="EMITIDO">📄 Emitido</option><option value="RENOVADO">✅ Renovado</option><option value="PÓLIZA VIGENTE">🛡 Póliza Vigente</option><option value="CRÉDITO VENCIDO">⏰ Crédito Vencido</option><option value="CRÉDITO CANCELADO">💳 Crédito Cancelado</option><option value="SINIESTRO">🚨 Siniestro</option><option value="PÉRDIDA TOTAL">🚗 Pérdida Total</option><option value="PÓLIZA ANULADA">❌ Póliza Anulada</option><option value="ENDOSO">📋 Endoso</option><option value="NO RENOVADO">🚫 No Renovado</option><option value="INUBICABLE">📵 Inubicable</option><option value="NO ASEGURABLE">⛔ No Asegurable</option><option value="AUTO VENDIDO">🔑 Auto Vendido</option><option value="CLIENTE FALLECIDO">🕊 Cliente Fallecido</option></select>
+        <button class="btn btn-green btn-sm" onclick="exportToExcel()">⬇ Excel</button>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Cartera de Clientes</div><span class="text-muted" style="font-size:12px" id="clientes-count">— clientes</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Cliente</th><th>CI</th><th>Tipo</th><th>Aseguradora</th><th>Vehículo</th><th>Placa</th><th>Vence</th><th>Días</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <tbody id="clientes-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB VENCIMIENTOS -->
+    <div id="subtab-vencimientos" style="display:none">
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+        <div class="stat-card s6"><div class="stat-label">Vencidas</div><div class="stat-value" id="vstat-0">—</div><div class="stat-sub">Ya vencieron</div></div>
+        <div class="stat-card s6"><div class="stat-label">Crítico — 30 días</div><div class="stat-value" id="vstat-30">—</div><div class="stat-sub">Acción inmediata</div></div>
+        <div class="stat-card s5"><div class="stat-label">Próximo — 60 días</div><div class="stat-value" id="vstat-60">—</div><div class="stat-sub">Contactar pronto</div></div>
+        <div class="stat-card s4"><div class="stat-label">En Cartera — 90 días</div><div class="stat-value" id="vstat-90">—</div><div class="stat-sub">En seguimiento</div></div>
+      </div>
+      <div class="filter-pills" id="venc-pills">
+        <div class="pill active" onclick="filterVencimientos('all',this)">Todos</div>
+        <div class="pill" onclick="filterVencimientos('vencida',this)">🔴 Vencidas</div>
+        <div class="pill" onclick="filterVencimientos('30',this)">🔴 0–30 días</div>
+        <div class="pill" onclick="filterVencimientos('60',this)">🟠 31–60 días</div>
+        <div class="pill" onclick="filterVencimientos('90',this)">🟡 61–90 días</div>
+      </div>
+      <div id="vencimientos-list"></div>
+    </div>
+
+  </div>
+
+  <!-- ══ CALENDARIO ══ -->
+  <div class="page" id="page-calendario">
+    <div class="card">
+      <div class="card-header">
+        <div class="cal-header" style="flex:1;margin:0">
+          <button class="btn btn-ghost btn-sm" onclick="calNav(-1)">← Anterior</button>
+          <div class="cal-month" id="cal-month-title">—</div>
+          <button class="btn btn-ghost btn-sm" onclick="calNav(1)">Siguiente →</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-left:16px">
+          <span style="font-size:11px;display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;background:#fde8e0;border-radius:2px;display:inline-block;border:1px solid var(--accent)"></span>Crítico</span>
+          <span style="font-size:11px;display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;background:#fff3e0;border-radius:2px;display:inline-block;border:1px solid var(--orange)"></span>Próximo</span>
+          <span style="font-size:11px;display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;background:#fef3cd;border-radius:2px;display:inline-block;border:1px solid var(--gold)"></span>En cartera</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="cal-grid" id="cal-headers"></div>
+        <div class="cal-grid" id="cal-body" style="margin-top:4px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SEGUIMIENTO ══ -->
+  <div class="page" id="page-seguimiento">
+    <div class="search-bar">
+      <div class="search-wrap"><span class="search-icon">🔍</span><input type="text" class="search-input" placeholder="Buscar cliente…" id="search-seg" oninput="filterSeguimiento()"></div>
+      <div class="filter-pills" style="margin:0">
+        <div class="pill active" onclick="filterSegEstado('',this)">Todos</div>
+<div class="pill" onclick="filterSegEstado('PENDIENTE',this)" title="Cliente en gestión de renovación. Sin confirmación aún." style="font-size:11px">⚪ Pendiente</div><div class="pill" onclick="filterSegEstado('INSPECCIÓN',this)" title="Vehículo pendiente de inspección requerida por aseguradora." style="font-size:11px">🔍 Inspección</div><div class="pill" onclick="filterSegEstado('EMISIÓN',this)" title="Póliza en trámite de emisión. Aún no activa." style="font-size:11px">📝 Emisión</div><div class="pill" onclick="filterSegEstado('EMITIDO',this)" title="Póliza emitida formalmente y activa." style="font-size:11px">📄 Emitido</div><div class="pill" onclick="filterSegEstado('RENOVADO',this)" title="Renovación completada exitosamente." style="font-size:11px">✅ Renovado</div><div class="pill" onclick="filterSegEstado('PÓLIZA VIGENTE',this)" title="Póliza activa dentro del período de cobertura." style="font-size:11px">🛡 Póliza Vigente</div><div class="pill" onclick="filterSegEstado('CRÉDITO VENCIDO',this)" title="Cliente mantiene cuotas vencidas con el banco que financia el vehículo." style="font-size:11px">⏰ Crédito Vencido</div><div class="pill" onclick="filterSegEstado('CRÉDITO CANCELADO',this)" title="Cliente canceló totalmente su crédito con el banco." style="font-size:11px">💳 Crédito Cancelado</div><div class="pill" onclick="filterSegEstado('SINIESTRO',this)" title="Cliente con evento reportado en trámite con la aseguradora." style="font-size:11px">🚨 Siniestro</div><div class="pill" onclick="filterSegEstado('PÉRDIDA TOTAL',this)" title="Vehículo declarado pérdida total por la aseguradora." style="font-size:11px">🚗 Pérdida Total</div><div class="pill" onclick="filterSegEstado('PÓLIZA ANULADA',this)" title="Póliza cancelada antes del vencimiento." style="font-size:11px">❌ Póliza Anulada</div><div class="pill" onclick="filterSegEstado('ENDOSO',this)" title="Cliente realizó el seguro directamente sin intermediación de Reliance." style="font-size:11px">📋 Endoso</div><div class="pill" onclick="filterSegEstado('NO RENOVADO',this)" title="Cliente decidió no renovar la póliza al vencimiento." style="font-size:11px">🚫 No Renovado</div><div class="pill" onclick="filterSegEstado('INUBICABLE',this)" title="No se logra contacto con el cliente tras varios intentos." style="font-size:11px">📵 Inubicable</div><div class="pill" onclick="filterSegEstado('NO ASEGURABLE',this)" title="Riesgo rechazado por aseguradora." style="font-size:11px">⛔ No Asegurable</div><div class="pill" onclick="filterSegEstado('AUTO VENDIDO',this)" title="Cliente ya no posee el vehículo asegurado." style="font-size:11px">🔑 Auto Vendido</div><div class="pill" onclick="filterSegEstado('CLIENTE FALLECIDO',this)" title="Titular fallecido. Se cierra gestión o se coordina con herederos." style="font-size:11px">🕊 Cliente Fallecido</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Módulo de Seguimiento</div><span class="text-muted" style="font-size:12px" id="seg-count">—</span></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Cliente</th><th>Aseguradora</th><th>Vence</th><th>Días</th><th>Estado</th><th>Nota</th><th>Últ. contacto</th><th>Acciones</th></tr></thead>
+          <tbody id="seguimiento-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ COTIZADOR ══ -->
+  <div class="page" id="page-cotizador">
+    <div class="cotizador-header">
+      <h2>Cotizador de Seguros Vehiculares</h2>
+      <p>Compare primas entre aseguradoras en tiempo real · Impresión PDF profesional</p>
+    </div>
+    <div class="grid-2" style="margin-bottom:20px">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Datos del Cliente</div></div>
+        <div class="card-body">
+          <div class="form-grid form-grid-2" style="gap:12px">
+            <div class="form-group"><label class="form-label">Nombre Completo</label><input class="form-input" id="cot-nombre" placeholder="Apellidos y nombres"></div>
+            <div class="form-group"><label class="form-label">Cédula / RUC</label><input class="form-input" id="cot-ci" placeholder="1234567890"></div>
+            <div class="form-group"><label class="form-label">Celular</label><input class="form-input" id="cot-cel" placeholder="593987654321"></div>
+            <div class="form-group"><label class="form-label">Correo</label><input class="form-input" id="cot-email" placeholder="cliente@email.com"></div>
+            <div class="form-group"><label class="form-label">Ciudad</label><select class="form-select" id="cot-ciudad"><option>QUITO</option><option>GUAYAQUIL</option><option>CUENCA</option><option>SALINAS</option><option>PORTOVIEJO</option><option>AMBATO</option></select></div>
+            <div class="form-group"><label class="form-label">Región</label><select class="form-select" id="cot-region"><option value="SIERRA">SIERRA</option><option value="COSTA">COSTA</option></select></div>
+            <div class="form-group"><label class="form-label">Tipo de Póliza</label><select class="form-select" id="cot-tipo"><option value="NUEVO">NUEVA</option><option value="RENOVACION">RENOVACIÓN</option></select></div>
+            <div class="form-group"><label class="form-label">Vigencia Desde</label><input class="form-input" type="date" id="cot-desde"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Datos del Vehículo</div></div>
+        <div class="card-body">
+          <div class="form-grid form-grid-2" style="gap:12px">
+            <div class="form-group"><label class="form-label">Marca</label><select class="form-select" id="cot-marca"><option>CHERY</option><option>KIA</option><option>VOLKSWAGEN</option><option>FIAT</option><option>NISSAN</option><option>TOYOTA</option><option>MAZDA</option><option>HYUNDAI</option><option>CHEVROLET</option><option>GREAT WALL</option><option>OTRO</option></select></div>
+            <div class="form-group"><label class="form-label">Año</label><input class="form-input" id="cot-anio" type="number" value="2024" min="2000" max="2026"></div>
+            <div class="form-group full"><label class="form-label">Modelo</label><input class="form-input" id="cot-modelo" placeholder="Ej: TIGGO 7 PRO AC 1.5 5P"></div>
+            <div class="form-group"><label class="form-label">Placa</label><input class="form-input" id="cot-placa" placeholder="T03XXXXX"></div>
+            <div class="form-group"><label class="form-label">Color</label><input class="form-input" id="cot-color" placeholder="BLANCO"></div>
+            <div class="form-group"><label class="form-label">N° Motor</label><input class="form-input" id="cot-motor" placeholder="N° Motor" style="font-family:'DM Mono',monospace;font-size:12px"></div>
+            <div class="form-group"><label class="form-label">N° Chasis</label><input class="form-input" id="cot-chasis" placeholder="N° Chasis" style="font-family:'DM Mono',monospace;font-size:12px"></div>
+            <div class="form-group"><label class="form-label">Valor Asegurado ($)</label><input class="form-input" id="cot-va" type="number" value="20000" oninput="calcCotizacion()"></div>
+            <div class="form-group"><label class="form-label">Extras ($)</label><input class="form-input" id="cot-extras" type="number" value="0"></div>
+            <div class="form-group"><label class="form-label">Cuotas TC</label><select class="form-select" id="cot-cuotas-tc" onchange="calcCotizacion()"><option value="3">3</option><option value="6">6</option><option value="9">9</option><option value="12" selected>12</option></select></div>
+            <div class="form-group"><label class="form-label">Cuotas Débito</label><select class="form-select" id="cot-cuotas-deb" onchange="calcCotizacion()"><option value="8">8</option><option value="10" selected>10</option><option value="12">12</option></select></div>
+          </div>
+          <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Póliza Anterior (Renovación)</div>
+            <div class="form-grid form-grid-2" style="gap:10px">
+              <div class="form-group"><label class="form-label">Aseguradora Anterior</label><input class="form-input" id="cot-aseg-anterior" placeholder="Ej: GENERALI ECUADOR"></div>
+              <div class="form-group"><label class="form-label">N° Póliza Anterior</label><input class="form-input" id="cot-poliza-anterior" placeholder="000000-000000" style="font-family:'DM Mono',monospace"></div>
+            </div>
+          </div>
+          <div style="margin-top:16px;display:flex;gap:8px">
+            <!-- Selector de aseguradoras -->
+            <div style="margin-bottom:12px">
+              <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px">Aseguradoras a cotizar</div>
+              <div id="aseg-selector" style="display:grid;grid-template-columns:1fr 1fr;gap:6px"></div>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="btn btn-ghost btn-xs" onclick="toggleAllAseg(true)">✓ Todas</button>
+                <button class="btn btn-ghost btn-xs" onclick="toggleAllAseg(false)">✗ Ninguna</button>
+              </div>
+            </div>
+            <button class="btn btn-primary w-full" onclick="calcCotizacion()">🧮 Calcular Primas</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="cotizacion-resultado" style="display:none">
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <div class="card-title">Comparativo de Primas</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <!-- Toggle Auto Sustituto SWEADEN — solo visible cuando SWEADEN está en resultados -->
+            <label id="sweaden-autosust-wrap" style="display:none;align-items:center;gap:7px;background:#e8f0fb;border:1px solid #1a4c84;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:12px;color:#1a4c84;font-weight:500;user-select:none">
+              <input type="checkbox" id="sweaden-autosust" onchange="calcCotizacion()" style="accent-color:#1a4c84;width:15px;height:15px;cursor:pointer">
+              🚗 Auto Sustituto SWEADEN <span style="background:#1a4c84;color:#fff;border-radius:4px;padding:1px 7px;font-size:11px;margin-left:2px">+$60</span>
+            </label>
+            <button class="btn btn-blue btn-sm" onclick="printCotizacion()">🖨 Imprimir / PDF</button>
+            <button class="btn btn-green btn-sm" onclick="guardarCotizacion()">💾 Guardar</button>
+          </div>
+        </div>
+        <div class="card-body"><div class="aseg-cards" id="aseg-cards-result"></div></div>
+      </div>
+      <div class="card"><div class="card-header"><div class="card-title">Coberturas Comparadas</div></div><div class="tbl-wrap" id="coberturas-table-wrap"></div></div>
+    </div>
+  </div>
+
+  <!-- ══ COTIZACIONES ══ -->
+  <div class="page" id="page-cotizaciones">
+
+    <!-- Header con KPIs -->
+    <div class="highlight-card" style="background:linear-gradient(135deg,#e8f0fb,#d0e4ff);border-color:var(--accent2);margin-bottom:20px">
+      <div class="flex items-center justify-between">
+        <div>
+          <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--accent2)">Cotizaciones</div>
+          <div class="text-muted" style="font-size:12px">Seguimiento de cotizaciones enviadas a clientes</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="showPage('cotizador')">+ Nueva Cotización</button>
+      <button class="btn btn-green btn-sm" onclick="exportarCotizAceptadas()">⬇ Excel Aceptadas</button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid-4" style="margin-bottom:20px">
+      <div class="stat-card"><div class="stat-label">Total enviadas</div><div class="stat-value" id="cq-stat-total">0</div></div>
+      <div class="stat-card"><div class="stat-label">Pendientes respuesta</div><div class="stat-value" style="color:var(--accent)" id="cq-stat-pend">0</div></div>
+      <div class="stat-card"><div class="stat-label">Aceptadas</div><div class="stat-value" style="color:var(--green)" id="cq-stat-acept">0</div></div>
+      <div class="stat-card"><div class="stat-label">Tasa de cierre</div><div class="stat-value" style="color:var(--accent2)" id="cq-stat-tasa">0%</div></div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-body" style="padding:12px 16px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <input class="form-input" id="cq-search" placeholder="🔍 Buscar cliente..." style="width:220px" oninput="renderCotizaciones()">
+          <select class="form-select" id="cq-filter-estado" style="width:170px" onchange="renderCotizaciones()">
+            <option value="">Todos los estados</option>
+            <option value="ENVIADA">📤 Enviada</option>
+            <option value="VISTA">👁 Vista</option>
+            <option value="ACEPTADA">✅ Aceptada</option>
+            <option value="EN EMISIÓN">📝 En Emisión</option>
+            <option value="EMITIDA">🛡 Emitida</option>
+            <option value="RECHAZADA">❌ Rechazada</option>
+            <option value="VENCIDA">⌛ Vencida</option>
+          </select>
+          <select class="form-select" id="cq-filter-aseg" style="width:170px" onchange="renderCotizaciones()">
+            <option value="">Todas las aseguradoras</option>
+          </select>
+          <div style="margin-left:auto;font-size:12px;color:var(--muted)" id="cq-count"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="card">
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Cliente</th>
+              <th>Vehículo</th>
+              <th style="text-align:right">VA</th>
+              <th>Aseguradoras cotizadas</th>
+              <th>Estado</th>
+              <th>Aseg. Elegida</th>
+              <th>Ejecutivo</th>
+              <th style="text-align:center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="cq-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL confirmar aceptación -->
+  <div class="modal-overlay" id="modal-cotiz-aceptar">
+    <div class="modal" style="max-width:520px">
+      <div class="modal-header">
+        <div class="modal-title">✅ Cliente Acepta — Confirmar Aseguradora</div>
+        <button class="modal-close" onclick="closeModal('modal-cotiz-aceptar')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="modal-cotiz-cliente-info" style="padding:12px;background:var(--warm);border-radius:8px;margin-bottom:16px;font-size:13px"></div>
+
+        <div class="form-group">
+          <label class="form-label">Aseguradora elegida por el cliente</label>
+          <div id="cotiz-aseg-options" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
+        </div>
+
+        <div id="cotiz-resumen-elegida" style="display:none;margin-top:16px;padding:14px;border-radius:8px;border:2px solid var(--border)">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Resumen de la opción elegida</div>
+          <div id="cotiz-resumen-body" style="font-size:13px"></div>
+        </div>
+
+        <div class="form-group" style="margin-top:16px">
+          <label class="form-label">Observación (opcional)</label>
+          <input class="form-input" id="cotiz-obs-acept" placeholder="Ej: Cliente prefirió débito bancario">
+        </div>
+
+        <div style="background:#e8f0fb;border:1px solid var(--accent2);border-radius:8px;padding:12px;margin-top:12px;font-size:12px;color:var(--accent2)">
+          <b>📋 ¿Qué pasará al confirmar?</b><br>
+          • La cotización cambiará a estado <b>ACEPTADA</b><br>
+          • El cliente pasará a estado <b>EMISIÓN</b> en la cartera<br>
+          • Se abrirá el formulario de cierre de venta pre-llenado
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modal-cotiz-aceptar')">Cancelar</button>
+        <button class="btn btn-green" onclick="confirmarAceptacion()" id="btn-confirmar-acept" disabled>✅ Confirmar Aceptación</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ COMPARATIVO ══ -->
+  <div class="page" id="page-comparativo">
+    <div class="highlight-card"><div class="flex items-center justify-between"><div><div style="font-family:'DM Serif Display',serif;font-size:18px;margin-bottom:4px">Comparativo Completo de Aseguradoras</div><div class="text-muted" style="font-size:12px">Coberturas, amparos adicionales, beneficios y deducibles</div></div></div></div>
+    <div class="card"><div class="card-header"><div class="card-title">Coberturas y Beneficios</div></div><div class="tbl-wrap"><table class="comp-table"><thead><tr><th class="col-cob" style="text-align:left">Cobertura</th></tr></thead><tbody id="comp-tbody"></tbody></table></div></div>
+  </div>
+
+  <!-- ══ TASAS ══ -->
+  <div class="page" id="page-tasas">
+    <div class="grid-3">
+      <div class="card"><div class="card-header" style="background:rgba(26,76,132,.06)"><div class="card-title" style="color:var(--accent2)">SWEADEN</div></div><div class="card-body"><table style="width:100%;font-size:12px"><thead><tr><th style="text-align:left;padding:4px 8px;color:var(--muted);font-size:10px">Valor Asegurado</th><th style="padding:4px 8px;color:var(--muted);font-size:10px">UIO</th><th style="padding:4px 8px;color:var(--muted);font-size:10px">GYE</th></tr></thead><tbody><tr><td style="padding:8px">$0–$20,000</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">3.50/3.70%</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">3.50/3.70%</td></tr><tr><td style="padding:8px">$20,001–$30,000</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">2.80/3.00%</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">3.00/3.20%</td></tr><tr><td style="padding:8px">$30,001+</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">2.50/2.70%</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">2.80/3.00%</td></tr></tbody></table><div style="margin-top:10px;padding:8px;background:var(--warm);border-radius:6px;font-size:11px;color:var(--muted)">1ª tasa=Renovación · 2ª tasa=Nuevo</div></div></div>
+      <div class="card"><div class="card-header" style="background:rgba(200,75,26,.06)"><div class="card-title" style="color:var(--accent)">MAPFRE</div></div><div class="card-body"><table style="width:100%;font-size:12px"><thead><tr><th style="text-align:left;padding:4px 8px;color:var(--muted);font-size:10px">Valor Asegurado</th><th style="padding:4px 8px;color:var(--muted);font-size:10px">Renovac.</th><th style="padding:4px 8px;color:var(--muted);font-size:10px">Nuevo</th></tr></thead><tbody><tr><td style="padding:8px">$0–$20,000</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">3.50%</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">4.9%</td></tr><tr><td style="padding:8px">$20,001–$30,000</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">2.80%</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">3.2%</td></tr><tr><td style="padding:8px">$30,001+</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">2.50%</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">2.5%</td></tr></tbody></table></div></div>
+      <div class="card"><div class="card-header" style="background:rgba(45,106,79,.06)"><div class="card-title" style="color:var(--green)">ALIANZA</div></div><div class="card-body"><table style="width:100%;font-size:12px"><thead><tr><th style="text-align:left;padding:4px 8px;color:var(--muted);font-size:10px">Valor Asegurado</th><th style="padding:4px 8px;color:var(--muted);font-size:10px">Tasa</th></tr></thead><tbody><tr><td style="padding:8px">$0–$20,000</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">3.00/3.20%</td></tr><tr><td style="padding:8px">$20,001–$30,000</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">2.50/2.70%</td></tr><tr><td style="padding:8px">$30,001+</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">2.20/2.40%</td></tr></tbody></table></div></div>
+      <div class="card"><div class="card-header" style="background:rgba(184,134,11,.06)"><div class="card-title" style="color:var(--gold)">ZURICH</div></div><div class="card-body"><table style="width:100%;font-size:12px"><thead><tr><th style="text-align:left;padding:4px 8px;color:var(--muted);font-size:10px">Valor Asegurado</th><th style="padding:4px 8px;color:var(--muted);font-size:10px">Tasa</th></tr></thead><tbody><tr><td style="padding:8px">$0–$29,999</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">4.30%</td></tr><tr><td style="padding:8px">$30,000–$39,999</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">2.50%</td></tr><tr><td style="padding:8px">$40,000+</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">2.20%</td></tr></tbody></table></div></div>
+      <div class="card"><div class="card-header" style="background:rgba(107,91,149,.06)"><div class="card-title" style="color:#6b5b95">LATINA</div></div><div class="card-body"><table style="width:100%;font-size:12px"><thead><tr><th style="text-align:left;padding:4px 8px;color:var(--muted);font-size:10px">Valor Asegurado</th><th style="padding:4px 8px;color:var(--muted);font-size:10px">Tasa</th></tr></thead><tbody><tr><td style="padding:8px">$0–$19,999</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">3.50%</td></tr><tr><td style="padding:8px">$20,000–$29,999</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">2.80%</td></tr><tr><td style="padding:8px">$30,000+</td><td style="padding:8px;text-align:center;font-family:'DM Mono',monospace">2.50%</td></tr></tbody></table></div></div>
+      <div class="card"><div class="card-header"><div class="card-title">GENERALI</div></div><div class="card-body"><div style="font-size:12px;color:var(--muted);line-height:1.8"><div>Tasa nuevos: <b>4.75%</b></div><div>Renovación: <b>3.36–4.75%</b></div><div>Amparo Patrimonial: <b>con costo adicional</b></div></div></div></div>
+    </div>
+  </div>
+
+  <!-- ══ ADMIN ══ -->
+  <!-- ══ REPORTES ══ -->
+  <div class="page" id="page-reportes">
+    <div class="highlight-card" style="background:linear-gradient(135deg,#e8f0fb,#d0e4ff);border-color:var(--accent2);margin-bottom:20px">
+      <div class="flex items-center justify-between">
+        <div>
+          <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--accent2)">Reportes y Métricas</div>
+          <div class="text-muted" style="font-size:12px">Análisis de cartera, renovaciones y producción</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <select class="form-select" id="rep-periodo" style="width:160px" onchange="renderReportes()">
+            <option value="mes">Este mes</option>
+            <option value="trimestre">Este trimestre</option>
+            <option value="anio">Este año</option>
+            <option value="todo">Todo</option>
+          </select>
+          <button class="btn btn-blue btn-sm" onclick="exportarReporteExcel()">⬇ Exportar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPIs principales -->
+    <div class="grid-4" id="rep-kpis" style="margin-bottom:24px"></div>
+
+    <!-- Gráficos fila 1 -->
+    <div class="grid-2" style="margin-bottom:20px">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Renovaciones por estado</div></div>
+        <div class="card-body"><canvas id="rep-chart-estados" height="220"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Cierres por aseguradora</div></div>
+        <div class="card-body"><canvas id="rep-chart-aseg" height="220"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Gráficos fila 2 -->
+    <div class="grid-2" style="margin-bottom:20px">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Primas por forma de pago</div></div>
+        <div class="card-body"><canvas id="rep-chart-fp" height="220"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Vencimientos próximos 90 días</div></div>
+        <div class="card-body"><canvas id="rep-chart-venc" height="220"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Ranking ejecutivos -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header"><div class="card-title">🏆 Ranking de Ejecutivos</div></div>
+      <div class="card-body" id="rep-ranking"></div>
+    </div>
+
+    <!-- Detalle cierres del período -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Cierres del período</div>
+        <span class="text-muted" style="font-size:12px" id="rep-cierres-count">—</span>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Fecha</th><th>Cliente</th><th>Aseguradora</th><th>Prima Total</th><th>Forma Pago</th><th>Ejecutivo</th></tr></thead>
+        <tbody id="rep-cierres-tbody"></tbody>
+      </table></div>
+    </div>
+  </div>
+
+    <div class="page" id="page-admin">
+    <div class="highlight-card" style="background:linear-gradient(135deg,#fff8e1,#fff3cd);border-color:#f0c040;margin-bottom:20px">
+      <div class="flex items-center justify-between">
+        <div><div style="font-family:'DM Serif Display',serif;font-size:18px">Panel de Administración</div>
+        <div class="text-muted" style="font-size:12px">Gestión de carteras, importaciones y ejecutivos · Solo visible para Administradores</div></div>
+        <span class="badge badge-gold">⚙ ADMIN</span>
+      </div>
+    </div>
+
+    <!-- Stats admin -->
+    <div class="grid-4" id="admin-stats" style="margin-bottom:20px"></div>
+
+    <!-- Tabs -->
+    <div class="filter-pills" id="admin-tabs" style="margin-bottom:20px">
+      <div class="pill active" onclick="showAdminTab('importar',this)">📥 Importar Cartera</div>
+      <div class="pill" onclick="showAdminTab('historial',this)">📋 Historial de Cargas</div>
+      <div class="pill" onclick="showAdminTab('ejecutivos',this)">👥 Ejecutivos</div>
+      <div class="pill" onclick="showAdminTab('datos',this)">🗄️ Gestión de Datos</div>
+    </div>
+
+    <!-- TAB: IMPORTAR -->
+    <div id="admin-tab-importar">
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <div class="card-title">📥 Cargar archivo de cartera mensual</div>
+          <div style="font-size:11px;color:var(--muted)">Formato Produbanco · Sheet "PRODU VH"</div>
+        </div>
+        <div class="card-body">
+          <!-- Opciones de importación -->
+          <div class="form-grid form-grid-2" style="gap:14px;margin-bottom:20px">
+            <div class="form-group">
+              <label class="form-label">Mes de la cartera</label>
+              <input class="form-input" type="month" id="import-mes" value="">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Asignar cartera a ejecutivo</label>
+              <select class="form-select" id="import-assign-exec"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Modo de importación</label>
+              <select class="form-select" id="import-modo">
+                <option value="agregar">➕ Agregar — solo nuevos clientes (no duplica existentes)</option>
+                <option value="actualizar">🔄 Actualizar — actualiza datos si el cliente ya existe</option>
+                <option value="reemplazar">⚠ Reemplazar — elimina cartera del ejecutivo y carga nueva</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Hoja del archivo</label>
+              <select class="form-select" id="import-sheet">
+                <option value="auto">Auto-detectar (busca "VH")</option>
+                <option value="PRODU VH">PRODU VH</option>
+                <option value="PRODUCTOS PRODUBANCO">PRODUCTOS PRODUBANCO</option>
+              </select>
+            </div>
+          </div>
+          <!-- Drop zone -->
+          <div class="drop-zone" id="drop-zone"
+            onclick="document.getElementById('excel-input').click()"
+            ondragover="handleDragOver(event)"
+            ondragleave="handleDragLeave(event)"
+            ondrop="handleDrop(event)">
+            <div class="drop-icon">📊</div>
+            <div class="drop-text">Arrastra el archivo Excel aquí o haz clic para seleccionar</div>
+            <div class="drop-sub">Soporta .xlsx · .xls · .xlsm — Mapeo automático formato Produbanco</div>
+          </div>
+          <input type="file" id="excel-input" accept=".xlsx,.xls,.xlsm" style="display:none" onchange="handleFileSelect(event)">
+        </div>
+      </div>
+
+      <!-- Preview -->
+      <div id="import-preview" style="display:none">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Vista previa de importación</div>
+            <div id="import-preview-meta" style="font-size:12px;color:var(--muted)"></div>
+          </div>
+          <div class="card-body">
+            <!-- Resumen de mapeo -->
+            <div id="import-mapeo-resumen" style="margin-bottom:16px;padding:12px;background:var(--warm);border-radius:8px;font-size:12px"></div>
+            <div id="import-table-wrap" class="tbl-wrap" style="max-height:320px;overflow-y:auto"></div>
+            <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <button class="btn btn-green" onclick="confirmImport()">✓ Confirmar e Importar</button>
+              <button class="btn btn-ghost" onclick="cancelImport()">✕ Cancelar</button>
+              <div style="margin-left:auto;font-size:12px;color:var(--muted)" id="import-warning"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: HISTORIAL -->
+    <div id="admin-tab-historial" style="display:none">
+      <div class="card">
+        <div class="card-header"><div class="card-title">📋 Historial de Cargas</div></div>
+        <div class="card-body">
+          <div id="import-historial-wrap">
+            <div class="empty-state"><div class="empty-icon">📂</div><p>No hay cargas registradas aún</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: EJECUTIVOS -->
+    <div id="admin-tab-ejecutivos" style="display:none">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">👥 Ejecutivos y Carteras</div>
+          <button class="btn btn-primary btn-sm" onclick="openModalNewExec()">+ Agregar Ejecutivo</button>
+        </div>
+        <div class="card-body">
+          <div id="exec-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: GESTIÓN DE DATOS -->
+    <div id="admin-tab-datos" style="display:none">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><div class="card-title">🗄️ Base de Datos</div></div>
+          <div class="card-body">
+            <div id="admin-db-stats" style="margin-bottom:16px"></div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <button class="btn btn-secondary w-full" onclick="exportarTodoExcel()">⬇ Exportar todos los clientes a Excel</button>
+              <button class="btn btn-secondary w-full" onclick="exportarBackupJSON()">💾 Backup completo (JSON)</button>
+              <button class="btn btn-secondary w-full" onclick="document.getElementById('restore-input').click()">📂 Restaurar desde backup</button>
+              <input type="file" id="restore-input" accept=".json" style="display:none" onchange="restaurarBackup(event)">
+              <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
+              <button class="btn w-full" style="background:#fff0f0;color:var(--red);border:1px solid var(--red)" onclick="limpiarCarteraEjecutivo()">🧹 Limpiar cartera de un ejecutivo</button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">📊 Resumen por ejecutivo</div></div>
+          <div class="card-body">
+            <div id="admin-exec-resumen"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ NUEVO CLIENTE ══ -->
+  <div class="page" id="page-nuevo-cliente">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Datos del Cliente</div></div>
+        <div class="card-body">
+          <div class="form-grid form-grid-2" style="gap:12px">
+            <div class="form-group full"><label class="form-label">Nombre Completo</label><input class="form-input" id="nc-nombre" placeholder="APELLIDOS NOMBRES"></div>
+            <div class="form-group"><label class="form-label">CI / RUC</label><input class="form-input" id="nc-ci"></div>
+            <div class="form-group"><label class="form-label">Celular</label><input class="form-input" id="nc-cel"></div>
+            <div class="form-group"><label class="form-label">Correo</label><input class="form-input" id="nc-email" type="email"></div>
+            <div class="form-group"><label class="form-label">Ciudad</label><select class="form-select" id="nc-ciudad"><option>QUITO</option><option>GUAYAQUIL</option><option>CUENCA</option><option>SALINAS</option><option>PORTOVIEJO</option><option>AMBATO</option></select></div>
+            <div class="form-group"><label class="form-label">Región</label><select class="form-select" id="nc-region"><option value="SIERRA">SIERRA</option><option value="COSTA">COSTA</option></select></div>
+            <div class="form-group"><label class="form-label">Nacimiento</label><input class="form-input" type="date" id="nc-nacimiento"></div>
+            <div class="form-group"><label class="form-label">Género</label><select class="form-select" id="nc-genero"><option>MASCULINO</option><option>FEMENINO</option></select></div>
+            <div class="form-group"><label class="form-label">Estado Civil</label><select class="form-select" id="nc-civil"><option>SOLTERO</option><option>CASADO</option><option>DIVORCIADO</option><option>VIUDO</option></select></div>
+            <div class="form-group"><label class="form-label">Profesión</label><input class="form-input" id="nc-profesion"></div>
+            <div class="form-group full"><label class="form-label">Dirección</label><input class="form-input" id="nc-dir"></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header"><div class="card-title">Datos del Vehículo</div></div>
+          <div class="card-body">
+            <div class="form-grid form-grid-2" style="gap:12px">
+              <div class="form-group"><label class="form-label">Marca</label><select class="form-select" id="nc-marca"><option>CHERY</option><option>KIA</option><option>VOLKSWAGEN</option><option>FIAT</option><option>NISSAN</option><option>TOYOTA</option><option>MAZDA</option><option>HYUNDAI</option><option>CHEVROLET</option><option>GREAT WALL</option><option>OTRO</option></select></div>
+              <div class="form-group"><label class="form-label">Año</label><input class="form-input" type="number" id="nc-anio" value="2025"></div>
+              <div class="form-group full"><label class="form-label">Modelo</label><input class="form-input" id="nc-modelo"></div>
+              <div class="form-group"><label class="form-label">Placa</label><input class="form-input" id="nc-placa"></div>
+              <div class="form-group"><label class="form-label">Color</label><input class="form-input" id="nc-color"></div>
+              <div class="form-group"><label class="form-label">Nº Chasis</label><input class="form-input" id="nc-chasis"></div>
+              <div class="form-group"><label class="form-label">Cuenta Produbanco</label><input class="form-input" id="nc-cuenta"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Datos de la Póliza</div></div>
+          <div class="card-body">
+            <div class="form-grid form-grid-2" style="gap:12px">
+              <div class="form-group"><label class="form-label">Tipo</label><select class="form-select" id="nc-tipo"><option value="NUEVO">NUEVO</option><option value="RENOVACION">RENOVACIÓN</option></select></div>
+              <div class="form-group"><label class="form-label">Aseguradora</label><select class="form-select" id="nc-aseg"><option value="ALIANZA SEGUROS">ALIANZA SEGUROS</option><option value="SWEADEN SEGUROS">SWEADEN SEGUROS</option><option value="ASEGURADORA DEL SUR">ASEGURADORA DEL SUR</option><option value="LATINA SEGUROS">LATINA SEGUROS</option><option value="ZURICH">ZURICH</option><option value="GENERALI ECUADOR">GENERALI ECUADOR</option><option value="MAPFRE SEGUROS">MAPFRE SEGUROS</option><option value="SEGUROS EQUINOCCIAL">SEGUROS EQUINOCCIAL</option><option value="ATLANTIDA">ATLANTIDA</option><option value="AIG">AIG</option><option value="OTRO">OTRO</option></select>></div>
+              <div class="form-group"><label class="form-label">Val. Asegurado ($)</label><input class="form-input" type="number" id="nc-va"></div>
+              <div class="form-group"><label class="form-label">Tasa (%)</label><input class="form-input" type="number" step="0.01" id="nc-tasa"></div>
+              <div class="form-group"><label class="form-label">Vigencia Desde</label><input class="form-input" type="date" id="nc-desde"></div>
+              <div class="form-group"><label class="form-label">Vigencia Hasta</label><input class="form-input" type="date" id="nc-hasta"></div>
+              <div class="form-group full"><label class="form-label">OBS</label><select class="form-select" id="nc-obs"><option>NUEVO</option><option>RENOVACION</option><option>ENDOSO</option><option>RENOVACION+VD</option><option>RENOVACION+AXA</option><option>RENOVACION+VD+AXA</option></select></div>
+              <div class="form-group full"><label class="form-label">Comentarios</label><textarea class="form-textarea" id="nc-comentario"></textarea></div>
+            </div>
+            <div style="margin-top:16px;display:flex;gap:10px">
+              <button class="btn btn-primary w-full" onclick="guardarNuevoCliente()">💾 Registrar Cliente</button>
+              <button class="btn btn-secondary" onclick="showPage('cotizador')">🧮 Cotizar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ══ CIERRES DE VENTA ══ -->
+  <div class="page" id="page-cierres">
+    <div class="highlight-card" style="background:linear-gradient(135deg,#d4edda,#c3e6cb);border-color:var(--green);margin-bottom:20px">
+      <div class="flex items-center justify-between">
+        <div><div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--green)">Cierres de Venta Registrados</div>
+        <div class="text-muted" style="font-size:12px">Historial completo de pólizas emitidas con datos de cobro</div></div>
+        <button class="btn btn-green btn-sm" onclick="exportCierresExcel()">⬇ Exportar Excel</button>
+      </div>
+    </div>
+    <!-- Stats -->
+    <div class="grid-4" id="cierres-stats" style="margin-bottom:20px"></div>
+    <!-- Filtros -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-body" style="padding:12px 16px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <input class="form-input" id="cierres-search" placeholder="🔍 Buscar cliente, póliza, factura…" style="flex:1;min-width:200px" oninput="renderCierres()">
+          <select class="form-select" id="cierres-filter-aseg" style="width:160px" onchange="renderCierres()">
+            <option value="">Todas las aseg.</option>
+            <option>GENERALI</option><option>SWEADEN</option><option>ALIANZA</option>
+            <option>MAPFRE</option><option>LATINA</option><option>ZURICH</option>
+          </select>
+          <select class="form-select" id="cierres-filter-fp" style="width:150px" onchange="renderCierres()">
+            <option value="">Todas las formas</option>
+            <option value="DEBITO_BANCARIO">🏦 Débito</option>
+            <option value="TARJETA_CREDITO">💳 TC</option>
+            <option value="CONTADO">💵 Contado</option>
+            <option value="MIXTO">🔀 Mixto</option>
+          </select>
+          <select class="form-select" id="cierres-filter-mes" style="width:140px" onchange="renderCierres()">
+            <option value="">Todos los meses</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Historial de Cierres</div><span class="text-muted" style="font-size:12px" id="cierres-count">—</span></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Fecha</th><th>Cliente</th><th>Aseguradora</th><th>Póliza</th><th>Factura</th><th>Prima Total</th><th>Forma de Pago</th><th>Banco / Cuenta</th><th>Vigencia</th><th>AXA/VD</th><th>Acciones</th></tr></thead>
+        <tbody id="cierres-tbody"></tbody>
+      </table></div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- ══════════ MODALS ══════════ -->
+<!-- Modal Detalle Cliente -->
+<div class="modal-overlay" id="modal-cliente">
+  <div class="modal modal-lg">
+    <div class="modal-header"><div class="modal-title" id="modal-cliente-title">Cliente</div><button class="modal-close" onclick="closeModal('modal-cliente')">✕</button></div>
+    <div class="modal-body" id="modal-cliente-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-red btn-sm" id="modal-btn-eliminar">🗑 Eliminar</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-cliente')">Cerrar</button>
+      <button class="btn btn-ghost" id="modal-btn-editar">✏ Editar</button>
+      <button class="btn btn-blue" id="modal-btn-cotizar">🧮 Cotizar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Editar Cliente -->
+<div class="modal-overlay" id="modal-editar">
+  <div class="modal modal-lg">
+    <div class="modal-header"><div class="modal-title">Editar Cliente</div><button class="modal-close" onclick="closeModal('modal-editar')">✕</button></div>
+    <div class="modal-body" id="modal-editar-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-editar')">Cancelar</button>
+      <button class="btn btn-primary" id="modal-btn-guardar-editar">Guardar Cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Seguimiento -->
+<div class="modal-overlay" id="modal-seguimiento">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header"><div class="modal-title">Actualizar Seguimiento</div><button class="modal-close" onclick="closeModal('modal-seguimiento')">✕</button></div>
+    <div class="modal-body">
+      <div id="modal-seg-nombre" style="font-weight:600;font-size:15px;margin-bottom:16px"></div>
+      <div class="section-divider">Estado</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+<div style="margin-bottom:10px"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:6px">📋 En Gestión</div><div style="display:flex;flex-wrap:wrap;gap:6px"><button class="estado-btn E1" onclick="setEstado('PENDIENTE')" title="Cliente en gestión de renovación. Sin confirmación aún." style="font-size:11px;padding:5px 10px">⚪ Pendiente</button>
+          <button class="estado-btn E2" onclick="setEstado('INSPECCIÓN')" title="Vehículo pendiente de inspección requerida por aseguradora." style="font-size:11px;padding:5px 10px">🔍 Inspección</button>
+          <button class="estado-btn E3" onclick="setEstado('EMISIÓN')" title="Póliza en trámite de emisión. Aún no activa." style="font-size:11px;padding:5px 10px">📝 Emisión</button>
+          <button class="estado-btn E4" onclick="setEstado('EMITIDO')" title="Póliza emitida formalmente y activa." style="font-size:11px;padding:5px 10px">📄 Emitido</button></div></div>
+        <div style="margin-bottom:10px"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:6px">✅ Positivos</div><div style="display:flex;flex-wrap:wrap;gap:6px"><button class="estado-btn E5" onclick="setEstado('RENOVADO')" title="Renovación completada exitosamente." style="font-size:11px;padding:5px 10px">✅ Renovado</button>
+          <button class="estado-btn E6" onclick="setEstado('PÓLIZA VIGENTE')" title="Póliza activa dentro del período de cobertura." style="font-size:11px;padding:5px 10px">🛡 Póliza Vigente</button></div></div>
+        <div style="margin-bottom:10px"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:6px">⚠️ Riesgo</div><div style="display:flex;flex-wrap:wrap;gap:6px"><button class="estado-btn E7" onclick="setEstado('CRÉDITO VENCIDO')" title="Cliente mantiene cuotas vencidas con el banco que financia el vehículo." style="font-size:11px;padding:5px 10px">⏰ Crédito Vencido</button>
+          <button class="estado-btn E8" onclick="setEstado('CRÉDITO CANCELADO')" title="Cliente canceló totalmente su crédito con el banco." style="font-size:11px;padding:5px 10px">💳 Crédito Cancelado</button>
+          <button class="estado-btn E9" onclick="setEstado('SINIESTRO')" title="Cliente con evento reportado en trámite con la aseguradora." style="font-size:11px;padding:5px 10px">🚨 Siniestro</button>
+          <button class="estado-btn E10" onclick="setEstado('PÉRDIDA TOTAL')" title="Vehículo declarado pérdida total por la aseguradora." style="font-size:11px;padding:5px 10px">🚗 Pérdida Total</button></div></div>
+        <div style="margin-bottom:10px"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:6px">🔒 Cierre/Baja</div><div style="display:flex;flex-wrap:wrap;gap:6px"><button class="estado-btn E11" onclick="setEstado('PÓLIZA ANULADA')" title="Póliza cancelada antes del vencimiento." style="font-size:11px;padding:5px 10px">❌ Póliza Anulada</button>
+          <button class="estado-btn E12" onclick="setEstado('ENDOSO')" title="Cliente realizó el seguro directamente sin intermediación de Reliance." style="font-size:11px;padding:5px 10px">📋 Endoso</button>
+          <button class="estado-btn E13" onclick="setEstado('NO RENOVADO')" title="Cliente decidió no renovar la póliza al vencimiento." style="font-size:11px;padding:5px 10px">🚫 No Renovado</button>
+          <button class="estado-btn E14" onclick="setEstado('INUBICABLE')" title="No se logra contacto con el cliente tras varios intentos." style="font-size:11px;padding:5px 10px">📵 Inubicable</button>
+          <button class="estado-btn E15" onclick="setEstado('NO ASEGURABLE')" title="Riesgo rechazado por aseguradora." style="font-size:11px;padding:5px 10px">⛔ No Asegurable</button>
+          <button class="estado-btn E16" onclick="setEstado('AUTO VENDIDO')" title="Cliente ya no posee el vehículo asegurado." style="font-size:11px;padding:5px 10px">🔑 Auto Vendido</button>
+          <button class="estado-btn E17" onclick="setEstado('CLIENTE FALLECIDO')" title="Titular fallecido. Se cierra gestión o se coordina con herederos." style="font-size:11px;padding:5px 10px">🕊 Cliente Fallecido</button></div></div>
+      </div>
+      <div class="section-divider">Nota de seguimiento</div>
+      <textarea class="form-textarea w-full" id="seg-nota" placeholder="Resultado de la llamada, próxima acción…" style="min-height:100px"></textarea>
+    </div>
+    <div id="seg-cierre-banner" style="display:none;margin:0 24px 4px;padding:12px 16px;background:#d4edda;border:1px solid #2d6a4f;border-radius:8px">
+      <div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:6px">✓ Estado: RENOVADO — ¿Registrar cierre de venta?</div>
+      <div style="font-size:11px;color:#2d5a3f;margin-bottom:8px">Guarda el estado y abre el formulario de cierre (factura, póliza, forma de pago).</div>
+      <button class="btn btn-green btn-sm w-full" onclick="guardarSeguimientoYCierre()">📋 Guardar y Registrar Cierre</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-seguimiento')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarSeguimiento()">Solo guardar estado</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Cal Events -->
+<div class="modal-overlay" id="modal-cal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header"><div class="modal-title" id="modal-cal-title">Vencimientos del día</div><button class="modal-close" onclick="closeModal('modal-cal')">✕</button></div>
+    <div class="modal-body" id="modal-cal-body"></div>
+  </div>
+</div>
+
+<!-- Modal New Exec -->
+<div class="modal-overlay" id="modal-new-exec">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header"><div class="modal-title">Nuevo Ejecutivo</div><button class="modal-close" onclick="closeModal('modal-new-exec')">✕</button></div>
+    <div class="modal-body">
+      <div class="form-grid" style="gap:12px">
+        <div class="form-group"><label class="form-label">Nombre Completo</label><input class="form-input" id="exec-nombre"></div>
+        <div class="form-group"><label class="form-label">Usuario (email)</label><input class="form-input" id="exec-user" placeholder="nombre@reliance.ec"></div>
+        <div class="form-group"><label class="form-label">Contraseña</label><input class="form-input" type="password" id="exec-pass"></div>
+        <div class="form-group"><label class="form-label">Rol</label><select class="form-select" id="exec-rol"><option value="ejecutivo">Ejecutivo</option><option value="admin">Administrador</option></select></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-new-exec')">Cancelar</button>
+      <button class="btn btn-primary" onclick="crearEjecutivo()">Crear</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Cierre de Venta -->
+<div class="modal-overlay" id="modal-cierre-venta">
+  <div class="modal modal-xl">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">✓ Registrar Cierre de Venta</div>
+        <div style="font-size:12px;color:var(--green);font-weight:600" id="cv-aseg">—</div>
+        <div style="font-size:11px;color:var(--muted)" id="cv-total">—</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('modal-cierre-venta')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid form-grid-2" style="gap:14px">
+        <!-- Datos básicos -->
+        <div class="form-group full" style="border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:2px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent)">Datos del Cierre — Campos Obligatorios (*)</div>
+        </div>
+        <div class="form-group"><label class="form-label">Cliente <span style="color:var(--red)">*</span></label><input class="form-input" id="cv-cliente" readonly style="background:var(--warm)"></div>
+        <div class="form-group">
+          <label class="form-label">Aseguradora con que se cerró <span style="color:var(--red)">*</span></label>
+          <select class="form-select" id="cv-nueva-aseg" onchange="cierreVentaData.asegNombre=this.value;renderCvFormaPago()">
+            <option value="">— Seleccionar —</option>
+            <option value="ALIANZA SEGUROS">ALIANZA SEGUROS</option>
+            <option value="SWEADEN SEGUROS">SWEADEN SEGUROS</option>
+            <option value="ASEGURADORA DEL SUR">ASEGURADORA DEL SUR</option>
+            <option value="LATINA SEGUROS">LATINA SEGUROS</option>
+            <option value="ZURICH">ZURICH</option>
+            <option value="GENERALI ECUADOR">GENERALI ECUADOR</option>
+            <option value="MAPFRE SEGUROS">MAPFRE SEGUROS</option>
+            <option value="SEGUROS EQUINOCCIAL">SEGUROS EQUINOCCIAL</option>
+            <option value="ATLANTIDA">ATLANTIDA</option>
+            <option value="AIG">AIG</option>
+            <option value="OTRO">OTRO</option>
+          </select>>
+        </div>
+        <div class="form-group">
+  <label class="form-label">N° de Factura Aseguradora <span style="color:var(--red)">*</span></label>
+  <input class="form-input" id="cv-factura"
+    placeholder="001-001-000000000"
+    maxlength="17"
+    oninput="maskFactura(this)"
+    onkeydown="return allowFacturaKey(event)"
+    style="font-family:'DM Mono',monospace;letter-spacing:1px"
+    autocomplete="off">
+  <div style="font-size:10px;color:var(--muted);margin-top:3px">Formato SRI: <span style="font-family:'DM Mono',monospace">001-001-000000000</span></div>
+  <div id="cv-factura-error" style="display:none;font-size:11px;color:var(--red);margin-top:3px"></div>
+</div>
+        <div class="form-group"><label class="form-label">N° de Póliza Nueva <span style="color:var(--red)">*</span></label><input class="form-input" id="cv-poliza" placeholder="000000-000000"></div>
+        <div class="form-group"><label class="form-label">Vigencia Desde <span style="color:var(--red)">*</span></label><input class="form-input" type="date" id="cv-desde" onchange="autocalcHasta()"></div>
+        <div class="form-group"><label class="form-label">Vigencia Hasta <span style="color:var(--red)">*</span></label><input class="form-input" type="date" id="cv-hasta"></div>
+        <div class="form-group"><label class="form-label">Prima Neta <span style="color:var(--red)">*</span></label><input class="form-input" id="cv-pn" type="number" step="0.01" placeholder="0.00" oninput="recalcPrimaTotal()"></div>
+        <div class="form-group"><label class="form-label">Prima Total <span style="color:var(--red)">*</span></label><input class="form-input" id="cv-total-val" type="number" step="0.01" placeholder="0.00" oninput="syncCuotasTotal()"></div>
+        <div class="form-group"><label class="form-label">Cuenta Produbanco</label><input class="form-input" id="cv-cuenta" placeholder="Nº de cuenta" style="font-family:'DM Mono',monospace"></div>
+        <div class="form-group"><label class="form-label">AXA / VD</label>
+          <select class="form-select" id="cv-axavd">
+            <option value="">Sin AXA ni VD</option>
+            <option value="AXA">AXA</option>
+            <option value="VD">VD (Vida Desgravamen)</option>
+            <option value="AXA+VD">AXA + VD</option>
+          </select>
+        </div>
+        <!-- Forma de pago -->
+        <div class="form-group full" style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+          <label class="form-label">Forma de Pago <span style="color:var(--red)">*</span></label>
+          <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+            <button class="pill active" onclick="selFormaPago('DEBITO_BANCARIO',this)">🏦 Débito Bancario</button>
+            <button class="pill" onclick="selFormaPago('TARJETA_CREDITO',this)">💳 Tarjeta de Crédito</button>
+            <button class="pill" onclick="selFormaPago('CONTADO',this)">💵 Contado/Transferencia</button>
+            <button class="pill" onclick="selFormaPago('MIXTO',this)">🔀 Mixto</button>
+          </div>
+          <input type="hidden" id="cv-forma-pago" value="DEBITO_BANCARIO">
+        </div>
+        <div class="form-group full" id="cv-cuotas-wrap" style="margin-top:4px"></div>
+        <div class="form-group full" style="border-top:1px solid var(--border);padding-top:12px">
+          <label class="form-label">Observaciones / Notas</label>
+          <textarea class="form-textarea w-full" id="cv-observacion" placeholder="Notas del cierre, acuerdos especiales…" style="min-height:60px"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <div style="flex:1;font-size:11px;color:var(--muted)">⚠ Todos los campos marcados con * son obligatorios</div>
+      <button class="btn btn-secondary" onclick="closeModal('modal-cierre-venta')">Cancelar</button>
+      <button class="btn btn-green" onclick="guardarCierreVenta()">✓ Registrar Cierre</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal WhatsApp -->
+<div class="modal-overlay" id="modal-whatsapp">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:22px">💬</span> WhatsApp
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px" id="wa-cliente-meta">—</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('modal-whatsapp')">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Selector plantilla -->
+      <div class="section-divider">Tipo de mensaje</div>
+      <div class="filter-pills" id="wa-tipo-pills" style="margin-bottom:16px">
+        <div class="pill active" onclick="selWaPlantilla('vencimiento',this)">⏰ Vencimiento</div>
+        <div class="pill" onclick="selWaPlantilla('cotizacion',this)">🧮 Cotización</div>
+        <div class="pill" onclick="selWaPlantilla('cierre',this)">✅ Cierre/Renovación</div>
+        <div class="pill" onclick="selWaPlantilla('documentos',this)">📄 Documentos</div>
+        <div class="pill" onclick="selWaPlantilla('libre',this)">✏ Personalizado</div>
+      </div>
+      <!-- Número destino -->
+      <div class="form-group" style="margin-bottom:12px">
+        <label class="form-label">Número WhatsApp <span style="color:var(--red)">*</span> <span style="font-size:10px;color:var(--muted);font-weight:400">(formato: 593987654321)</span></label>
+        <input class="form-input" id="wa-numero" placeholder="593987654321" style="font-family:'DM Mono',monospace">
+      </div>
+      <!-- Mensaje editable -->
+      <div class="form-group">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <label class="form-label">Mensaje <span style="color:var(--red)">*</span></label>
+          <span style="font-size:10px;color:var(--muted)" id="wa-char-count">0 caracteres</span>
+        </div>
+        <textarea class="form-textarea w-full" id="wa-mensaje" style="min-height:220px;font-size:13px;line-height:1.6" oninput="document.getElementById('wa-char-count').textContent=this.value.length+' caracteres'"></textarea>
+      </div>
+      <div style="margin-top:8px;padding:8px 12px;background:var(--warm);border-radius:6px;font-size:11px;color:var(--muted)">
+        💡 Puedes editar el mensaje antes de enviar. Se abrirá WhatsApp Web o la app con el mensaje listo para revisar y enviar.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-whatsapp')">Cancelar</button>
+      <button class="btn btn-ghost" onclick="copiarWa()">📋 Copiar</button>
+      <button class="btn btn-green" onclick="enviarWhatsApp()" style="background:#25D366">
+        <span style="font-size:15px">💬</span> Abrir en WhatsApp
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- PRINT AREA (hidden, shown on print) -->
+<div id="print-area" style="display:none;padding:30px;font-family:'DM Sans',sans-serif;max-width:900px;margin:0 auto">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #0f0e0c">
+    <div>
+      <div style="font-size:28px;font-weight:700;letter-spacing:-1px">RELIANCE</div>
+      <div style="font-size:11px;color:#7a7060;letter-spacing:2px;text-transform:uppercase">Asesores Productores de Seguros</div>
+      <div style="font-size:11px;color:#7a7060;margin-top:4px">Av. Orellana E12-113 y San Ignacio, Quito</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:11px;color:#7a7060">Ejecutivo:</div>
+      <div style="font-weight:600" id="print-ejecutivo">—</div>
+      <div style="font-size:11px;color:#7a7060;margin-top:4px" id="print-fecha">—</div>
+    </div>
+  </div>
+  <div id="print-content"></div>
+  <div style="margin-top:40px;padding-top:16px;border-top:1px solid #d4cbb8;font-size:10px;color:#7a7060;text-align:center">
+    Este comparativo es informativo y puede variar según condiciones específicas de cada aseguradora. Válido por 30 días.
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+</div>
+
+<!-- Capa SharePoint -->
+<script src="sp_layer.js"></script>
+
+<!-- Lógica CRM (con SP integrado) -->
+<script src="crm.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // Indicador de estado SP en topbar
+  const ta = document.querySelector('.topbar-actions');
+  if(ta){
+    const ind = document.createElement('div');
+    ind.id = 'sp-status';
+    ind.className = 'sp-status syncing';
+    ind.textContent = '⟳ Conectando...';
+    ind.title = 'Estado de conexión SharePoint';
+    ta.prepend(ind);
+  }
+  // Botón logout en sidebar footer
+  const uf = document.querySelector('.sidebar-footer');
+  if(uf){
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-ghost btn-sm';
+    btn.style.cssText = 'width:100%;margin-top:6px;color:rgba(255,255,255,.5);border-color:rgba(255,255,255,.1)';
+    btn.textContent = '⬡ Cerrar sesión';
+    btn.onclick = spLogout;
+    uf.appendChild(btn);
+  }
+  // Arrancar
+  bootApp();
+});
+
+async function spLogout(){
+  if(_msalApp && _account){
+    await _msalApp.logoutRedirect({ account: _account });
+  }
+}
+</script>
+</body>
+</html>
