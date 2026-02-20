@@ -43,7 +43,7 @@ async function spInit(){
     auth: {
       clientId:    SP_CONFIG.clientId,
       authority:   `https://login.microsoftonline.com/${SP_CONFIG.tenantId}`,
-      redirectUri: window.location.href.split('?')[0],
+      redirectUri: 'https://sgrandacrm.github.io/crm-reliance/',
     },
     cache: { cacheLocation: 'sessionStorage' }
   };
