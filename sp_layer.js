@@ -33,23 +33,6 @@ const _cache = {
   usuarios:     null,
 };
 
-// ── Captura de errores para evitar pantalla en blanco ───────
-(function attachGlobalErrorHandlers(){
-  try{
-    window.addEventListener('error', (e) => {
-      try{ hideLoader(); }catch(_){ }
-      try{ showSpError('JS Error: ' + (e.message || e.error?.message || 'desconocido')); }catch(_){ }
-      console.error('JS Error:', e);
-    });
-    window.addEventListener('unhandledrejection', (e) => {
-      try{ hideLoader(); }catch(_){ }
-      try{ showSpError('Promise Error: ' + (e.reason?.message || e.reason || 'desconocido')); }catch(_){ }
-      console.error('Unhandled Promise:', e);
-    });
-  }catch(_){ }
-})();
-
-
 // ── Inicializar MSAL ─────────────────────────────────────────
 async function spInit(){
   try{ updateSpStatus('syncing', '⟳ Conectando...'); }catch(e){}
@@ -58,12 +41,7 @@ async function spInit(){
     auth: {
       clientId:    SP_CONFIG.clientId,
       authority:   `https://login.microsoftonline.com/${SP_CONFIG.tenantId}`,
-      redirectUri: (function(){
-        let u = window.location.origin + window.location.pathname;
-        u = u.replace(/index\.html$/i, '');
-        if(!u.endsWith('/')) u += '/';
-        return u;
-      })(),
+      redirectUri: 'https://sgrandacrm.github.io/crm-reliance/',
     },
     cache: { cacheLocation: 'sessionStorage' }
   };
@@ -188,7 +166,9 @@ async function spGetAll(listKey){
 
   try{
     let items = [];
-    let url = `sites/${_siteId}/lists/${listName}/items?$expand=fields&$top=999`;
+    const listId = await spGetListId(listName);
+    if(!listId) throw new Error('No se encontró la lista en SharePoint: ' + listName);
+    let url = `sites/${_siteId}/lists/${listId}/items?$expand=fields&$top=999`;
 
     while(url){
       const r = await spGraph(url);
@@ -237,9 +217,11 @@ async function spCreate(listKey, data){
   updateSpStatus('syncing','⟳ Guardando...');
 
   try{
+    const listId = await spGetListId(listName);
+    if(!listId) throw new Error('No se encontró la lista en SharePoint: ' + listName);
     const fields = spToFields(listKey, data);
     const r = await spGraph(
-      `sites/${_siteId}/lists/${listName}/items`,
+      `sites/${_siteId}/lists/${listId}/items`,
       'POST',
       { fields }
     );
@@ -262,9 +244,11 @@ async function spUpdate(listKey, spId, data){
   updateSpStatus('syncing','⟳ Actualizando...');
 
   try{
+    const listId = await spGetListId(listName);
+    if(!listId) throw new Error('No se encontró la lista en SharePoint: ' + listName);
     const fields = spToFields(listKey, data);
     await spGraph(
-      `sites/${_siteId}/lists/${listName}/items/${spId}/fields`,
+      `sites/${_siteId}/lists/${listId}/items/${spId}/fields`,
       'PATCH',
       fields
     );
@@ -573,24 +557,9 @@ async function spRunSetup(){
 // ── Verificar que las listas existen en SP ──────────────────
 async function spVerificarListas(){
   try{
-    const needed = [
-      SP_CONFIG.lists.clientes,
-      SP_CONFIG.lists.cotizaciones,
-      SP_CONFIG.lists.cierres,
-      SP_CONFIG.lists.usuarios
-    ];
-
-    const resp = await spGraph(`sites/${_siteId}/lists?$select=id,displayName`);
-    const map = new Map((resp.value || []).map(l => [l.displayName, l.id]));
-
-    for(const name of needed){
-      const id = map.get(name);
-      if(!id) return false;
-      _listIds[name] = id;
-    }
-    return true;
+    const r = await spGraph(`sites/${_siteId}/lists/CRM_Clientes`);
+    return !!r.id;
   }catch(e){
-    console.error('spVerificarListas error:', e);
     return false;
   }
 }
