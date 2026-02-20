@@ -33,7 +33,11 @@ async function loadDBAsync(){
 function saveDB(){
   localStorage.setItem('reliance_clientes', JSON.stringify(DB)); // fallback
   _cache.clientes = [...DB];
-  if(_spReady) _flushDB();
+  if(_spReady){
+    // Marcar como dirty los que no tienen _spId o fueron modificados
+    DB.forEach(c => { if(!c._spId || c._dirty) c._dirty = true; });
+    _flushDB();
+  }
 }
 
 async function _flushDB(){
@@ -52,7 +56,7 @@ function _getCotizaciones(){
 }
 function _saveCotizaciones(all){
   _cache.cotizaciones = all;
-  _saveCotizaciones(all);
+  localStorage.setItem('reliance_cotizaciones', JSON.stringify(all));
   if(_spReady) _flushCotizaciones(all);
 }
 async function _flushCotizaciones(all){
@@ -121,18 +125,50 @@ function getDefaultClientes(){
 // ══════════════════════════════════════════════════════
 //  AUTH
 // ══════════════════════════════════════════════════════
-function doLogin(){
+async function doLogin(){
   const u = document.getElementById('login-user').value.trim().toLowerCase();
   const p = document.getElementById('login-pass').value;
+  document.getElementById('login-err').textContent = '';
+
+  // Cargar usuarios desde SP para incluir los creados manualmente
+  if(_spReady && _cache.usuarios){
+    _cache.usuarios.forEach(spU => {
+      const local = USERS.find(x => x.id===(spU.userId||spU.crm_id||spU.id));
+      if(local){
+        // Actualizar datos del usuario local con los de SP
+        if(spU.email) local.email = spU.email;
+        if(spU.rol)   local.rol   = spU.rol;
+        if(spU.color) local.color = spU.color;
+        if(spU.initials) local.initials = spU.initials;
+        if(spU.activo !== undefined) local.activo = spU.activo;
+      } else {
+        // Usuario nuevo solo en SP — agregar a USERS
+        const nuevoUser = {
+          id:       spU.userId || spU.crm_id || spU.id,
+          name:     spU.nombre || spU.Title || spU.email,
+          email:    spU.email || '',
+          pass:     spU.pass || spU.userId || spU.crm_id || '',
+          rol:      spU.rol || 'ejecutivo',
+          color:    spU.color || '#1a4c84',
+          initials: spU.initials || (spU.email||'?')[0].toUpperCase(),
+          activo:   spU.activo !== 'false',
+        };
+        if(nuevoUser.id) USERS.push(nuevoUser);
+      }
+    });
+  }
+
   const user = USERS.find(x => (x.email.toLowerCase()===u || x.id===u) && x.pass===p);
   if(!user){ document.getElementById('login-err').textContent='Usuario o contraseña incorrectos'; return; }
+  if(user.activo === false || user.activo === 'false'){
+    document.getElementById('login-err').textContent='Usuario inactivo'; return;
+  }
   currentUser = user;
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('sidebar-avatar').textContent = user.initials;
   document.getElementById('sidebar-avatar').style.background = `linear-gradient(135deg,${user.color},${user.color}99)`;
   document.getElementById('sidebar-name').textContent = user.name;
   document.getElementById('sidebar-role').textContent = user.rol==='admin'?'Administrador':'Ejecutivo Comercial';
-  // Admin-only nav
   document.querySelectorAll('.admin-only').forEach(el=>el.style.display=user.rol==='admin'?'':'none');
   initApp();
 }
