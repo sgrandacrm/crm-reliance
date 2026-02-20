@@ -569,4 +569,4 @@ async function bootApp(){
     console.error('bootApp error:', err);
     showSpError('Error al iniciar: ' + err.message);
   }
-                    }
+}
