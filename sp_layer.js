@@ -174,23 +174,20 @@ async function spGetAll(listKey){
       url = r['@odata.nextLink'] || null;
     }
 
-    // Extraer campos y parsear JSON donde corresponda
+    // Extraer campos individuales
     const result = items.map(item => {
       const f = item.fields;
-      const obj = { _spId: item.id, _spEtag: item['@odata.etag'] };
+      const obj = { _spId: item.id };
       Object.keys(f).forEach(k => {
         if(k.startsWith('_') || k==='ContentType' || k==='Attachments') return;
         let val = f[k];
-        // Intentar parsear campos JSON (resultados de cotizaciones, etc)
         if(typeof val === 'string' && (val.startsWith('[') || val.startsWith('{'))){
           try{ val = JSON.parse(val); }catch(e){}
         }
         obj[k] = val;
       });
-      // Mapear Title → nombre para clientes
       if(f.Title && !obj.nombre) obj.nombre = f.Title;
       if(f.Title && listKey==='cotizaciones') obj.codigo = f.Title;
-      if(f.Title && listKey==='cierres') obj.polizaNueva = f.Title;
       return obj;
     });
 
@@ -272,17 +269,15 @@ async function spDelete(listKey, spId){
 function spToFields(listKey, data){
   const fields = {};
   Object.keys(data).forEach(k => {
-    if(k.startsWith('_')) return; // ignorar metadatos internos
+    if(k.startsWith('_')) return;
     let val = data[k];
-    // Serializar arrays/objetos como JSON string
-    if(val !== null && typeof val === 'object'){
+    if(val !== null && val !== undefined && typeof val === 'object'){
       val = JSON.stringify(val);
     }
-    // Mapeo de campos especiales
-    if(k==='nombre' && listKey==='clientes') { fields['Title'] = val; return; }
-    if(k==='codigo' && listKey==='cotizaciones') { fields['Title'] = val; return; }
-    if(k==='polizaNueva' && listKey==='cierres') { fields['Title'] = val; return; }
-    if(k==='nombre' && listKey==='usuarios') { fields['Title'] = val; return; }
+    if(k==='nombre' && listKey==='clientes')     { fields['Title'] = String(val||'').substring(0,255); return; }
+    if(k==='codigo' && listKey==='cotizaciones') { fields['Title'] = String(val||'').substring(0,255); return; }
+    if(k==='nombre' && listKey==='usuarios')     { fields['Title'] = String(val||'').substring(0,255); return; }
+    if(typeof val === 'string') val = val.substring(0, 3999);
     fields[k] = val;
   });
   return fields;
@@ -526,12 +521,76 @@ async function spRunSetup(){
 // ── Verificar que las listas existen en SP ──────────────────
 async function spVerificarListas(){
   try{
-    // Verificar que al menos CRM_Clientes existe
     const r = await spGraph(`sites/${_siteId}/lists/CRM_Clientes`);
     return !!r.id;
   }catch(e){
-    return false; // lista no existe
+    return false;
   }
+}
+
+// ── Crear columnas individuales en cada lista ────────────────
+// Si la columna ya existe el error se ignora silenciosamente
+async function spAsegurarColumnas(){
+  const esquema = {
+    CRM_Clientes: [
+      {name:'ci',type:'text'},{name:'tipo',type:'text'},{name:'region',type:'text'},
+      {name:'ciudad',type:'text'},{name:'aseguradora',type:'text'},{name:'ejecutivo',type:'text'},
+      {name:'estado',type:'text'},{name:'placa',type:'text'},{name:'marca',type:'text'},
+      {name:'modelo',type:'text'},{name:'anio',type:'number'},{name:'va',type:'number'},
+      {name:'pn',type:'number'},{name:'primaTotal',type:'number'},
+      {name:'desde',type:'text'},{name:'hasta',type:'text'},
+      {name:'celular',type:'text'},{name:'correo',type:'text'},
+      {name:'nota',type:'note'},{name:'ultimoContacto',type:'text'},
+      {name:'factura',type:'text'},{name:'poliza',type:'text'},
+      {name:'obs',type:'text'},{name:'color',type:'text'},
+      {name:'motor',type:'text'},{name:'chasis',type:'text'},
+      {name:'dep',type:'number'},{name:'tasa',type:'number'},
+      {name:'axavd',type:'text'},{name:'formaPago',type:'text'},
+      {name:'id',type:'text'},{name:'polizaNueva',type:'text'},
+      {name:'aseguradoraAnterior',type:'text'},{name:'historialWa',type:'note'},
+    ],
+    CRM_Cotizaciones: [
+      {name:'codigo',type:'text'},{name:'version',type:'number'},
+      {name:'fecha',type:'text'},{name:'ejecutivo',type:'text'},
+      {name:'clienteNombre',type:'text'},{name:'clienteCI',type:'text'},
+      {name:'clienteId',type:'text'},{name:'ciudad',type:'text'},
+      {name:'vehiculo',type:'text'},{name:'placa',type:'text'},
+      {name:'va',type:'number'},{name:'desde',type:'text'},
+      {name:'estado',type:'text'},{name:'asegElegida',type:'text'},
+      {name:'resultados',type:'note'},{name:'aseguradoras',type:'note'},
+      {name:'obsAcept',type:'note'},{name:'fechaAcept',type:'text'},
+      {name:'reemplazadaPor',type:'text'},{name:'id',type:'text'},
+    ],
+    CRM_Cierres: [
+      {name:'clienteNombre',type:'text'},{name:'aseguradora',type:'text'},
+      {name:'primaTotal',type:'number'},{name:'primaNeta',type:'number'},
+      {name:'vigDesde',type:'text'},{name:'vigHasta',type:'text'},
+      {name:'formaPago',type:'text'},{name:'facturaAseg',type:'text'},
+      {name:'ejecutivo',type:'text'},{name:'fechaRegistro',type:'text'},
+      {name:'observacion',type:'note'},{name:'axavd',type:'text'},
+      {name:'id',type:'text'},{name:'polizaNueva',type:'text'},
+    ],
+    CRM_Usuarios: [
+      {name:'userId',type:'text'},{name:'rol',type:'text'},
+      {name:'email',type:'text'},{name:'activo',type:'text'},
+      {name:'color',type:'text'},{name:'initials',type:'text'},
+    ],
+  };
+
+  for(const [listName, cols] of Object.entries(esquema)){
+    for(const col of cols){
+      try{
+        const def = { name: col.name };
+        if(col.type==='text')   def.text = {};
+        if(col.type==='note')   def.text = { allowMultipleLines: true };
+        if(col.type==='number') def.number = {};
+        await spGraph(`sites/${_siteId}/lists/${listName}/columns`, 'POST', def);
+      }catch(e){
+        // Columna ya existe — ignorar
+      }
+    }
+  }
+  console.log('Columnas verificadas');
 }
 
 // ── ARRANQUE PRINCIPAL ───────────────────────────────────────
@@ -550,6 +609,11 @@ async function bootApp(){
 
     // 2. Verificar que las listas existen realmente en SharePoint
     const listasOk = await spVerificarListas();
+
+    if(listasOk){
+      // Asegurar que la columna "datos" existe en todas las listas
+      await spAsegurarColumnas();
+    }
 
     if(!listasOk){
       // Listas no existen — mostrar setup
