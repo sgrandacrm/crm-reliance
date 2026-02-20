@@ -278,36 +278,43 @@ const SP_SKIP = new Set(['id','ID','version','Version']);
 function spToFields(listKey, data){
   const fields = {};
 
-  // Title = identificador principal del registro
+  // Campos válidos por lista (exactamente lo que existe en SharePoint)
+  const validos = {
+    clientes:     new Set(['Title','ci','tipo','region','ciudad','aseguradora','ejecutivo','estado','placa','marca','modelo','anio','va','pn','primaTotal','desde','hasta','celular','correo','nota','ultimoContacto','factura','poliza','obs','color','motor','chasis','dep','tasa','axavd','formaPago','crm_id','polizaNueva','aseguradoraAnterior','historialWa']),
+    cotizaciones: new Set(['Title','codigo','version','fecha','ejecutivo','clienteNombre','clienteCI','clienteId','ciudad','vehiculo','placa','va','desde','estado','asegElegida','resultados','aseguradoras','obsAcept','fechaAcept','reemplazadaPor','crm_id']),
+    cierres:      new Set(['Title','clienteNombre','aseguradora','primaTotal','primaNeta','vigDesde','vigHasta','formaPago','facturaAseg','ejecutivo','fechaRegistro','observacion','axavd','crm_id','polizaNueva']),
+    usuarios:     new Set(['Title','userId','rol','email','activo','color','initials','crm_id']),
+  };
+  const permitidos = validos[listKey] || new Set();
+
+  // Campos numéricos reales
+  const camposNum = new Set(['anio','va','pn','primaTotal','dep','tasa','version','primaNeta']);
+
+  // Title = identificador principal
   let title = '';
-  if(listKey==='clientes')     title = data.nombre || data.id || '';
+  if(listKey==='clientes')     title = data.nombre || data.name || data.id || '';
   if(listKey==='cotizaciones') title = data.codigo || data.id || '';
   if(listKey==='cierres')      title = data.polizaNueva || data.id || '';
-  if(listKey==='usuarios')     title = data.nombre || data.email || '';
+  if(listKey==='usuarios')     title = data.nombre || data.name || data.email || '';
   fields['Title'] = String(title).substring(0, 255);
 
-  // Mapear data.id → crm_id
-  if(data.id !== undefined) fields['crm_id'] = String(data.id);
+  // crm_id = data.id
+  if(data.id !== undefined && permitidos.has('crm_id')){
+    fields['crm_id'] = String(data.id);
+  }
 
-  // Campos numéricos reales (se envían como number, no string)
-  const camposNum = new Set(['anio','va','pn','primaTotal','dep','tasa','version','primaTotal','primaNeta']);
-
-  // Campos que NO se escriben (ya mapeados o metadatos)
-  const ignorar = new Set(['id','_spId','_dirty','_spEtag']);
-  if(listKey==='clientes')  ignorar.add('nombre');
-  if(listKey==='usuarios')  ignorar.add('nombre');
+  // Metadatos y campos ya mapeados a ignorar
+  const ignorar = new Set(['id','nombre','name','pass','password','_spId','_dirty','_spEtag']);
 
   Object.keys(data).forEach(k => {
     if(ignorar.has(k) || k.startsWith('_')) return;
-    let val = data[k];
+    if(!permitidos.has(k)) return; // campo no existe en SP — ignorar
 
-    // Serializar arrays/objetos como JSON string
+    let val = data[k];
     if(val !== null && val !== undefined && typeof val === 'object'){
       val = JSON.stringify(val);
     }
-    // Convertir booleanos a string
     if(typeof val === 'boolean') val = String(val);
-    // Campos numéricos: convertir a número
     if(camposNum.has(k) && val !== undefined && val !== null && val !== ''){
       val = parseFloat(val) || 0;
     }
