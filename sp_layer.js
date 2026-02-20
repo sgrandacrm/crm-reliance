@@ -33,6 +33,23 @@ const _cache = {
   usuarios:     null,
 };
 
+// ── Captura de errores para evitar pantalla en blanco ───────
+(function attachGlobalErrorHandlers(){
+  try{
+    window.addEventListener('error', (e) => {
+      try{ hideLoader(); }catch(_){ }
+      try{ showSpError('JS Error: ' + (e.message || e.error?.message || 'desconocido')); }catch(_){ }
+      console.error('JS Error:', e);
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      try{ hideLoader(); }catch(_){ }
+      try{ showSpError('Promise Error: ' + (e.reason?.message || e.reason || 'desconocido')); }catch(_){ }
+      console.error('Unhandled Promise:', e);
+    });
+  }catch(_){ }
+})();
+
+
 // ── Inicializar MSAL ─────────────────────────────────────────
 async function spInit(){
   try{ updateSpStatus('syncing', '⟳ Conectando...'); }catch(e){}
