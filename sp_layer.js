@@ -595,7 +595,7 @@ async function spVerificarListas(){
 
 // ── Crear columnas individuales en cada lista ────────────────
 // Si la columna ya existe el error se ignora silenciosamente
-async async function spAsegurarColumnas(logCol){
+async function spAsegurarColumnas(logCol){
   if(!logCol) logCol=()=>{};
 
   const colsDef = {
