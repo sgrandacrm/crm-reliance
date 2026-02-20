@@ -40,12 +40,20 @@ function saveDB(){
 }
 
 async function _flushDB(){
+  let changed = false;
   for(const cliente of DB){
     if(cliente._dirty){
       if(cliente._spId) await spUpdate('clientes', cliente._spId, cliente);
       else { const id=await spCreate('clientes', cliente); if(id) cliente._spId=id; }
       delete cliente._dirty;
+      changed = true;
     }
+  }
+  if(changed){
+    localStorage.setItem('reliance_clientes', JSON.stringify(DB));
+    const activePage = document.querySelector('.page.active');
+    if(activePage && (activePage.id==='page-clientes')) renderClientes();
+    renderDashboard();
   }
 }
 
@@ -59,12 +67,19 @@ function _saveCotizaciones(all){
   if(_spReady) _flushCotizaciones(all);
 }
 async function _flushCotizaciones(all){
+  let changed = false;
   for(const cot of all){
     if(cot._dirty){
       if(cot._spId) await spUpdate('cotizaciones', cot._spId, cot);
       else { const id=await spCreate('cotizaciones', cot); if(id){cot._spId=id;} }
       delete cot._dirty;
+      changed = true;
     }
+  }
+  if(changed){
+    localStorage.setItem('reliance_cotizaciones', JSON.stringify(all));
+    const activePage = document.querySelector('.page.active');
+    if(activePage && activePage.id==='page-cotizaciones') renderCotizaciones();
   }
 }
 function _getCierres(){
@@ -76,12 +91,20 @@ function _saveCierres(all){
   if(_spReady) _flushCierres(all);
 }
 async function _flushCierres(all){
+  let changed = false;
   for(const c of all){
     if(c._dirty){
       if(c._spId) await spUpdate('cierres', c._spId, c);
       else { const id=await spCreate('cierres', c); if(id){c._spId=id;} }
       delete c._dirty;
+      changed = true;
     }
+  }
+  if(changed){
+    localStorage.setItem('reliance_cierres', JSON.stringify(all));
+    const activePage = document.querySelector('.page.active');
+    if(activePage && activePage.id==='page-cierres') renderCierres();
+    renderDashboard();
   }
 }
 
@@ -685,6 +708,8 @@ function setEstado(e){
     sincronizarCotizPorCliente(cli.id, cli.nombre, cli.ci, 'RENOVADO');
     renderDashboard();
     closeModal('modal-seguimiento');
+  renderCierres();
+  renderDashboard();
     setTimeout(()=> abrirCierreDesdeCliente(currentSegIdx), 150);
   }
 }
@@ -1434,6 +1459,7 @@ function guardarCierreVenta(){
 
   closeModal('modal-cierre-venta');
   renderDashboard();
+  renderCierres();
   actualizarBadgeCotizaciones();
 }
 function printOneAseg(name,total,pn,cuotaTc,cuotaDeb,nTc,nDeb){
@@ -1748,6 +1774,7 @@ function guardarCotizacion(){
   allCotiz.push(cotiz);
   _saveCotizaciones(allCotiz);
   actualizarBadgeCotizaciones();
+  renderCotizaciones();
   showToast(`✅ ${codigo} guardada — ${nombre.split(' ')[0]} · ${selected.length} aseguradoras`, 'success');
 }
 
