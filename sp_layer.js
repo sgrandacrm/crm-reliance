@@ -530,7 +530,8 @@ async function spVerificarListas(){
 
 // ── Crear columnas individuales en cada lista ────────────────
 // Si la columna ya existe el error se ignora silenciosamente
-async function spAsegurarColumnas(){
+async function spAsegurarColumnas(logCol){
+  if(!logCol) logCol=()=>{};
   const esquema = {
     CRM_Clientes: [
       {name:'ci',type:'text'},{name:'tipo',type:'text'},{name:'region',type:'text'},
@@ -578,6 +579,8 @@ async function spAsegurarColumnas(){
   };
 
   for(const [listName, cols] of Object.entries(esquema)){
+    logCol(`Configurando ${listName}...`);
+    let ok=0;
     for(const col of cols){
       try{
         const def = { name: col.name };
@@ -585,12 +588,13 @@ async function spAsegurarColumnas(){
         if(col.type==='note')   def.text = { allowMultipleLines: true };
         if(col.type==='number') def.number = {};
         await spGraph(`sites/${_siteId}/lists/${listName}/columns`, 'POST', def);
+        ok++;
       }catch(e){
         // Columna ya existe — ignorar
       }
     }
+    logCol(`✅ ${listName}: ${ok} columnas`);
   }
-  console.log('Columnas verificadas');
 }
 
 // ── ARRANQUE PRINCIPAL ───────────────────────────────────────
@@ -599,7 +603,7 @@ async function bootApp(){
   const safetyTimeout = setTimeout(()=>{
     hideLoader();
     showSpError('Tiempo de espera agotado. Verifica tu conexión y vuelve a intentarlo.');
-  }, 30000);
+  }, 120000);
 
   try{
     // 1. Inicializar MSAL y autenticar
@@ -611,8 +615,33 @@ async function bootApp(){
     const listasOk = await spVerificarListas();
 
     if(listasOk){
-      // Asegurar que la columna "datos" existe en todas las listas
-      await spAsegurarColumnas();
+      // Verificar si ya se crearon columnas antes
+      const colsDone = localStorage.getItem('sp_cols_done');
+      if(!colsDone){
+        hideLoader();
+        const setupEl = document.getElementById('sp-setup');
+        if(setupEl){
+          setupEl.style.display='flex';
+          setupEl.innerHTML=`<div class="setup-card">
+            <div style="font-size:40px;margin-bottom:16px">⚙️</div>
+            <h2>Configurando campos</h2>
+            <p>Creando columnas en SharePoint. Solo ocurre una vez.</p>
+            <div class="setup-steps" id="col-steps" style="max-height:180px;overflow-y:auto"></div>
+            <div class="spinner" style="margin:16px auto 0"></div>
+          </div>`;
+        }
+        const logCol=(msg)=>{
+          const el=document.getElementById('col-steps');
+          if(!el) return;
+          const d=document.createElement('div');
+          d.className='setup-step '+(msg.startsWith('✅')?'done':msg.startsWith('⚠')?'error':'active');
+          d.textContent=msg; el.appendChild(d); el.scrollTop=el.scrollHeight;
+        };
+        await spAsegurarColumnas(logCol);
+        logCol('✅ Columnas configuradas');
+        localStorage.setItem('sp_cols_done','1');
+        if(setupEl) setupEl.style.display='none';
+      }
     }
 
     if(!listasOk){
