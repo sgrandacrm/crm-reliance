@@ -571,20 +571,72 @@ async function spVerificarListas(){
 // Si la columna ya existe el error se ignora silenciosamente
 async function spAsegurarColumnas(logCol){
   if(!logCol) logCol=()=>{};
-  const listas = ['CRM_Clientes','CRM_Cotizaciones','CRM_Cierres','CRM_Usuarios'];
-  for(const listName of listas){
+  const esquema = {
+    CRM_Clientes: [
+      {name:'ci',type:'text'},{name:'tipo',type:'text'},{name:'region',type:'text'},
+      {name:'ciudad',type:'text'},{name:'aseguradora',type:'text'},{name:'ejecutivo',type:'text'},
+      {name:'estado',type:'text'},{name:'placa',type:'text'},{name:'marca',type:'text'},
+      {name:'modelo',type:'text'},{name:'anio',type:'number'},{name:'va',type:'number'},
+      {name:'pn',type:'number'},{name:'primaTotal',type:'number'},
+      {name:'desde',type:'text'},{name:'hasta',type:'text'},
+      {name:'celular',type:'text'},{name:'correo',type:'text'},
+      {name:'nota',type:'note'},{name:'ultimoContacto',type:'text'},
+      {name:'factura',type:'text'},{name:'poliza',type:'text'},
+      {name:'obs',type:'text'},{name:'color',type:'text'},
+      {name:'motor',type:'text'},{name:'chasis',type:'text'},
+      {name:'dep',type:'number'},{name:'tasa',type:'number'},
+      {name:'axavd',type:'text'},{name:'formaPago',type:'text'},
+      {name:'crm_id',type:'text'},{name:'polizaNueva',type:'text'},
+      {name:'aseguradoraAnterior',type:'text'},{name:'historialWa',type:'note'},
+    ],
+    CRM_Cotizaciones: [
+      {name:'codigo',type:'text'},{name:'version',type:'number'},
+      {name:'fecha',type:'text'},{name:'ejecutivo',type:'text'},
+      {name:'clienteNombre',type:'text'},{name:'clienteCI',type:'text'},
+      {name:'clienteId',type:'text'},{name:'ciudad',type:'text'},
+      {name:'vehiculo',type:'text'},{name:'placa',type:'text'},
+      {name:'va',type:'number'},{name:'desde',type:'text'},
+      {name:'estado',type:'text'},{name:'asegElegida',type:'text'},
+      {name:'resultados',type:'note'},{name:'aseguradoras',type:'note'},
+      {name:'obsAcept',type:'note'},{name:'fechaAcept',type:'text'},
+      {name:'reemplazadaPor',type:'text'},{name:'crm_id',type:'text'},
+    ],
+    CRM_Cierres: [
+      {name:'clienteNombre',type:'text'},{name:'aseguradora',type:'text'},
+      {name:'primaTotal',type:'number'},{name:'primaNeta',type:'number'},
+      {name:'vigDesde',type:'text'},{name:'vigHasta',type:'text'},
+      {name:'formaPago',type:'text'},{name:'facturaAseg',type:'text'},
+      {name:'ejecutivo',type:'text'},{name:'fechaRegistro',type:'text'},
+      {name:'observacion',type:'note'},{name:'axavd',type:'text'},
+      {name:'crm_id',type:'text'},{name:'polizaNueva',type:'text'},
+    ],
+    CRM_Usuarios: [
+      {name:'userId',type:'text'},{name:'rol',type:'text'},
+      {name:'email',type:'text'},{name:'activo',type:'text'},
+      {name:'color',type:'text'},{name:'initials',type:'text'},
+      {name:'crm_id',type:'text'},
+    ],
+  };
+
+  for(const [listName, cols] of Object.entries(esquema)){
     logCol(`Configurando ${listName}...`);
-    try{
-      await spGraph(`sites/${_siteId}/lists/${listName}/columns`, 'POST', {
-        name: 'datos',
-        text: { allowMultipleLines: true, unlimitedLengthInDocumentLibrary: true }
-      });
-      logCol(`✅ ${listName}: columna datos creada`);
-    }catch(e){
-      // Ya existe — ok
-      logCol(`✅ ${listName}: ya configurada`);
+    let creadas=0, existentes=0;
+    for(const col of cols){
+      try{
+        const def = { name: col.name };
+        if(col.type==='text')   def.text = {};
+        if(col.type==='note')   def.text = { allowMultipleLines: true };
+        if(col.type==='number') def.number = {};
+        await spGraph(`sites/${_siteId}/lists/${listName}/columns`, 'POST', def);
+        creadas++;
+      }catch(e){
+        // 400 = columna ya existe — ignorar silenciosamente
+        existentes++;
+      }
     }
+    logCol(`✅ ${listName}: ${creadas} nuevas, ${existentes} existentes`);
   }
+  logCol('✅ Configuración completada');
 }
 
 async function _spAsegurarColumnas_UNUSED(logCol){
