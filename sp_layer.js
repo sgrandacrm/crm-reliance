@@ -189,7 +189,7 @@ async function spGetAll(listKey){
         obj[k] = val;
       });
       // Restaurar id desde crm_id
-      if(f.crm_id) obj.id = f.crm_id;
+      if(f.crm_id) obj.id = isNaN(f.crm_id) ? f.crm_id : Number(f.crm_id);
       // Restaurar nombre desde Title
       if(f.Title){
         if(listKey==='clientes'||listKey==='usuarios') obj.nombre = f.Title;
@@ -304,7 +304,7 @@ function spToFields(listKey, data){
   fields['Title'] = String(title||'').substring(0, 255);
 
   // id → crm_id
-  if(data.id !== undefined && permitidos.has('crm_id')){
+  if(data.id !== undefined && data.id !== null && permitidos.has('crm_id')){
     fields['crm_id'] = String(data.id);
   }
 
