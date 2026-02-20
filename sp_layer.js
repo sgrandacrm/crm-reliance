@@ -523,6 +523,17 @@ async function spRunSetup(){
   await initApp();
 }
 
+// ── Verificar que las listas existen en SP ──────────────────
+async function spVerificarListas(){
+  try{
+    // Verificar que al menos CRM_Clientes existe
+    const r = await spGraph(`sites/${_siteId}/lists/CRM_Clientes`);
+    return !!r.id;
+  }catch(e){
+    return false; // lista no existe
+  }
+}
+
 // ── ARRANQUE PRINCIPAL ───────────────────────────────────────
 async function bootApp(){
   // Timeout de seguridad: si en 30s no carga, mostrar error
@@ -535,11 +546,14 @@ async function bootApp(){
     // 1. Inicializar MSAL y autenticar
     const ok = await spInit();
     clearTimeout(safetyTimeout);
-    if(!ok) return; // showSpLogin o showSpError ya fue llamado
+    if(!ok) return;
 
-    // 2. Ver si ya se hizo el setup de listas
-    const setupDone = localStorage.getItem('sp_setup_done');
-    if(!setupDone){
+    // 2. Verificar que las listas existen realmente en SharePoint
+    const listasOk = await spVerificarListas();
+
+    if(!listasOk){
+      // Listas no existen — mostrar setup
+      localStorage.removeItem('sp_setup_done'); // limpiar flag incorrecto
       hideLoader();
       const setupEl = document.getElementById('sp-setup');
       if(setupEl){
@@ -547,11 +561,11 @@ async function bootApp(){
         setupEl.innerHTML=`<div class="setup-card">
           <div style="font-size:40px;margin-bottom:16px">🚀</div>
           <h2>Primera configuración</h2>
-          <p>Esta es la primera vez que se usa el CRM en este SharePoint.<br>
-          Se crearán las listas de datos automáticamente.<br><br>
+          <p>Las listas de datos no existen aún en SharePoint.<br>
+          Se crearán automáticamente ahora.<br><br>
           <strong>Solo toma 1-2 minutos.</strong></p>
           <button class="btn btn-primary" style="width:100%;justify-content:center;padding:14px"
-            onclick="spRunSetup()">⚙️ Configurar SharePoint</button>
+            onclick="spRunSetup()">⚙️ Crear listas en SharePoint</button>
           <p style="margin-top:12px;font-size:11px;color:var(--muted)">
             Requiere permisos de administrador del sitio
           </p>
@@ -560,7 +574,8 @@ async function bootApp(){
       return;
     }
 
-    // 3. Setup ya hecho — cargar app
+    // 3. Listas OK — cargar app
+    localStorage.setItem('sp_setup_done','1');
     hideLoader();
     await initApp();
 
