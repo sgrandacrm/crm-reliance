@@ -41,7 +41,12 @@ async function spInit(){
     auth: {
       clientId:    SP_CONFIG.clientId,
       authority:   `https://login.microsoftonline.com/${SP_CONFIG.tenantId}`,
-      redirectUri: 'https://sgrandacrm.github.io/crm-reliance/',
+      redirectUri: (function(){
+        let u = window.location.origin + window.location.pathname;
+        u = u.replace(/index\.html$/i, '');
+        if(!u.endsWith('/')) u += '/';
+        return u;
+      })(),
     },
     cache: { cacheLocation: 'sessionStorage' }
   };
@@ -551,9 +556,24 @@ async function spRunSetup(){
 // ── Verificar que las listas existen en SP ──────────────────
 async function spVerificarListas(){
   try{
-    const r = await spGraph(`sites/${_siteId}/lists/CRM_Clientes`);
-    return !!r.id;
+    const needed = [
+      SP_CONFIG.lists.clientes,
+      SP_CONFIG.lists.cotizaciones,
+      SP_CONFIG.lists.cierres,
+      SP_CONFIG.lists.usuarios
+    ];
+
+    const resp = await spGraph(`sites/${_siteId}/lists?$select=id,displayName`);
+    const map = new Map((resp.value || []).map(l => [l.displayName, l.id]));
+
+    for(const name of needed){
+      const id = map.get(name);
+      if(!id) return false;
+      _listIds[name] = id;
+    }
+    return true;
   }catch(e){
+    console.error('spVerificarListas error:', e);
     return false;
   }
 }
