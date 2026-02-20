@@ -37,7 +37,7 @@ const _cache = {
 
 // ── Inicializar MSAL ─────────────────────────────────────────
 async function spInit(){
-  updateSpStatus('syncing', '⟳ Conectando...');
+  try{ updateSpStatus('syncing', '⟳ Conectando...'); }catch(e){}
 
   const msalConfig = {
     auth: {
@@ -417,17 +417,20 @@ async function spMigrateFromLocal(onProgress){
 
 // ── STATUS INDICATOR ─────────────────────────────────────────
 function updateSpStatus(state, text){
-  const el = document.getElementById('sp-status');
-  if(!el) return;
-  el.className = `sp-status ${state}`;
-  el.textContent = text;
+  try{
+    const el = document.getElementById('sp-status');
+    if(!el) return;
+    el.className = `sp-status ${state}`;
+    el.textContent = text;
+  }catch(e){}
 }
 
 // ── LOGIN UI ─────────────────────────────────────────────────
 function showSpLogin(){
-  hideLoader();
+  // Ocultar loader con pequeño delay para que el DOM esté listo
+  setTimeout(hideLoader, 100);
   const setupEl = document.getElementById('sp-setup');
-  if(!setupEl) return;
+  if(!setupEl){ setTimeout(showSpLogin, 200); return; }
   setupEl.style.display = 'flex';
   setupEl.innerHTML = `
     <div class="setup-card">
@@ -474,8 +477,10 @@ function showSpError(msg){
 }
 
 function hideLoader(){
-  const l = document.getElementById('sp-loader');
-  if(l) l.style.display='none';
+  try{
+    const l = document.getElementById('sp-loader');
+    if(l) l.style.display='none';
+  }catch(e){}
 }
 
 // ── SETUP UI ─────────────────────────────────────────────────
@@ -513,42 +518,55 @@ async function spRunSetup(){
   }
 
   setupEl.style.display='none';
+  localStorage.setItem('sp_setup_done', '1');
   showToast('✅ SharePoint configurado correctamente','success');
-  // Recargar app
   await initApp();
 }
 
 // ── ARRANQUE PRINCIPAL ───────────────────────────────────────
 async function bootApp(){
-  // 1. Inicializar MSAL y autenticar
-  const ok = await spInit();
-  if(!ok) return; // muestra login o error
-
-  // 2. Ver si ya se hizo el setup
-  const setupDone = localStorage.getItem('sp_setup_done');
-  if(!setupDone){
-    // Primera vez: mostrar botón de setup
+  // Timeout de seguridad: si en 30s no carga, mostrar error
+  const safetyTimeout = setTimeout(()=>{
     hideLoader();
-    const setupEl = document.getElementById('sp-setup');
-    if(setupEl){
-      setupEl.style.display='flex';
-      setupEl.innerHTML=`<div class="setup-card">
-        <div style="font-size:40px;margin-bottom:16px">🚀</div>
-        <h2>Primera configuración</h2>
-        <p>Esta es la primera vez que se usa el CRM en este SharePoint.<br>
-        Se crearán las listas necesarias automáticamente.<br><br>
-        <strong>Solo toma 1-2 minutos.</strong></p>
-        <button class="btn btn-primary" style="width:100%;justify-content:center;padding:14px"
-          onclick="spRunSetup()">⚙️ Configurar SharePoint</button>
-        <p style="margin-top:12px;font-size:11px;color:var(--muted)">
-          Requiere permisos de administrador del sitio
-        </p>
-      </div>`;
-    }
-    return;
-  }
+    showSpError('Tiempo de espera agotado. Verifica tu conexión y vuelve a intentarlo.');
+  }, 30000);
 
-  // 3. Setup ya hecho — cargar app normalmente
-  hideLoader();
-  await initApp();
-}
+  try{
+    // 1. Inicializar MSAL y autenticar
+    const ok = await spInit();
+    clearTimeout(safetyTimeout);
+    if(!ok) return; // showSpLogin o showSpError ya fue llamado
+
+    // 2. Ver si ya se hizo el setup de listas
+    const setupDone = localStorage.getItem('sp_setup_done');
+    if(!setupDone){
+      hideLoader();
+      const setupEl = document.getElementById('sp-setup');
+      if(setupEl){
+        setupEl.style.display='flex';
+        setupEl.innerHTML=`<div class="setup-card">
+          <div style="font-size:40px;margin-bottom:16px">🚀</div>
+          <h2>Primera configuración</h2>
+          <p>Esta es la primera vez que se usa el CRM en este SharePoint.<br>
+          Se crearán las listas de datos automáticamente.<br><br>
+          <strong>Solo toma 1-2 minutos.</strong></p>
+          <button class="btn btn-primary" style="width:100%;justify-content:center;padding:14px"
+            onclick="spRunSetup()">⚙️ Configurar SharePoint</button>
+          <p style="margin-top:12px;font-size:11px;color:var(--muted)">
+            Requiere permisos de administrador del sitio
+          </p>
+        </div>`;
+      }
+      return;
+    }
+
+    // 3. Setup ya hecho — cargar app
+    hideLoader();
+    await initApp();
+
+  }catch(err){
+    clearTimeout(safetyTimeout);
+    console.error('bootApp error:', err);
+    showSpError('Error al iniciar: ' + err.message);
+  }
+                    }
