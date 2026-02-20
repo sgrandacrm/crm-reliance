@@ -221,7 +221,8 @@ async function spCreate(listKey, data){
       'POST',
       { fields }
     );
-    _cache[listKey] = null; // invalidar cache
+    // Actualizar cache local sin forzar recarga completa
+    if(_cache[listKey]) _cache[listKey] = null;
     updateSpStatus('online','● SharePoint');
     return r.id;
   }catch(e){
@@ -278,43 +279,36 @@ const SP_SKIP = new Set(['id','ID','version','Version']);
 function spToFields(listKey, data){
   const fields = {};
 
-  // Campos válidos por lista (exactamente lo que existe en SharePoint)
-  const validos = {
-    clientes:     new Set(['Title','ci','tipo','region','ciudad','aseguradora','ejecutivo','estado','placa','marca','modelo','anio','va','pn','primaTotal','desde','hasta','celular','correo','nota','ultimoContacto','factura','poliza','obs','color','motor','chasis','dep','tasa','axavd','formaPago','crm_id','polizaNueva','aseguradoraAnterior','historialWa']),
-    cotizaciones: new Set(['Title','codigo','version','fecha','ejecutivo','clienteNombre','clienteCI','clienteId','ciudad','vehiculo','placa','va','desde','estado','asegElegida','resultados','aseguradoras','obsAcept','fechaAcept','reemplazadaPor','crm_id']),
-    cierres:      new Set(['Title','clienteNombre','aseguradora','primaTotal','primaNeta','vigDesde','vigHasta','formaPago','facturaAseg','ejecutivo','fechaRegistro','observacion','axavd','crm_id','polizaNueva']),
-    usuarios:     new Set(['Title','userId','rol','email','activo','color','initials','crm_id']),
-  };
-  const permitidos = validos[listKey] || new Set();
-
-  // Campos numéricos reales
-  const camposNum = new Set(['anio','va','pn','primaTotal','dep','tasa','version','primaNeta']);
-
-  // Title = identificador principal
+  // Title = identificador principal del registro
   let title = '';
-  if(listKey==='clientes')     title = data.nombre || data.name || data.id || '';
+  if(listKey==='clientes')     title = data.nombre || data.id || '';
   if(listKey==='cotizaciones') title = data.codigo || data.id || '';
   if(listKey==='cierres')      title = data.polizaNueva || data.id || '';
-  if(listKey==='usuarios')     title = data.nombre || data.name || data.email || '';
+  if(listKey==='usuarios')     title = data.nombre || data.email || '';
   fields['Title'] = String(title).substring(0, 255);
 
-  // crm_id = data.id
-  if(data.id !== undefined && permitidos.has('crm_id')){
-    fields['crm_id'] = String(data.id);
-  }
+  // Mapear data.id → crm_id
+  if(data.id !== undefined) fields['crm_id'] = String(data.id);
 
-  // Metadatos y campos ya mapeados a ignorar
-  const ignorar = new Set(['id','nombre','name','pass','password','_spId','_dirty','_spEtag']);
+  // Campos numéricos reales (se envían como number, no string)
+  const camposNum = new Set(['anio','va','pn','primaTotal','dep','tasa','version','primaTotal','primaNeta']);
+
+  // Campos que NO se escriben (ya mapeados o metadatos)
+  const ignorar = new Set(['id','_spId','_dirty','_spEtag']);
+  if(listKey==='clientes')  ignorar.add('nombre');
+  if(listKey==='usuarios')  ignorar.add('nombre');
 
   Object.keys(data).forEach(k => {
     if(ignorar.has(k) || k.startsWith('_')) return;
-    if(!permitidos.has(k)) return; // campo no existe en SP — ignorar
-
     let val = data[k];
+
+    // Serializar arrays/objetos como JSON string
     if(val !== null && val !== undefined && typeof val === 'object'){
       val = JSON.stringify(val);
     }
+    // Convertir booleanos a string
     if(typeof val === 'boolean') val = String(val);
+    // Campos numéricos: convertir a número
     if(camposNum.has(k) && val !== undefined && val !== null && val !== ''){
       val = parseFloat(val) || 0;
     }
@@ -571,72 +565,20 @@ async function spVerificarListas(){
 // Si la columna ya existe el error se ignora silenciosamente
 async function spAsegurarColumnas(logCol){
   if(!logCol) logCol=()=>{};
-  const esquema = {
-    CRM_Clientes: [
-      {name:'ci',type:'text'},{name:'tipo',type:'text'},{name:'region',type:'text'},
-      {name:'ciudad',type:'text'},{name:'aseguradora',type:'text'},{name:'ejecutivo',type:'text'},
-      {name:'estado',type:'text'},{name:'placa',type:'text'},{name:'marca',type:'text'},
-      {name:'modelo',type:'text'},{name:'anio',type:'number'},{name:'va',type:'number'},
-      {name:'pn',type:'number'},{name:'primaTotal',type:'number'},
-      {name:'desde',type:'text'},{name:'hasta',type:'text'},
-      {name:'celular',type:'text'},{name:'correo',type:'text'},
-      {name:'nota',type:'note'},{name:'ultimoContacto',type:'text'},
-      {name:'factura',type:'text'},{name:'poliza',type:'text'},
-      {name:'obs',type:'text'},{name:'color',type:'text'},
-      {name:'motor',type:'text'},{name:'chasis',type:'text'},
-      {name:'dep',type:'number'},{name:'tasa',type:'number'},
-      {name:'axavd',type:'text'},{name:'formaPago',type:'text'},
-      {name:'crm_id',type:'text'},{name:'polizaNueva',type:'text'},
-      {name:'aseguradoraAnterior',type:'text'},{name:'historialWa',type:'note'},
-    ],
-    CRM_Cotizaciones: [
-      {name:'codigo',type:'text'},{name:'version',type:'number'},
-      {name:'fecha',type:'text'},{name:'ejecutivo',type:'text'},
-      {name:'clienteNombre',type:'text'},{name:'clienteCI',type:'text'},
-      {name:'clienteId',type:'text'},{name:'ciudad',type:'text'},
-      {name:'vehiculo',type:'text'},{name:'placa',type:'text'},
-      {name:'va',type:'number'},{name:'desde',type:'text'},
-      {name:'estado',type:'text'},{name:'asegElegida',type:'text'},
-      {name:'resultados',type:'note'},{name:'aseguradoras',type:'note'},
-      {name:'obsAcept',type:'note'},{name:'fechaAcept',type:'text'},
-      {name:'reemplazadaPor',type:'text'},{name:'crm_id',type:'text'},
-    ],
-    CRM_Cierres: [
-      {name:'clienteNombre',type:'text'},{name:'aseguradora',type:'text'},
-      {name:'primaTotal',type:'number'},{name:'primaNeta',type:'number'},
-      {name:'vigDesde',type:'text'},{name:'vigHasta',type:'text'},
-      {name:'formaPago',type:'text'},{name:'facturaAseg',type:'text'},
-      {name:'ejecutivo',type:'text'},{name:'fechaRegistro',type:'text'},
-      {name:'observacion',type:'note'},{name:'axavd',type:'text'},
-      {name:'crm_id',type:'text'},{name:'polizaNueva',type:'text'},
-    ],
-    CRM_Usuarios: [
-      {name:'userId',type:'text'},{name:'rol',type:'text'},
-      {name:'email',type:'text'},{name:'activo',type:'text'},
-      {name:'color',type:'text'},{name:'initials',type:'text'},
-      {name:'crm_id',type:'text'},
-    ],
-  };
-
-  for(const [listName, cols] of Object.entries(esquema)){
+  const listas = ['CRM_Clientes','CRM_Cotizaciones','CRM_Cierres','CRM_Usuarios'];
+  for(const listName of listas){
     logCol(`Configurando ${listName}...`);
-    let creadas=0, existentes=0;
-    for(const col of cols){
-      try{
-        const def = { name: col.name };
-        if(col.type==='text')   def.text = {};
-        if(col.type==='note')   def.text = { allowMultipleLines: true };
-        if(col.type==='number') def.number = {};
-        await spGraph(`sites/${_siteId}/lists/${listName}/columns`, 'POST', def);
-        creadas++;
-      }catch(e){
-        // 400 = columna ya existe — ignorar silenciosamente
-        existentes++;
-      }
+    try{
+      await spGraph(`sites/${_siteId}/lists/${listName}/columns`, 'POST', {
+        name: 'datos',
+        text: { allowMultipleLines: true, unlimitedLengthInDocumentLibrary: true }
+      });
+      logCol(`✅ ${listName}: columna datos creada`);
+    }catch(e){
+      // Ya existe — ok
+      logCol(`✅ ${listName}: ya configurada`);
     }
-    logCol(`✅ ${listName}: ${creadas} nuevas, ${existentes} existentes`);
   }
-  logCol('✅ Configuración completada');
 }
 
 async function _spAsegurarColumnas_UNUSED(logCol){
@@ -776,12 +718,8 @@ async function bootApp(){
       return;
     }
 
-    // 3. Listas OK — pre-cargar usuarios SP para que el login los tenga disponibles
+    // 3. Listas OK — cargar app
     localStorage.setItem('sp_setup_done','1');
-    try{
-      const spUsers = await spGetAll('usuarios');
-      _cache.usuarios = spUsers;
-    }catch(e){ console.warn('No se pudo pre-cargar usuarios SP:', e); }
     hideLoader();
     await initApp();
 
