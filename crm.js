@@ -26,21 +26,17 @@ function loadDB(){ return _cache.clientes || []; }
 
 async function loadDBAsync(){
   const data = await spGetAll('clientes');
-  // Solo cargar demo si SP no está listo (offline)
-  if(data.length > 0){
-    DB = data;
-  } else if(!_spReady){
-    DB = getDefaultClientes();
-  } else {
-    DB = []; // SP listo pero sin clientes — no cargar demo
-  }
+  if(data.length > 0){ DB = data; } else if(!_spReady){ DB = getDefaultClientes(); } else { DB = []; }
   _cache.clientes = DB;
 }
 
 function saveDB(){
   localStorage.setItem('reliance_clientes', JSON.stringify(DB)); // fallback
   _cache.clientes = [...DB];
-  if(_spReady) _flushDB();
+  if(_spReady){
+    DB.forEach(c => { if(!c._spId || c._dirty) c._dirty = true; });
+    _flushDB();
+  }
 }
 
 async function _flushDB(){
@@ -99,11 +95,8 @@ function saveUsers(){
         try{
           const rem=(_cache.usuarios||[]).find(r=>(r.userId||r.crm_id)===u.id);
           if(rem?._spId) await spUpdate('usuarios', rem._spId, {...u, userId:u.id});
-          else {
-            const id = await spCreate('usuarios', {...u, userId:u.id});
-            if(id && rem) rem._spId = id;
-          }
-        }catch(e){ console.error('Error guardando usuario SP:', u.id, e); }
+          else { const id=await spCreate('usuarios',{...u,userId:u.id}); if(id&&rem) rem._spId=id; }
+        }catch(e){ console.error('Error guardando usuario:', u.id, e); }
       }
     })();
   }
@@ -135,24 +128,49 @@ function getDefaultClientes(){
 // ══════════════════════════════════════════════════════
 //  AUTH
 // ══════════════════════════════════════════════════════
-function doLogin(){
+async function doLogin(){
   const u = document.getElementById('login-user').value.trim().toLowerCase();
   const p = document.getElementById('login-pass').value;
+  document.getElementById('login-err').textContent = '';
+
+  // Fusionar usuarios de SharePoint con USERS locales
+  if(_spReady && _cache.usuarios && _cache.usuarios.length){
+    _cache.usuarios.forEach(spU => {
+      const spId = spU.userId || spU.crm_id || spU.id;
+      const local = USERS.find(x => x.id===spId || x.email===spU.email);
+      if(local){
+        if(spU.rol)      local.rol      = spU.rol;
+        if(spU.color)    local.color    = spU.color;
+        if(spU.initials) local.initials = spU.initials;
+        if(spU.email)    local.email    = spU.email;
+      } else if(spId){
+        USERS.push({
+          id:       spId,
+          name:     spU.nombre || spU.Title || spU.email || spId,
+          email:    spU.email   || '',
+          pass:     spId,
+          rol:      spU.rol     || 'ejecutivo',
+          color:    spU.color   || '#1a4c84',
+          initials: spU.initials|| (spU.email||spId)[0].toUpperCase(),
+        });
+      }
+    });
+  }
+
   const user = USERS.find(x => (x.email.toLowerCase()===u || x.id===u) && x.pass===p);
   if(!user){ document.getElementById('login-err').textContent='Usuario o contraseña incorrectos'; return; }
   currentUser = user;
-  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('login-screen').style.display = 'none';
   document.getElementById('sidebar-avatar').textContent = user.initials;
   document.getElementById('sidebar-avatar').style.background = `linear-gradient(135deg,${user.color},${user.color}99)`;
   document.getElementById('sidebar-name').textContent = user.name;
   document.getElementById('sidebar-role').textContent = user.rol==='admin'?'Administrador':'Ejecutivo Comercial';
-  // Admin-only nav
   document.querySelectorAll('.admin-only').forEach(el=>el.style.display=user.rol==='admin'?'':'none');
-  initApp();
+  await initApp();
 }
 function doLogout(){
   currentUser=null;
-  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('login-user').value='';
   document.getElementById('login-pass').value='';
   document.getElementById('login-err').textContent='';
@@ -1403,6 +1421,7 @@ function guardarCierreVenta(){
     showToast(`✓ Cierre actualizado — ${aseg} — Póliza ${poliza}`,'success');
   } else {
     // MODO NUEVO
+    cierre._dirty = true;
     allCierres.push(cierre);
     _saveCierres(allCierres);
     showToast(`✓ Venta cerrada — ${aseg} — Póliza ${poliza}`,'success');
@@ -1725,6 +1744,7 @@ function guardarCotizacion(){
     estado: 'ENVIADA', asegElegida: null, obsAcept: '', fechaAcept: null,
   };
 
+  cotiz._dirty = true;
   allCotiz.push(cotiz);
   _saveCotizaciones(allCotiz);
   actualizarBadgeCotizaciones();
@@ -1850,6 +1870,7 @@ function nuevaVersionCotiz(id){
   if(idx<0) return;
   const original = all[idx];
   all[idx].estado = 'REEMPLAZADA';
+  all[idx]._dirty = true;
   _saveCotizaciones(all);
   showPage('cotizador');
   setTimeout(()=>{
@@ -1884,6 +1905,7 @@ function editarCotizacion(id){
   window._editandoCotizCodigo  = original.codigo;
   window._editandoCotizVersion = (original.version||1)+1;
   all[idx].estado = 'REEMPLAZADA';
+  all[idx]._dirty = true;
   _saveCotizaciones(all);
   showPage('cotizador');
   setTimeout(()=>{
@@ -2053,6 +2075,7 @@ function cambiarEstadoCotiz(id, nuevoEstado){
   const idx = all.findIndex(c=>String(c.id)===String(id));
   if(idx<0) return;
   all[idx].estado = nuevoEstado;
+  all[idx]._dirty = true;
   _saveCotizaciones(all);
   renderCotizaciones();
   actualizarBadgeCotizaciones();
@@ -2117,11 +2140,7 @@ function migrarCotizacionesIds(){
     all.forEach(c=>{
       if(typeof c.id === 'number'){ c.id = 'CQ'+c.id; changed=true; }
     });
-    if(changed){
-      _cache.cotizaciones = all;
-      localStorage.setItem('reliance_cotizaciones', JSON.stringify(all));
-      // No hacer flush a SP al migrar IDs — evitar escrituras innecesarias
-    }
+    if(changed){ _cache.cotizaciones=all; localStorage.setItem('reliance_cotizaciones',JSON.stringify(all)); }
   }catch(e){}
 }
 
@@ -2737,7 +2756,7 @@ function confirmImport(){
     mes, ejecutivo:execUser?execUser.name:'Todos',
     modo, agregados:added, actualizados:updated
   });
-  { _cache.historial=historial; localStorage.setItem('reliance_import_historial',JSON.stringify(historial)); if(_spReady) spCreate('historial',historial[historial.length-1]); }
+  { _cache.historial=historial; localStorage.setItem('reliance_import_historial',JSON.stringify(historial)); }
   document.getElementById('import-preview').style.display='none';
   importedRows=[];
   renderDashboard(); renderAdmin();
@@ -3596,8 +3615,9 @@ async function initApp(){
   renderDashboard();
   actualizarBadgeCotizaciones();
 
-  // Mostrar app, ocultar loader
+  // Ocultar login, mostrar app
   hideLoader();
+  document.getElementById('login-screen').style.display='none';
   const appEl=document.querySelector('.app');
   if(appEl) appEl.style.display='flex';
 }
