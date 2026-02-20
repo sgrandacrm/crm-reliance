@@ -200,6 +200,31 @@ async function spGetAll(listKey){
         if(listKey==='cotizaciones') obj.codigo = f.Title;
         if(listKey==='cierres') obj.polizaNueva = f.Title;
       }
+      // Aplicar defaults según tipo de lista para evitar undefined en UI
+      if(listKey==='cotizaciones'){
+        obj.clienteNombre = obj.clienteNombre || obj.Title || '(sin nombre)';
+        obj.codigo        = obj.codigo || obj.Title || '';
+        obj.estado        = obj.estado || 'ENVIADA';
+        obj.fecha         = obj.fecha  || '';
+        obj.vehiculo      = obj.vehiculo || '';
+        obj.va            = obj.va || 0;
+        obj.resultados    = obj.resultados || [];
+        obj.aseguradoras  = obj.aseguradoras || [];
+        obj.version       = obj.version || 1;
+      }
+      if(listKey==='clientes'){
+        obj.nombre       = obj.nombre || obj.Title || '(sin nombre)';
+        obj.estado       = obj.estado || 'PENDIENTE';
+        obj.aseguradora  = obj.aseguradora || '';
+        obj.hasta        = obj.hasta || '';
+        obj.va           = obj.va || 0;
+      }
+      if(listKey==='cierres'){
+        obj.clienteNombre = obj.clienteNombre || obj.Title || '(sin nombre)';
+        obj.aseguradora   = obj.aseguradora || '';
+        obj.primaTotal    = obj.primaTotal || 0;
+        obj.fechaRegistro = obj.fechaRegistro || '';
+      }
       return obj;
     });
 
@@ -229,7 +254,9 @@ async function spCreate(listKey, data){
       'POST',
       { fields }
     );
-    _cache[listKey] = null;
+    // Actualizar cache sin borrarlo — evita que la lista quede vacía
+    if(_cache[listKey]) _cache[listKey] = _cache[listKey].filter(x=>String(x.id)!==String(data.id));
+    if(_cache[listKey]) _cache[listKey].push({...data, _spId: r.id});
     updateSpStatus('online','● SharePoint');
     return r.id;
   }catch(e){
@@ -239,7 +266,9 @@ async function spCreate(listKey, data){
         const listId = await spGetListId(listName);
         const minFields = { Title: spToFields(listKey, data).Title || String(data.id||''), crm_id: String(data.id||'') };
         const r2 = await spGraph(`sites/${_siteId}/lists/${listId}/items`, 'POST', { fields: minFields });
-        _cache[listKey] = null;
+        // Actualizar cache con datos completos (aunque SP solo tenga campos mínimos)
+        if(_cache[listKey]) _cache[listKey] = _cache[listKey].filter(x=>String(x.id)!==String(data.id));
+        if(_cache[listKey]) _cache[listKey].push({...data, _spId: r2.id});
         updateSpStatus('online','● SharePoint');
         console.warn('spCreate: guardado con campos mínimos (columnas SP incompletas):', listKey);
         // Intentar update completo tras creación mínima (columnas pueden estar creándose)
@@ -278,7 +307,11 @@ async function spUpdate(listKey, spId, data){
       'PATCH',
       fields
     );
-    _cache[listKey] = null;
+    // Actualizar item en cache sin borrar toda la lista
+    if(_cache[listKey]){
+      const ci = _cache[listKey].findIndex(x=>x._spId===spId||String(x.id)===String(data.id));
+      if(ci>=0) _cache[listKey][ci] = {..._cache[listKey][ci], ...data};
+    }
     updateSpStatus('online','● SharePoint');
     return true;
   }catch(e){
@@ -287,7 +320,11 @@ async function spUpdate(listKey, spId, data){
         const listId = await spGetListId(listName);
         const minFields = { Title: spToFields(listKey, data).Title || String(data.id||''), crm_id: String(data.id||'') };
         await spGraph(`sites/${_siteId}/lists/${listId}/items/${spId}/fields`, 'PATCH', minFields);
-        _cache[listKey] = null;
+        // Mantener cache actualizado
+        if(_cache[listKey]){
+          const ci = _cache[listKey].findIndex(x=>x._spId===spId||String(x.id)===String(data.id));
+          if(ci>=0) _cache[listKey][ci] = {..._cache[listKey][ci], ...data};
+        }
         updateSpStatus('online','● SharePoint');
         console.warn('spUpdate: actualizado con campos mínimos:', listKey);
         return true;
@@ -309,7 +346,8 @@ async function spDelete(listKey, spId){
   const listName = SP_CONFIG.lists[listKey];
   try{
     await spGraph(`sites/${_siteId}/lists/${listName}/items/${spId}`, 'DELETE');
-    _cache[listKey] = null;
+    // Remover solo el item borrado del cache
+    if(_cache[listKey]) _cache[listKey] = _cache[listKey].filter(x=>x._spId!==spId);
     return true;
   }catch(e){
     console.error('spDelete error:', e);
