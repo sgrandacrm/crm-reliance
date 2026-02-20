@@ -186,6 +186,10 @@ async function spGetAll(listKey){
         if(typeof val === 'string' && (val.startsWith('[') || val.startsWith('{'))){
           try{ val = JSON.parse(val); }catch(e){}
         }
+        // Normalizar fechas ISO que SP devuelve con T00:00:00Z
+        if(typeof val === 'string' && val.length>=10 && val[10]==='T' && /^\d{4}-\d{2}-\d{2}T/.test(val)){
+          val = val.substring(0,10);
+        }
         obj[k] = val;
       });
       // Restaurar id desde crm_id
@@ -238,6 +242,13 @@ async function spCreate(listKey, data){
         _cache[listKey] = null;
         updateSpStatus('online','● SharePoint');
         console.warn('spCreate: guardado con campos mínimos (columnas SP incompletas):', listKey);
+        // Intentar update completo tras creación mínima (columnas pueden estar creándose)
+        setTimeout(async ()=>{
+          try{
+            const allFields = spToFields(listKey, data);
+            await spGraph(`sites/${_siteId}/lists/${listId}/items/${r2.id}/fields`, 'PATCH', allFields);
+          }catch(e2){ /* columnas aún no existen, se sincronizará luego */ }
+        }, 3000);
         return r2.id;
       }catch(e2){
         updateSpStatus('error','⚠ Error al guardar');
@@ -363,9 +374,9 @@ async function spSetupLists(onProgress){
       {name:'estado',type:'Text'},{name:'placa',type:'Text'},{name:'marca',type:'Text'},
       {name:'modelo',type:'Text'},{name:'anio',type:'Number'},{name:'va',type:'Number'},
       {name:'pn',type:'Number'},{name:'primaTotal',type:'Number'},
-      {name:'desde',type:'DateTime'},{name:'hasta',type:'DateTime'},
+      {name:'desde',type:'Text'},{name:'hasta',type:'Text'},
       {name:'celular',type:'Text'},{name:'correo',type:'Text'},
-      {name:'nota',type:'Note'},{name:'ultimoContacto',type:'DateTime'},
+      {name:'nota',type:'Note'},{name:'ultimoContacto',type:'Text'},
       {name:'factura',type:'Text'},{name:'poliza',type:'Text'},
       {name:'polizaNueva',type:'Text'},{name:'aseguradoraAnterior',type:'Text'},
       {name:'obs',type:'Text'},{name:'color',type:'Text'},
@@ -376,14 +387,14 @@ async function spSetupLists(onProgress){
     ],
     CRM_Cotizaciones: [
       {name:'codigo',type:'Text'},{name:'version',type:'Number'},
-      {name:'fecha',type:'DateTime'},{name:'ejecutivo',type:'Text'},
+      {name:'fecha',type:'Text'},{name:'ejecutivo',type:'Text'},
       {name:'clienteNombre',type:'Text'},{name:'clienteCI',type:'Text'},
       {name:'clienteId',type:'Text'},{name:'ciudad',type:'Text'},
       {name:'vehiculo',type:'Text'},{name:'placa',type:'Text'},
-      {name:'va',type:'Number'},{name:'desde',type:'DateTime'},
+      {name:'va',type:'Number'},{name:'desde',type:'Text'},
       {name:'estado',type:'Text'},{name:'asegElegida',type:'Text'},
       {name:'resultados',type:'Note'},{name:'aseguradoras',type:'Note'},
-      {name:'obsAcept',type:'Note'},{name:'fechaAcept',type:'DateTime'},
+      {name:'obsAcept',type:'Note'},{name:'fechaAcept',type:'Text'},
       {name:'reemplazadaPor',type:'Text'},{name:'autoSust',type:'Boolean'},
       {name:'cuotasTc',type:'Number'},{name:'cuotasDeb',type:'Number'},
       {name:'spLocalId',type:'Text'},
@@ -391,9 +402,9 @@ async function spSetupLists(onProgress){
     CRM_Cierres: [
       {name:'clienteNombre',type:'Text'},{name:'aseguradora',type:'Text'},
       {name:'primaTotal',type:'Number'},{name:'primaNeta',type:'Number'},
-      {name:'vigDesde',type:'DateTime'},{name:'vigHasta',type:'DateTime'},
+      {name:'vigDesde',type:'Text'},{name:'vigHasta',type:'Text'},
       {name:'formaPago',type:'Text'},{name:'facturaAseg',type:'Text'},
-      {name:'ejecutivo',type:'Text'},{name:'fechaRegistro',type:'DateTime'},
+      {name:'ejecutivo',type:'Text'},{name:'fechaRegistro',type:'Text'},
       {name:'observacion',type:'Note'},{name:'axavd',type:'Text'},
       {name:'cuenta',type:'Text'},{name:'spLocalId',type:'Text'},
     ],
