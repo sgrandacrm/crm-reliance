@@ -71,6 +71,7 @@ async function spInit(){
   try{
     const tokenResp = await _msalApp.acquireTokenSilent({
       scopes: ['https://graph.microsoft.com/Sites.ReadWrite.All',
+               'https://graph.microsoft.com/Sites.Manage.All',
                'https://graph.microsoft.com/Files.ReadWrite',
                'https://graph.microsoft.com/User.Read'],
       account: _account
@@ -81,6 +82,7 @@ async function spInit(){
     try{
       const tokenResp = await _msalApp.acquireTokenPopup({
         scopes: ['https://graph.microsoft.com/Sites.ReadWrite.All',
+                 'https://graph.microsoft.com/Sites.Manage.All',
                  'https://graph.microsoft.com/Files.ReadWrite',
                  'https://graph.microsoft.com/User.Read'],
       });
@@ -174,22 +176,26 @@ async function spGetAll(listKey){
       url = r['@odata.nextLink'] || null;
     }
 
-    // Extraer campos individuales
+    // Leer campos individuales de SharePoint
     const result = items.map(item => {
       const f = item.fields;
       const obj = { _spId: item.id };
       Object.keys(f).forEach(k => {
-        if(k.startsWith('_') || k==='ContentType' || k==='Attachments') return;
+        if(k.startsWith('_') || k==='ContentType' || k==='Attachments' || k==='LinkTitle') return;
         let val = f[k];
         if(typeof val === 'string' && (val.startsWith('[') || val.startsWith('{'))){
           try{ val = JSON.parse(val); }catch(e){}
         }
-        // Revertir prefijo crm_ a nombre original
-        const realKey = k.startsWith('crm_') ? k.slice(4) : k;
-        obj[realKey] = val;
+        obj[k] = val;
       });
-      if(f.Title && !obj.nombre) obj.nombre = f.Title;
-      if(f.Title && listKey==='cotizaciones') obj.codigo = f.Title;
+      // Restaurar id desde crm_id
+      if(f.crm_id) obj.id = f.crm_id;
+      // Restaurar nombre desde Title
+      if(f.Title){
+        if(listKey==='clientes'||listKey==='usuarios') obj.nombre = f.Title;
+        if(listKey==='cotizaciones') obj.codigo = f.Title;
+        if(listKey==='cierres') obj.polizaNueva = f.Title;
+      }
       return obj;
     });
 
@@ -268,30 +274,39 @@ async function spDelete(listKey, spId){
 }
 
 // ── Convertir objeto JS → campos de lista SP ─────────────────
-// Campos reservados de SharePoint que no se pueden usar directamente
-const SP_RESERVED = new Set(['id','ID','title','author','editor','created','modified',
-  'ContentType','Attachments','_UIVersionString','owshiddenversion','FileDirRef',
-  'FileLeafRef','FileRef','FSObjType','UniqueId','GUID','WorkflowVersion','MetaInfo']);
+// Campos que SharePoint no acepta como nombre de columna
+const SP_SKIP = new Set(['id','ID','version','Version']);
 
 function spToFields(listKey, data){
   const fields = {};
+
+  // Title = identificador principal del registro
+  let title = '';
+  if(listKey==='clientes')     title = data.nombre || data.id || '';
+  if(listKey==='cotizaciones') title = data.codigo || data.id || '';
+  if(listKey==='cierres')      title = data.polizaNueva || data.id || '';
+  if(listKey==='usuarios')     title = data.nombre || data.email || '';
+  fields['Title'] = String(title).substring(0, 255);
+
+  // Mapear data.id → crm_id (nombre real en SharePoint)
+  if(data.id !== undefined) fields['crm_id'] = String(data.id);
+
+  // Campos que NO se escriben directamente (ya mapeados arriba o metadatos)
+  const ignorar = new Set(['id','_spId','_dirty','_spEtag']);
+  if(listKey==='clientes')     ignorar.add('nombre');
+  if(listKey==='usuarios')     ignorar.add('nombre');
+
   Object.keys(data).forEach(k => {
-    if(k.startsWith('_')) return;
-    // Renombrar campos reservados
-    let fieldName = k;
-    if(SP_RESERVED.has(k)) fieldName = 'crm_' + k;
-    
+    if(ignorar.has(k) || k.startsWith('_')) return;
     let val = data[k];
     if(val !== null && val !== undefined && typeof val === 'object'){
       val = JSON.stringify(val);
     }
-    if(k==='nombre' && listKey==='clientes')     { fields['Title'] = String(val||'').substring(0,255); return; }
-    if(k==='codigo' && listKey==='cotizaciones') { fields['Title'] = String(val||'').substring(0,255); return; }
-    if(k==='nombre' && listKey==='usuarios')     { fields['Title'] = String(val||'').substring(0,255); return; }
-    if(k==='polizaNueva' && listKey==='cierres') { fields['Title'] = String(val||'').substring(0,255); }
+    if(val === undefined || val === null) return;
     if(typeof val === 'string') val = val.substring(0, 3999);
-    fields[fieldName] = val;
+    fields[k] = val;
   });
+
   return fields;
 }
 
@@ -315,7 +330,7 @@ async function spSetupLists(onProgress){
       {name:'motor',type:'Text'},{name:'chasis',type:'Text'},
       {name:'dep',type:'Number'},{name:'tasa',type:'Number'},
       {name:'axavd',type:'Text'},{name:'formaPago',type:'Text'},
-      {name:'historialWa',type:'note'},{name:'crm_id',type:'text'},
+      {name:'historialWa',type:'note'},{name:'crmid',type:'text'},
     ],
     CRM_Cotizaciones: [
       {name:'codigo',type:'Text'},{name:'version',type:'Number'},
@@ -460,6 +475,7 @@ async function spLogin(){
   try{
     await _msalApp.loginRedirect({
       scopes: ['https://graph.microsoft.com/Sites.ReadWrite.All',
+               'https://graph.microsoft.com/Sites.Manage.All',
                'https://graph.microsoft.com/Files.ReadWrite',
                'https://graph.microsoft.com/User.Read'],
     });
@@ -544,6 +560,24 @@ async function spVerificarListas(){
 // Si la columna ya existe el error se ignora silenciosamente
 async function spAsegurarColumnas(logCol){
   if(!logCol) logCol=()=>{};
+  const listas = ['CRM_Clientes','CRM_Cotizaciones','CRM_Cierres','CRM_Usuarios'];
+  for(const listName of listas){
+    logCol(`Configurando ${listName}...`);
+    try{
+      await spGraph(`sites/${_siteId}/lists/${listName}/columns`, 'POST', {
+        name: 'datos',
+        text: { allowMultipleLines: true, unlimitedLengthInDocumentLibrary: true }
+      });
+      logCol(`✅ ${listName}: columna datos creada`);
+    }catch(e){
+      // Ya existe — ok
+      logCol(`✅ ${listName}: ya configurada`);
+    }
+  }
+}
+
+async function _spAsegurarColumnas_UNUSED(logCol){
+  if(!logCol) logCol=()=>{};
   const esquema = {
     CRM_Clientes: [
       {name:'ci',type:'text'},{name:'tipo',type:'text'},{name:'region',type:'text'},
@@ -559,11 +593,11 @@ async function spAsegurarColumnas(logCol){
       {name:'motor',type:'text'},{name:'chasis',type:'text'},
       {name:'dep',type:'number'},{name:'tasa',type:'number'},
       {name:'axavd',type:'text'},{name:'formaPago',type:'text'},
-      {name:'crm_id',type:'text'},{name:'polizaNueva',type:'text'},
+      {name:'crmid',type:'text'},{name:'polizaNueva',type:'text'},
       {name:'aseguradoraAnterior',type:'text'},{name:'historialWa',type:'note'},
     ],
     CRM_Cotizaciones: [
-      {name:'codigo',type:'text'},{name:'version',type:'number'},
+      {name:'codigo',type:'text'},
       {name:'fecha',type:'text'},{name:'ejecutivo',type:'text'},
       {name:'clienteNombre',type:'text'},{name:'clienteCI',type:'text'},
       {name:'clienteId',type:'text'},{name:'ciudad',type:'text'},
@@ -572,7 +606,7 @@ async function spAsegurarColumnas(logCol){
       {name:'estado',type:'text'},{name:'asegElegida',type:'text'},
       {name:'resultados',type:'note'},{name:'aseguradoras',type:'note'},
       {name:'obsAcept',type:'note'},{name:'fechaAcept',type:'text'},
-      {name:'reemplazadaPor',type:'text'},{name:'crm_id',type:'text'},
+      {name:'reemplazadaPor',type:'text'},{name:'crmid',type:'text'},
     ],
     CRM_Cierres: [
       {name:'clienteNombre',type:'text'},{name:'aseguradora',type:'text'},
@@ -581,7 +615,7 @@ async function spAsegurarColumnas(logCol){
       {name:'formaPago',type:'text'},{name:'facturaAseg',type:'text'},
       {name:'ejecutivo',type:'text'},{name:'fechaRegistro',type:'text'},
       {name:'observacion',type:'note'},{name:'axavd',type:'text'},
-      {name:'crm_id',type:'text'},{name:'polizaNueva',type:'text'},
+      {name:'crmid',type:'text'},{name:'polizaNueva',type:'text'},
     ],
     CRM_Usuarios: [
       {name:'userId',type:'text'},{name:'rol',type:'text'},
