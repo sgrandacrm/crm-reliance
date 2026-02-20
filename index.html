@@ -8,7 +8,7 @@
 
 <!-- Librerías externas -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js" onload="window._msalLoaded=true" onerror="document.getElementById('sp-loader-msg').textContent='Error cargando autenticación. Verifica tu conexión.'"></script>
 
 <!-- Estilos CRM -->
 <link rel="stylesheet" href="crm.css">
@@ -1051,8 +1051,17 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.onclick = spLogout;
     uf.appendChild(btn);
   }
-  // Arrancar
-  bootApp();
+  // Esperar a que MSAL esté cargado antes de arrancar
+  function waitForMsal(attempts){
+    if(typeof msal !== 'undefined'){
+      bootApp();
+    } else if(attempts > 0){
+      setTimeout(()=> waitForMsal(attempts-1), 300);
+    } else {
+      document.getElementById('sp-loader-msg').textContent = 'Error: no se pudo cargar la librería de autenticación.';
+    }
+  }
+  waitForMsal(20); // espera hasta 6 segundos
 });
 
 async function spLogout(){
