@@ -116,9 +116,18 @@ function saveUsers(){
     (async()=>{
       for(const u of USERS){
         try{
-          const rem=(_cache.usuarios||[]).find(r=>(r.userId||r.crm_id)===u.id);
-          if(rem?._spId) await spUpdate('usuarios', rem._spId, {...u, userId:u.id});
-          else { const id=await spCreate('usuarios',{...u,userId:u.id}); if(id&&rem) rem._spId=id; }
+          // Buscar en cache de SP por userId o crm_id
+          const spRec = (_cache.usuarios||[]).find(r=>
+            String(r.userId||r.crm_id||r.id) === String(u.id)
+          );
+          const spId = u._spId || spRec?._spId;
+          if(spId){
+            await spUpdate('usuarios', spId, {...u, userId:u.id});
+            u._spId = spId; // guardar para futuras actualizaciones
+          } else {
+            const id = await spCreate('usuarios', {...u, userId:u.id});
+            if(id) u._spId = id;
+          }
         }catch(e){ console.error('Error guardando usuario:', u.id, e); }
       }
     })();
@@ -360,7 +369,7 @@ function filterClientes(){
   const region=document.getElementById('filter-region').value;
   const estado=document.getElementById('filter-estado').value;
   clientesFiltrados = myClientes().filter(c=>{
-    const mq=!q||c.nombre.toLowerCase().includes(q)||(c.ci||'').includes(q)||(c.placa||'').toLowerCase().includes(q)||(c.aseguradora||'').toLowerCase().includes(q);
+    const mq=!q||(c.nombre||'').toLowerCase().includes(q)||(c.ci||'').includes(q)||(c.placa||'').toLowerCase().includes(q)||(c.aseguradora||'').toLowerCase().includes(q);
     const mt=!tipo||c.tipo===tipo;
     const ma=!aseg||c.aseguradora===aseg;
     const mr=!region||c.region===region;
@@ -488,7 +497,7 @@ function showClienteModal(id){
   document.getElementById('modal-btn-eliminar').style.display='';
   document.getElementById('modal-btn-cotizar').onclick=()=>{ closeModal('modal-cliente'); prefillCotizador(c); showPage('cotizador'); setTimeout(calcCotizacion,200); };
   document.getElementById('modal-btn-editar').onclick=()=>{ closeModal('modal-cliente'); openEditar(id); };
-  document.getElementById('modal-btn-eliminar').onclick=()=>{ if(confirm(`¿Eliminar a ${c.nombre}?`)){ DB=DB.filter(x=>x.id!==id); saveDB(); closeModal('modal-cliente'); renderClientes(); renderDashboard(); showToast('Cliente eliminado','error'); }};
+  document.getElementById('modal-btn-eliminar').onclick=()=>{ if(confirm(`¿Eliminar a ${c.nombre}?`)){ const cliToDel=DB.find(x=>String(x.id)===String(id)); if(cliToDel?._spId && _spReady) spDelete('clientes', cliToDel._spId); DB=DB.filter(x=>String(x.id)!==String(id)); saveDB(); closeModal('modal-cliente'); renderClientes(); renderDashboard(); showToast('Cliente eliminado','error'); }};
   openModal('modal-cliente');
 }
 
@@ -650,7 +659,7 @@ function renderSeguimiento(){
 function filterSeguimiento(){
   const q=(document.getElementById('search-seg').value||'').toLowerCase();
   let data=myClientes().filter(c=>{
-    const mq=!q||c.nombre.toLowerCase().includes(q);
+    const mq=!q||(c.nombre||'').toLowerCase().includes(q);
     const me=!segFilterEstado||(c.estado||'PENDIENTE')===segFilterEstado;
     return mq&&me;
   }).sort((a,b)=>daysUntil(a.hasta)-daysUntil(b.hasta));
@@ -1814,7 +1823,7 @@ function exportarCotizAceptadas(){
   const lista = all.filter(c=>{
     if(!esAdmin && String(c.ejecutivo) !== String(currentUser?.id||"")) return false;
     return ['ACEPTADA','EN EMISIÓN','EMITIDA'].includes(c.estado);
-  }).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  }).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
 
   if(!lista.length){ showToast('No hay cotizaciones aceptadas para exportar','error'); return; }
 
@@ -1954,6 +1963,14 @@ function editarCotizacion(id){
   },200);
 }
 
+
+// Normaliza resultados de cotización a array (puede venir como JSON string desde SP)
+function _parseResultados(r){
+  if(!r) return [];
+  if(Array.isArray(r)) return r;
+  if(typeof r==='string'){ try{ const p=JSON.parse(r); return Array.isArray(p)?p:[]; }catch(e){return [];} }
+  return [];
+}
 function renderCotizaciones(){
   const all = _getCotizaciones();
 
@@ -1986,11 +2003,11 @@ function renderCotizaciones(){
   let lista = all.filter(c=>{
     if(!esAdmin && String(c.ejecutivo) !== String(currentUser?.id||"")) return false;
     if(c.estado==='REEMPLAZADA' && !mostrarReemp) return false;
-    if(q && !c.clienteNombre.toLowerCase().includes(q) && !c.clienteCI?.includes(q) && !(c.codigo||'').toLowerCase().includes(q)) return false;
+    if(q && !(c.clienteNombre||'').toLowerCase().includes(q) && !c.clienteCI?.includes(q) && !(c.codigo||'').toLowerCase().includes(q)) return false;
     if(fEstado && c.estado!==fEstado) return false;
-    if(fAseg && !c.aseguradoras?.includes(fAseg)) return false;
+    if(fAseg && !(Array.isArray(c.aseguradoras)?c.aseguradoras:(typeof c.aseguradoras==='string'?JSON.parse(c.aseguradoras||'[]'):[]) ).includes(fAseg)) return false;
     return true;
-  }).sort((a,b)=>b.fecha.localeCompare(a.fecha)||String(b.id).localeCompare(String(a.id)));// más recientes primero
+  }).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(String(b.id)||'').localeCompare(String(a.id)||''));// más recientes primero
 
   document.getElementById('cq-count').textContent = `${lista.length} cotización${lista.length!==1?'es':''}`;
 
@@ -2018,7 +2035,7 @@ function renderCotizaciones(){
     const diasLabel = dias===0?'hoy':dias===1?'ayer':`hace ${dias}d`;
 
     // Mini chips aseguradoras con sus totales
-    const asegChips = (c.resultados||[]).map(r=>{
+    const asegChips = _parseResultados(c.resultados).map(r=>{
       const cfg = ASEGURADORAS[r.name];
       const esElegida = c.asegElegida===r.name;
       return `<span style="background:${esElegida?(cfg?.color||'#333')+'22':'var(--warm)'};
@@ -2186,7 +2203,7 @@ function abrirAceptarCotiz(id){
 
   // Guardar resultados globalmente — evita JSON.stringify en onclick (rompe HTML)
   window._cotizResultados = c.resultados || [];
-  document.getElementById('cotiz-aseg-options').innerHTML=(c.resultados||[]).map(r=>{
+  document.getElementById('cotiz-aseg-options').innerHTML=_parseResultados(c.resultados).map(r=>{
     const cfg = ASEGURADORAS[r.name]||{color:'#333'};
     return `<button class="cotiz-aseg-btn" data-name="${r.name}"
       onclick="seleccionarAsegAcept('${r.name}')"
@@ -2550,6 +2567,8 @@ function confirmarEliminarEjecutivo(execId){
   const u=USERS.find(x=>String(x.id)===String(execId)); if(!u) return;
   const nClientes=DB.filter(c=>c.ejecutivo===execId).length;
   if(!confirm(`¿Eliminar al ejecutivo ${u.name}? Tiene ${nClientes} clientes asignados.`)) return;
+  // Borrar en SharePoint si tiene _spId
+  if(u._spId && _spReady) spDelete('usuarios', u._spId);
   const idx=USERS.findIndex(x=>String(x.id)===String(execId));
   if(idx>=0) USERS.splice(idx,1);
   saveUsers(); renderAdmin();
@@ -2716,7 +2735,9 @@ function confirmImport(){
   // Modo reemplazar: eliminar cartera existente del ejecutivo
   if(modo==='reemplazar'&&execId){
     if(!confirm('¿Confirmar REEMPLAZAR toda la cartera del ejecutivo seleccionado?')) return;
-    DB=DB.filter(c=>c.ejecutivo!==execId);
+    // Borrar en SP los clientes del ejecutivo antes de reemplazar
+    if(_spReady){ const toDelSP=DB.filter(c=>String(c.ejecutivo)===String(execId)&&c._spId); toDelSP.forEach(c=>spDelete('clientes',c._spId)); }
+    DB=DB.filter(c=>String(c.ejecutivo)!==String(execId));
   }
   const existingCIs=new Set(DB.map(c=>(c.ci||'').toString().trim()));
   const maxId=DB.length?Math.max(...DB.map(c=>c.id||0)):0;
@@ -3053,8 +3074,11 @@ function eliminarCierre(idx){
   if(currentUser&&currentUser.rol!=='admin') cierres=cierres.filter(c=>String(c.ejecutivo)===String(currentUser.id));
   const sorted=cierres.sort((a,b)=>new Date(b.fechaRegistro)-new Date(a.fechaRegistro));
   const toDelete=sorted[idx];
+  if(!toDelete) return;
+  // Borrar en SharePoint si tiene _spId
+  if(toDelete._spId && _spReady) spDelete('cierres', toDelete._spId);
   const allCierres=_getCierres();
-  const filtered=allCierres.filter(c=>c.id!==toDelete.id);
+  const filtered=allCierres.filter(c=>String(c.id)!==String(toDelete.id));
   _saveCierres(filtered);
   renderCierres();
   showToast('Cierre eliminado','error');
@@ -3607,6 +3631,62 @@ function toggleAllAseg(state){
 function getSelectedAseg(){
   return Array.from(document.querySelectorAll('.aseg-check:checked')).map(cb=>cb.dataset.aseg);
 }
+
+// ── Sync automático SP→CRM (polling ligero) ─────────────────
+// Se ejecuta cada 60s para reflejar cambios de otros usuarios
+let _syncInterval = null;
+let _lastSyncHash = '';
+
+async function _syncFromSP(){
+  if(!_spReady || !currentUser) return;
+  try{
+    // Cargar clientes
+    const clientes = await spGetAll('clientes');
+    const hash = clientes.length + '|' + (clientes[0]?._spId||'');
+    if(hash !== _lastSyncHash){
+      _lastSyncHash = hash;
+      DB = clientes;
+      _cache.clientes = clientes;
+      localStorage.setItem('reliance_clientes', JSON.stringify(clientes));
+      // Re-render si está en una página relevante
+      const pg = document.querySelector('.page.active')?.id;
+      if(pg==='page-clientes') renderClientes();
+      if(pg==='page-clientes') renderVencimientos();
+      renderDashboard();
+    }
+    // Cargar cotizaciones
+    const cotizaciones = await spGetAll('cotizaciones');
+    const hashCot = cotizaciones.length + '|' + (cotizaciones[cotizaciones.length-1]?._spId||'');
+    const prevCot = (_cache.cotizaciones||[]);
+    if(hashCot !== (prevCot.length + '|' + (prevCot[prevCot.length-1]?._spId||''))){
+      _cache.cotizaciones = cotizaciones;
+      localStorage.setItem('reliance_cotizaciones', JSON.stringify(cotizaciones));
+      const pg2 = document.querySelector('.page.active')?.id;
+      if(pg2==='page-cotizaciones') renderCotizaciones();
+      actualizarBadgeCotizaciones();
+    }
+    // Cargar cierres
+    const cierres = await spGetAll('cierres');
+    const hashC = cierres.length + '|' + (cierres[cierres.length-1]?._spId||'');
+    const prevC = (_cache.cierres||[]);
+    if(hashC !== (prevC.length + '|' + (prevC[prevC.length-1]?._spId||''))){
+      _cache.cierres = cierres;
+      localStorage.setItem('reliance_cierres', JSON.stringify(cierres));
+      const pg3 = document.querySelector('.page.active')?.id;
+      if(pg3==='page-cierres') renderCierres();
+    }
+  }catch(e){ /* sync silencioso — no mostrar error */ }
+}
+
+function startAutoSync(){
+  if(_syncInterval) clearInterval(_syncInterval);
+  _syncInterval = setInterval(_syncFromSP, 60000); // cada 60 segundos
+  // También sync al volver a la pestaña
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.visibilityState==='visible' && currentUser) _syncFromSP();
+  });
+}
+
 async function initApp(){
   // Cargar todos los datos desde SharePoint en paralelo
   const [cotiz, cierres, spUsers] = await Promise.all([
@@ -3647,4 +3727,5 @@ async function initApp(){
   document.getElementById('login-screen').style.display='none';
   const appEl=document.querySelector('.app');
   if(appEl) appEl.style.display='flex';
+  startAutoSync(); // Iniciar sync bidireccional automático
 }
