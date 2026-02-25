@@ -263,7 +263,7 @@ function showPage(id){
   document.querySelectorAll('.nav-item').forEach(n=>{
     if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes("'"+id+"'")) n.classList.add('active');
   });
-  const renders={clientes:()=>{renderClientes();renderVencimientos();},vencimientos:()=>{showPage('clientes');switchClienteTab('vencimientos');},calendario:renderCalendario,seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones};
+  const renders={clientes:()=>{renderClientes();renderVencimientos();},vencimientos:()=>{showPage('clientes');switchClienteTab('vencimientos');},calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones};
   if(renders[id]) renders[id]();
 }
 
@@ -397,6 +397,9 @@ function filterClientes(){
         <button class="btn btn-ghost btn-xs" onclick="openEditar('${c.id}')">✏</button>
         <button class="btn btn-ghost btn-xs" onclick="openSeguimiento('${c.id}')">📞</button>
         <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')" title="WhatsApp">💬</button>
+        <button class="btn btn-xs" style="background:#0078d4;color:#fff" onclick="openEmail('${c.id}','vencimiento')" title="Email">✉️</button>
+        <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')" title="Nueva tarea">📌</button>
+        <button class="btn btn-ghost btn-xs" onclick="nuevaTarea('${c.id}')" title="Crear tarea">📌</button>
         ${(['RENOVADO','EMITIDO'].includes(c.estado)&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')" title="Registrar cierre de venta">📋</button>`:''}
         ${c.factura?`<span title="Cierre registrado: ${c.factura}" style="font-size:14px;cursor:default">✅</span>`:''}
       </div></td>
@@ -578,6 +581,8 @@ function renderVencimientos(){
           <button class="btn btn-ghost btn-xs" onclick="openSeguimiento('${c.id}')">📞 Gestionar</button>
           <button class="btn btn-ghost btn-xs" onclick="prefillCotizador_show('${c.id}')">🧮 Cotizar</button>
           <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')">💬 WhatsApp</button>
+          <button class="btn btn-xs" style="background:#0078d4;color:#fff" onclick="openEmail('${c.id}','vencimiento')">✉️ Email</button>
+          <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')">📌 Tarea</button>
         </div>
       </div>` }).join('')
     : '<div class="empty-state"><div class="empty-icon">✅</div><p>No hay vencimientos en este rango</p></div>';
@@ -611,6 +616,14 @@ function renderCalendario(){
     if(!evMap[key]) evMap[key]=[];
     evMap[key].push(c);
   });
+  // Mapa de tareas por fecha
+  const tareaMap={};
+  myTareas().filter(t=>t.estado==='pendiente').forEach(t=>{
+    if(!t.fechaVence) return;
+    if(!tareaMap[t.fechaVence]) tareaMap[t.fechaVence]=[];
+    tareaMap[t.fechaVence].push(t);
+  });
+
   let cells='';
   const startDay=first.getDay();
   for(let i=0;i<startDay;i++){
@@ -621,10 +634,15 @@ function renderCalendario(){
     const dateStr=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const isToday=d===today.getDate()&&calMonth===today.getMonth()&&calYear===today.getFullYear();
     const events=evMap[dateStr]||[];
-    const evHtml=events.slice(0,3).map(c=>{ const days=daysUntil(c.hasta); const cls=days<0?'evencida':days<=30?'e30':days<=60?'e60':'e90'; return `<div class="cal-event ${cls}">${c.nombre.split(' ')[0]}</div>`; }).join('');
-    const more=events.length>3?`<div style="font-size:9px;color:var(--muted)">+${events.length-3} más</div>`:'';
-    cells+=`<div class="cal-day${isToday?' today':''}${events.length?' has-events':''}" onclick="${events.length?`showCalEvents('${dateStr}')`:''}" title="${events.length?events.length+' vencimientos':''}">
-      <div class="cal-day-num">${d}</div>${evHtml}${more}
+    const tareas=tareaMap[dateStr]||[];
+    const evHtml=events.slice(0,2).map(c=>{ const days=daysUntil(c.hasta); const cls=days<0?'evencida':days<=30?'e30':days<=60?'e60':'e90'; return `<div class="cal-event ${cls}">${c.nombre.split(' ')[0]}</div>`; }).join('');
+    const tareaHtml=tareas.slice(0,2).map(t=>`<div class="cal-event" style="background:#e8f0fb;border-left:2px solid var(--accent2);color:var(--accent2)">📌 ${t.titulo.substring(0,12)}</div>`).join('');
+    const more=(events.length+tareas.length)>4?`<div style="font-size:9px;color:var(--muted)">+${events.length+tareas.length-4} más</div>`:'';
+    const hasAny=events.length||tareas.length;
+    cells+=`<div class="cal-day${isToday?' today':''}${hasAny?' has-events':''}"
+      onclick="${hasAny?`showCalDia('${dateStr}')`:''}"
+      title="${events.length?events.length+' vencimiento(s)':''}${tareas.length?' · '+tareas.length+' tarea(s)':''}">
+      <div class="cal-day-num">${d}</div>${evHtml}${tareaHtml}${more}
     </div>`;
   }
   const remaining=(7-((startDay+last.getDate())%7))%7;
@@ -632,20 +650,44 @@ function renderCalendario(){
   document.getElementById('cal-body').innerHTML=cells;
 }
 function calNav(dir){calMonth+=dir;if(calMonth>11){calMonth=0;calYear++;}if(calMonth<0){calMonth=11;calYear--;}renderCalendario();}
-function showCalEvents(dateStr){
-  const events=myClientes().filter(c=>c.hasta===dateStr);
-  document.getElementById('modal-cal-title').textContent='Vencimientos: '+dateStr;
-  document.getElementById('modal-cal-body').innerHTML=events.map(c=>{
-    const days=daysUntil(c.hasta);
-    return `<div class="venc-alert ${vencClass(days)}" style="margin-bottom:8px">
-      <div class="venc-days" style="font-size:16px;min-width:36px">${days<0?'VENC':days+'d'}</div>
-      <div class="venc-info">
-        <div class="venc-name">${c.nombre}</div>
-        <div class="venc-meta">${c.aseguradora} · ${fmt(c.va)}</div>
-      </div>
-      ${estadoBadge(c.estado||'PENDIENTE')}
-    </div>`;
-  }).join('');
+function showCalEvents(dateStr){ showCalDia(dateStr); }
+function showCalDia(dateStr){
+  const events = myClientes().filter(c=>c.hasta===dateStr);
+  const tareas  = myTareas().filter(t=>t.fechaVence===dateStr && t.estado==='pendiente');
+  const titulo  = new Date(dateStr+'T00:00:00').toLocaleDateString('es-EC',{weekday:'long',day:'numeric',month:'long'});
+  document.getElementById('modal-cal-title').textContent = titulo;
+  const TIPO_ICON = { llamada:'📞', email:'✉️', reunion:'🤝', seguimiento:'📋', otro:'📌' };
+  let html = '';
+  if(tareas.length){
+    html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:8px">📌 Tareas</div>`;
+    html += tareas.map(t=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--warm);border-radius:6px;margin-bottom:6px;cursor:pointer"
+        onclick="closeModal('modal-cal');abrirDetalleTarea('${t.id}')">
+        <span>${TIPO_ICON[t.tipo]||'📌'}</span>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:600">${t.titulo}</div>
+          ${t.horaVence?`<div style="font-size:10px;color:var(--muted)">${t.horaVence}</div>`:''}
+        </div>
+        <button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();completarTarea('${t.id}')">✅</button>
+      </div>`).join('');
+  }
+  if(events.length){
+    html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin:${tareas.length?'12px':0} 0 8px">⏰ Vencimientos</div>`;
+    html += events.map(c=>{
+      const days=daysUntil(c.hasta);
+      return `<div class="venc-alert ${vencClass(days)}" style="margin-bottom:8px;cursor:pointer"
+        onclick="closeModal('modal-cal');openSeguimiento('${c.id}')">
+        <div class="venc-days" style="font-size:16px;min-width:36px">${days<0?'VENC':days+'d'}</div>
+        <div class="venc-info">
+          <div class="venc-name">${c.nombre}</div>
+          <div class="venc-meta">${c.aseguradora} · ${fmt(c.va)}</div>
+        </div>
+        ${estadoBadge(c.estado||'PENDIENTE')}
+      </div>`;
+    }).join('');
+  }
+  if(!html) html='<div style="color:var(--muted);font-size:12px;text-align:center;padding:16px">Sin eventos este día</div>';
+  document.getElementById('modal-cal-body').innerHTML = html;
   openModal('modal-cal');
 }
 
@@ -678,6 +720,9 @@ function filterSeguimiento(){
       <td><div style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="btn btn-blue btn-xs" onclick="openSeguimiento('${c.id}')">📞 Actualizar</button>
         <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')">💬 WA</button>
+        <button class="btn btn-xs" style="background:#0078d4;color:#fff" onclick="openEmail('${c.id}','vencimiento')">✉️ Mail</button>
+        <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')">📌</button>
+        <button class="btn btn-ghost btn-xs" onclick="nuevaTarea('${c.id}')">📌</button>
         ${(c.estado==='RENOVADO'&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')">📋 Cierre</button>`:''}
         ${c.factura?`<span class="badge badge-green" style="font-size:10px">✅ Cerrado</span>`:''}
       </div></td>
@@ -694,11 +739,13 @@ function openSeguimiento(id){
   const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
   currentSegIdx=id; currentSegEstado=c.estado||'PENDIENTE';
   document.getElementById('modal-seg-nombre').textContent=c.nombre;
-  document.getElementById('seg-nota').value=c.nota||'';
+  document.getElementById('seg-nota').value=''; // limpiar para nueva entrada
   document.querySelectorAll('.estado-btn').forEach(b=>{ b.classList.remove('active'); if(b.classList.contains(currentSegEstado)) b.classList.add('active'); });
   // Mostrar banner cierre si ya está RENOVADO
   const banner=document.getElementById('seg-cierre-banner');
   if(banner) banner.style.display=['RENOVADO','EMITIDO','PÓLIZA VIGENTE'].includes(currentSegEstado)?'block':'none';
+  // Renderizar bitácora existente
+  renderBitacora(c.bitacora||[]);
   openModal('modal-seguimiento');
 }
 function setEstado(e){
@@ -722,11 +769,72 @@ function setEstado(e){
     setTimeout(()=> abrirCierreDesdeCliente(currentSegIdx), 150);
   }
 }
+
+// ── Bitácora de gestión ──────────────────────────────────────
+// Crea una entrada nueva en c.bitacora[]
+function _bitacoraAdd(cliente, nota, tipo='manual'){
+  if(!cliente.bitacora) cliente.bitacora = [];
+  const exec = USERS.find(u=>String(u.id)===String(currentUser?.id));
+  const entrada = {
+    fecha:     new Date().toISOString().split('T')[0],
+    hora:      new Date().toLocaleTimeString('es-EC',{hour:'2-digit',minute:'2-digit'}),
+    ejecutivo: exec?.name || currentUser?.name || 'Sistema',
+    estado:    cliente.estado || 'PENDIENTE',
+    nota:      nota || '',
+    tipo,      // 'manual' | 'sistema' | 'cotizacion' | 'cierre'
+  };
+  cliente.bitacora.unshift(entrada); // más reciente primero
+  // Mantener nota principal como la más reciente con texto
+  if(nota) cliente.nota = nota;
+}
+
+// Renderiza el historial de bitácora dentro del modal
+function renderBitacora(bitacora){
+  const el = document.getElementById('bitacora-lista');
+  if(!el) return;
+  const lista = Array.isArray(bitacora) ? bitacora : [];
+  const cntEl = document.getElementById('bitacora-count');
+  if(cntEl) cntEl.textContent = lista.length ? `(${lista.length} entrada${lista.length!==1?'s':''})` : '';
+  if(!lista.length){
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:12px">Sin historial de gestión aún</div>';
+    return;
+  }
+  const TIPO_ICON = { manual:'💬', sistema:'⚙️', cotizacion:'📋', cierre:'✅' };
+  el.innerHTML = lista.map((e,i)=>{
+    const cfg  = ESTADOS_RELIANCE[e.estado] || {};
+    const icon = TIPO_ICON[e.tipo] || '💬';
+    const isFirst = i===0;
+    return `<div style="display:flex;gap:10px;padding:10px 0;${i>0?'border-top:1px solid var(--border)':''}">
+      <div style="flex-shrink:0;width:32px;height:32px;border-radius:50%;
+        background:${isFirst?'var(--accent2)':'var(--warm)'};
+        display:flex;align-items:center;justify-content:center;font-size:14px">
+        ${icon}
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
+          <span style="font-weight:600;font-size:12px">${e.ejecutivo}</span>
+          <span style="font-size:10px;color:var(--muted)">${e.fecha} ${e.hora||''}</span>
+          ${e.estado?`<span class="badge ${cfg.badge||'badge-gray'}" style="font-size:9px;padding:1px 5px">${cfg.icon||''} ${e.estado}</span>`:''}
+        </div>
+        ${e.nota?`<div style="font-size:12px;color:var(--ink);line-height:1.4">${e.nota}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
 function guardarSeguimiento(){
   const c=DB.find(x=>String(x.id)===String(currentSegIdx)); if(!c) return;
-  c.estado=currentSegEstado;
-  c.nota=document.getElementById('seg-nota').value;
-  c.ultimoContacto=new Date().toISOString().split('T')[0];
+  const nota = document.getElementById('seg-nota').value.trim();
+  const estadoAnterior = c.estado;
+  c.estado = currentSegEstado;
+  c.ultimoContacto = new Date().toISOString().split('T')[0];
+  // Agregar entrada a bitácora
+  _bitacoraAdd(c, nota, 'manual');
+  // Si cambió el estado sin nota, registrar el cambio automáticamente
+  if(!nota && estadoAnterior !== currentSegEstado){
+    c.bitacora[0].nota = `Estado cambiado: ${estadoAnterior} → ${currentSegEstado}`;
+    c.bitacora[0].tipo = 'sistema';
+  }
   saveDB();
   sincronizarCotizPorCliente(c.id, c.nombre, c.ci, currentSegEstado);
   closeModal('modal-seguimiento'); renderSeguimiento(); renderVencimientos(); renderDashboard();
@@ -735,8 +843,9 @@ function guardarSeguimiento(){
 function guardarSeguimientoYCierre(){
   const c=DB.find(x=>String(x.id)===String(currentSegIdx)); if(!c) return;
   c.estado='RENOVADO';
-  c.nota=document.getElementById('seg-nota').value;
   c.ultimoContacto=new Date().toISOString().split('T')[0];
+  const notaYC = document.getElementById('seg-nota').value.trim();
+  _bitacoraAdd(c, notaYC || 'Estado → RENOVADO. Registrando cierre de venta.', 'cierre');
   saveDB();
   sincronizarCotizPorCliente(c.id, c.nombre, c.ci, 'RENOVADO');
   renderSeguimiento(); renderVencimientos(); renderDashboard();
@@ -1434,7 +1543,7 @@ function guardarCierreVenta(){
     c.polizaNueva=poliza; c.factura=factura; c.aseguradora=aseg;
     c.desde=desde; c.hasta=hasta; c.formaPago=pago;
     c.primaTotal=total; c.axavd=axavd;
-    c.estado='RENOVADO'; c.nota=`Cerrado ${new Date().toLocaleDateString('es-EC')}${obs?' — '+obs:''}`;
+    c.estado='RENOVADO'; _bitacoraAdd(c, `Cierre registrado${obs?' — '+obs:''}. Aseg: ${cierre?.aseguradora||''}`, 'cierre');
     c.ultimoContacto=new Date().toISOString().split('T')[0];
     saveDB();
     sincronizarCotizPorCliente(c.id, c.nombre, c.ci, 'RENOVADO');
@@ -1722,12 +1831,23 @@ function guardarCotizacion(){
   const marca   = document.getElementById('cot-marca')?.value||'';
   const modelo  = document.getElementById('cot-modelo')?.value||'';
   const anio    = document.getElementById('cot-anio')?.value||'';
-  const placa   = document.getElementById('cot-placa')?.value||'';
+  const placa   = (document.getElementById('cot-placa')?.value||'').toUpperCase().trim();
   const ciudad  = document.getElementById('cot-ciudad')?.value||'';
+  const region  = document.getElementById('cot-region')?.value||'';
+  const tipo    = document.getElementById('cot-tipo')?.value||'NUEVO';
+  const celular = document.getElementById('cot-cel')?.value||'';
+  const correo  = document.getElementById('cot-email')?.value||'';
+  const color   = (document.getElementById('cot-color')?.value||'').toUpperCase().trim();
+  const motor   = (document.getElementById('cot-motor')?.value||'').trim();
+  const chasis  = (document.getElementById('cot-chasis')?.value||'').trim();
+  const asegAnterior  = document.getElementById('cot-aseg-anterior')?.value||'';
+  const polizaAnterior = document.getElementById('cot-poliza-anterior')?.value||'';
   const va      = parseFloat(document.getElementById('cot-va')?.value)||0;
   const extras  = parseFloat(document.getElementById('cot-extras')?.value)||0;
   const vaT     = va + extras;
   const desde   = document.getElementById('cot-desde')?.value||'';
+  // Calcular vigencia hasta = desde + 1 año
+  const hasta   = desde ? (()=>{ const d=new Date(desde+'T00:00:00'); d.setFullYear(d.getFullYear()+1); d.setDate(d.getDate()-1); return d.toISOString().split('T')[0]; })() : '';
   const cuotasTcReq  = parseInt(document.getElementById('cot-cuotas-tc')?.value)||12;
   const cuotasDebReq = parseInt(document.getElementById('cot-cuotas-deb')?.value)||10;
   const autoSustActivo = document.getElementById('sweaden-autosust')?.checked||false;
@@ -1768,11 +1888,16 @@ function guardarCotizacion(){
     codigo, version, reemplazadaPor: null,
     fecha: new Date().toISOString().split('T')[0],
     ejecutivo: currentUser?.id||'',
+    // Datos cliente
     clienteNombre: nombre, clienteCI: ci,
     clienteId: clienteMatch?.id||null,
-    ciudad,
+    celular, correo, ciudad, region,
+    // Datos vehículo
     vehiculo: `${marca} ${modelo} ${anio}`.trim(),
-    placa, va: vaT, desde,
+    marca, modelo, anio, placa, color, motor, chasis,
+    // Datos póliza
+    tipo, va: vaT, desde, hasta,
+    asegAnterior, polizaAnterior,
     cuotasTc: cuotasTcReq, cuotasDeb: cuotasDebReq,
     autoSust: autoSustActivo,
     aseguradoras: selected, resultados,
@@ -1830,33 +1955,52 @@ function exportarCotizAceptadas(){
   const exec_map = {};
   USERS.forEach(u=>exec_map[u.id]=u.name);
 
-  // Filas del Excel — columnas útiles para la aseguradora
+  // Filas del Excel — columnas completas para emisión de póliza
   const filas = lista.map(cot=>{
     const r = (cot.resultados||[]).find(x=>x.name===cot.asegElegida)||{};
+    // Compatibilidad: si no tiene campos directos, extraer de vehiculo string
     const partes = (cot.vehiculo||'').split(' ');
-    const anioV = partes.length>0 && /^\d{4}$/.test(partes[partes.length-1]) ? partes[partes.length-1] : '';
-    const marcaModelo = anioV ? partes.slice(0,-1).join(' ') : cot.vehiculo;
+    const anioV  = cot.anio || (partes.length>0 && /^\d{4}$/.test(partes[partes.length-1]) ? partes[partes.length-1] : '');
+    const marcaV = cot.marca || partes[0] || '';
+    const modeloV= cot.modelo || (anioV ? partes.slice(0,-1).slice(1).join(' ') : partes.slice(1).join(' '));
+    // Vigencia hasta: usar guardado o calcular
+    const hastaV = cot.hasta || (cot.desde ? (()=>{ const d=new Date(cot.desde+'T00:00:00'); d.setFullYear(d.getFullYear()+1); d.setDate(d.getDate()-1); return d.toISOString().split('T')[0]; })() : '');
     return {
-      'Código':          cot.codigo||cot.id,
-      'Fecha':           cot.fecha,
-      'Estado':          cot.estado,
-      'Ejecutivo':       exec_map[cot.ejecutivo]||cot.ejecutivo||'—',
-      'Nombre Cliente':  cot.clienteNombre,
-      'CI / RUC':        cot.clienteCI||'',
-      'Ciudad':          cot.ciudad||'',
-      'Marca / Modelo':  marcaModelo,
-      'Año':             anioV,
-      'Placa':           cot.placa||'',
-      'Valor Asegurado': Number(cot.va||0),
-      'Aseguradora':     cot.asegElegida||'',
-      'Prima Neta':      r.pn ? Number(r.pn.toFixed(2)) : '',
-      'Prima Total':     r.total ? Number(r.total.toFixed(2)) : '',
-      'Cuotas TC':       r.tcN||'',
-      'Cuota TC $':      r.tcCuota ? Number(r.tcCuota.toFixed(2)) : '',
-      'Cuotas Débito':   r.debN||'',
-      'Cuota Débito $':  r.debCuota ? Number(r.debCuota.toFixed(2)) : '',
-      'Vigencia Desde':  cot.desde||'',
-      'Observación':     cot.obsAcept||'',
+      'Código':            cot.codigo||cot.id,
+      'Fecha Cotización':  cot.fecha,
+      'Estado':            cot.estado,
+      'Ejecutivo':         exec_map[cot.ejecutivo]||cot.ejecutivo||'—',
+      // Datos cliente
+      'Nombre Cliente':    cot.clienteNombre,
+      'CI / RUC':          cot.clienteCI||'',
+      'Celular':           cot.celular||'',
+      'Correo':            cot.correo||'',
+      'Ciudad':            cot.ciudad||'',
+      'Región':            cot.region||'',
+      // Datos vehículo
+      'Marca':             marcaV,
+      'Modelo':            modeloV,
+      'Año':               anioV,
+      'Placa':             cot.placa||'',
+      'Color':             cot.color||'',
+      'N° Motor':          cot.motor||'',
+      'N° Chasis':         cot.chasis||'',
+      // Datos póliza
+      'Tipo':              cot.tipo==='NUEVO'?'NUEVA':'RENOVACIÓN',
+      'Aseg. Anterior':    cot.asegAnterior||'',
+      'Póliza Anterior':   cot.polizaAnterior||'',
+      'Valor Asegurado':   Number(cot.va||0),
+      'Vigencia Desde':    cot.desde||'',
+      'Vigencia Hasta':    hastaV,
+      // Datos prima
+      'Aseguradora Elegida': cot.asegElegida||'',
+      'Prima Neta':        r.pn    ? Number(r.pn.toFixed(2))    : '',
+      'Prima Total':       r.total ? Number(r.total.toFixed(2)) : '',
+      'Cuotas TC':         r.tcN||'',
+      'Cuota TC $':        r.tcCuota  ? Number(r.tcCuota.toFixed(2))  : '',
+      'Cuotas Débito':     r.debN||'',
+      'Cuota Débito $':    r.debCuota ? Number(r.debCuota.toFixed(2)) : '',
+      'Observación':       cot.obsAcept||'',
     };
   });
 
@@ -1866,9 +2010,11 @@ function exportarCotizAceptadas(){
 
   // Ancho de columnas
   ws['!cols'] = [
-    {wch:14},{wch:11},{wch:12},{wch:16},{wch:28},{wch:13},{wch:12},
-    {wch:24},{wch:6},{wch:10},{wch:14},{wch:14},{wch:11},{wch:11},
-    {wch:10},{wch:10},{wch:13},{wch:13},{wch:14},{wch:22}
+    {wch:14},{wch:14},{wch:12},{wch:18},  // Código, Fecha, Estado, Ejecutivo
+    {wch:28},{wch:13},{wch:14},{wch:26},{wch:12},{wch:10},  // Cliente: nombre, CI, celular, correo, ciudad, región
+    {wch:12},{wch:22},{wch:6},{wch:10},{wch:10},{wch:18},{wch:22},  // Vehículo: marca, modelo, año, placa, color, motor, chasis
+    {wch:12},{wch:18},{wch:18},{wch:14},{wch:14},{wch:14},  // Póliza: tipo, aseg ant, poliza ant, VA, desde, hasta
+    {wch:18},{wch:11},{wch:11},{wch:10},{wch:10},{wch:13},{wch:13},{wch:22}  // Prima
   ];
 
   const wb = XLSX.utils.book_new();
@@ -1915,12 +2061,24 @@ function nuevaVersionCotiz(id){
     const pla=document.getElementById('cot-placa');if(pla) pla.value=original.placa||'';
     const ciu=document.getElementById('cot-ciudad');if(ciu) ciu.value=original.ciudad||'';
     const des=document.getElementById('cot-desde');if(des) des.value=original.desde||'';
-    const partes=(original.vehiculo||'').split(' ');
-    const anioV=partes.length>0&&/^\d{4}$/.test(partes[partes.length-1])?partes.pop():'';
-    const mEl=document.getElementById('cot-marca');  if(mEl) mEl.value=partes[0]||'';
-    const moEl=document.getElementById('cot-modelo');if(moEl) moEl.value=partes.slice(1).join(' ')||'';
-    const aEl=document.getElementById('cot-anio');   if(aEl) aEl.value=anioV;
-    const vaEl=document.getElementById('cot-va');    if(vaEl) vaEl.value=original.va||'';
+    // Vehículo — usar campos directos si existen, si no parsear de vehiculo string
+    const anioV = original.anio || (()=>{ const p=(original.vehiculo||'').split(' '); return p.length>0&&/^\d{4}$/.test(p[p.length-1])?p[p.length-1]:''; })();
+    const marcaV = original.marca || (original.vehiculo||'').split(' ')[0] || '';
+    const modeloV = original.modelo || (()=>{ const p=(original.vehiculo||'').split(' ').filter(x=>!/^\d{4}$/.test(x)); return p.slice(1).join(' '); })();
+    const mEl=document.getElementById('cot-marca');   if(mEl) mEl.value=marcaV;
+    const moEl=document.getElementById('cot-modelo'); if(moEl) moEl.value=modeloV;
+    const aEl=document.getElementById('cot-anio');    if(aEl) aEl.value=anioV;
+    const vaEl=document.getElementById('cot-va');     if(vaEl) vaEl.value=original.va||'';
+    // Campos adicionales vehículo y cliente
+    const colEl=document.getElementById('cot-color');    if(colEl) colEl.value=original.color||'';
+    const motEl=document.getElementById('cot-motor');    if(motEl) motEl.value=original.motor||'';
+    const chaEl=document.getElementById('cot-chasis');   if(chaEl) chaEl.value=original.chasis||'';
+    const regEl=document.getElementById('cot-region');   if(regEl) regEl.value=original.region||'SIERRA';
+    const tipEl=document.getElementById('cot-tipo');     if(tipEl) tipEl.value=original.tipo||'NUEVO';
+    const celEl=document.getElementById('cot-cel');      if(celEl) celEl.value=original.celular||'';
+    const emEl=document.getElementById('cot-email');     if(emEl) emEl.value=original.correo||'';
+    const aaPEl=document.getElementById('cot-aseg-anterior');   if(aaPEl) aaPEl.value=original.asegAnterior||'';
+    const polPEl=document.getElementById('cot-poliza-anterior');if(polPEl) polPEl.value=original.polizaAnterior||'';
     document.querySelectorAll('.aseg-check').forEach(chk=>{
       chk.checked=(original.aseguradoras||[]).includes(chk.dataset.aseg||chk.value);
     });
@@ -1950,12 +2108,24 @@ function editarCotizacion(id){
     const pla=document.getElementById('cot-placa');if(pla) pla.value=original.placa||'';
     const ciu=document.getElementById('cot-ciudad');if(ciu) ciu.value=original.ciudad||'';
     const des=document.getElementById('cot-desde');if(des) des.value=original.desde||'';
-    const partes=(original.vehiculo||'').split(' ');
-    const anioV=partes.length>0&&/^\d{4}$/.test(partes[partes.length-1])?partes.pop():'';
-    const mEl=document.getElementById('cot-marca');  if(mEl) mEl.value=partes[0]||'';
-    const moEl=document.getElementById('cot-modelo');if(moEl) moEl.value=partes.slice(1).join(' ')||'';
-    const aEl=document.getElementById('cot-anio');   if(aEl) aEl.value=anioV;
-    const vaEl=document.getElementById('cot-va');    if(vaEl) vaEl.value=original.va||'';
+    // Vehículo — usar campos directos si existen, si no parsear de vehiculo string
+    const anioV = original.anio || (()=>{ const p=(original.vehiculo||'').split(' '); return p.length>0&&/^\d{4}$/.test(p[p.length-1])?p[p.length-1]:''; })();
+    const marcaV = original.marca || (original.vehiculo||'').split(' ')[0] || '';
+    const modeloV = original.modelo || (()=>{ const p=(original.vehiculo||'').split(' ').filter(x=>!/^\d{4}$/.test(x)); return p.slice(1).join(' '); })();
+    const mEl=document.getElementById('cot-marca');   if(mEl) mEl.value=marcaV;
+    const moEl=document.getElementById('cot-modelo'); if(moEl) moEl.value=modeloV;
+    const aEl=document.getElementById('cot-anio');    if(aEl) aEl.value=anioV;
+    const vaEl=document.getElementById('cot-va');     if(vaEl) vaEl.value=original.va||'';
+    // Campos adicionales vehículo y cliente
+    const colEl=document.getElementById('cot-color');    if(colEl) colEl.value=original.color||'';
+    const motEl=document.getElementById('cot-motor');    if(motEl) motEl.value=original.motor||'';
+    const chaEl=document.getElementById('cot-chasis');   if(chaEl) chaEl.value=original.chasis||'';
+    const regEl=document.getElementById('cot-region');   if(regEl) regEl.value=original.region||'SIERRA';
+    const tipEl=document.getElementById('cot-tipo');     if(tipEl) tipEl.value=original.tipo||'NUEVO';
+    const celEl=document.getElementById('cot-cel');      if(celEl) celEl.value=original.celular||'';
+    const emEl=document.getElementById('cot-email');     if(emEl) emEl.value=original.correo||'';
+    const aaPEl=document.getElementById('cot-aseg-anterior');   if(aaPEl) aaPEl.value=original.asegAnterior||'';
+    const polPEl=document.getElementById('cot-poliza-anterior');if(polPEl) polPEl.value=original.polizaAnterior||'';
     document.querySelectorAll('.aseg-check').forEach(chk=>{
       chk.checked=(original.aseguradoras||[]).includes(chk.dataset.aseg||chk.value);
     });
@@ -2156,7 +2326,7 @@ function sincronizarCotizPorCliente(clienteId, clienteNombre, clienteCI, nuevoEs
     all.forEach(cot=>{
       if(cot.estado !== 'EN EMISIÓN') return;
       const vinculada =
-        (clienteId  && cot.clienteId  === clienteId) ||
+        (clienteId  && String(cot.clienteId) === String(clienteId)) ||
         (clienteCI  && clienteCI.length>3 && cot.clienteCI === clienteCI) ||
         (clienteNombre && cot.clienteNombre.trim().toUpperCase() === clienteNombre.trim().toUpperCase());
       if(!vinculada) return;
@@ -2285,9 +2455,10 @@ function confirmarAceptacion(){
     clienteDB = DB.find(x=>x.nombre.trim().toUpperCase()===cotiz.clienteNombre.trim().toUpperCase());
   if(clienteDB){
     clienteDB.estado         = 'EMISIÓN';
-    clienteDB.aseguradora    = cotizAsegSeleccionada + ' SEGUROS';
+    clienteDB.aseguradora    = cotizAsegSeleccionada.includes('SEGUROS') ? cotizAsegSeleccionada : cotizAsegSeleccionada + ' SEGUROS';
     clienteDB.ultimoContacto = hoy;
-    clienteDB.nota           = 'Cotización aceptada — ' + cotizAsegSeleccionada + (obs?' · '+obs:'');
+    const notaAcept = `Cotización aceptada — ${cotizAsegSeleccionada}${obs?' · '+obs:''}`;
+    _bitacoraAdd(clienteDB, notaAcept, 'cotizacion');
     saveDB();
   }
 
@@ -2296,6 +2467,8 @@ function confirmarAceptacion(){
   actualizarBadgeCotizaciones();
   renderCotizaciones();
   renderDashboard();
+  renderVencimientos();
+  renderSeguimiento();
 
   const clienteMsg = clienteDB
     ? ' · ' + clienteDB.nombre.split(' ')[0] + ' → EMISIÓN'
@@ -2363,9 +2536,16 @@ function verDetalleCotiz(id){
   const c = all.find(x=>String(x.id)===String(id)); if(!c) return;
   const exec = USERS.find(u=>u.id===c.ejecutivo);
   let html = `<b>${c.clienteNombre}</b> · ${c.vehiculo} · VA $${Number(c.va).toLocaleString()}<br>`;
-  html += `Fecha: ${c.fecha} · Ejecutivo: ${exec?.name||c.ejecutivo}<br>`;
-  html += `Estado: ${c.estado}${c.asegElegida?' · Elegida: <b>'+c.asegElegida+'</b>':''}<br><br>`;
-  html += '<b>Opciones cotizadas:</b><br>';
+  html += `Fecha: ${c.fecha} · Vigencia: ${c.desde||'—'} → ${c.hasta||'—'}<br>`;
+  html += `Ejecutivo: ${exec?.name||c.ejecutivo} · Estado: ${c.estado}${c.asegElegida?' · Elegida: <b>'+c.asegElegida+'</b>':''}<br>`;
+  if(c.placa||c.color||c.motor||c.chasis){
+    html += `<br><b>Vehículo:</b> Placa: ${c.placa||'—'} · Color: ${c.color||'—'}<br>`;
+    if(c.motor)  html += `Motor: ${c.motor}<br>`;
+    if(c.chasis) html += `Chasis: ${c.chasis}<br>`;
+  }
+  if(c.celular||c.correo) html += `<br>Contacto: ${c.celular||''} ${c.correo||''}<br>`;
+  if(c.asegAnterior||c.polizaAnterior) html += `Póliza anterior: ${c.asegAnterior||''} ${c.polizaAnterior||''}<br>`;
+  html += '<br><b>Opciones cotizadas:</b><br>';
   (c.resultados||[]).forEach(r=>{
     html+=`• ${r.name}: $${r.total?.toFixed(2)} | TC ${r.tcN}×$${r.tcCuota?.toFixed(2)} | Déb ${r.debN}×$${r.debCuota?.toFixed(2)}<br>`;
   });
@@ -2791,7 +2971,11 @@ function confirmImport(){
       estado:'PENDIENTE',nota:'',ultimoContacto:'',comentario:'',
       fechaDebito:(row['FECHA DEBITO']||row['BT']||'').toString().split(' ')[0],
       fechaCash:(row['FECHA DE CASH']||row['BM']||'').toString().split(' ')[0],
+      bitacora:[],
     });
+    // Registrar en bitácora del cliente recién creado
+    const nuevoImport = DB[DB.length-1];
+    if(nuevoImport) _bitacoraAdd(nuevoImport, `Cliente importado desde Excel — ${importedFileName||'archivo.xlsx'}`, 'sistema');
     added++;
   });
   saveDB();
@@ -2834,6 +3018,8 @@ function guardarNuevoCliente(){
     comentario:document.getElementById('nc-comentario').value,
     dep:0,poliza:'',estado:'PENDIENTE',nota:'',ultimoContacto:''
   });
+  const nuevoC = DB[DB.length-1];
+  if(nuevoC) _bitacoraAdd(nuevoC, 'Cliente creado en RelianceDesk', 'sistema');
   saveDB();
   showToast(`Cliente ${nombre.split(' ')[0]} registrado`);
   setTimeout(()=>showPage('clientes'),500);
@@ -3260,6 +3446,464 @@ function copiarWa(){
   navigator.clipboard.writeText(msg).then(()=>showToast('Mensaje copiado al portapapeles'));
 }
 
+// ══════════════════════════════════════════════════════════════
+//  EMAIL — Plantillas y funciones (mismo patrón que WhatsApp)
+// ══════════════════════════════════════════════════════════════
+let emailClienteId = null;
+
+const EMAIL_PLANTILLAS = {
+  vencimiento: (c, exec) => ({
+    asunto: `Renovación de Póliza — ${c.marca||''} ${c.modelo||''} ${c.anio||''} · ${c.hasta||''}`.trim(),
+    cuerpo: `Estimado/a ${primerNombre(c.nombre)},
+
+Le informamos que su póliza de seguro vehicular está próxima a vencer:
+
+  Vehículo:     ${c.marca||'—'} ${c.modelo||''} ${c.anio||''}
+  Placa:        ${c.placa||'—'}
+  Aseguradora:  ${c.aseguradora||'—'}
+  Vencimiento:  ${c.hasta||'—'}
+
+Para renovar y mantener su vehículo protegido, contáctenos a la brevedad. Tenemos las mejores opciones del mercado para usted.
+
+Quedo a su disposición para cualquier consulta.
+
+Saludos cordiales,
+${exec}
+RELIANCE — Asesores de Seguros`
+  }),
+
+  cotizacion: (c, exec) => ({
+    asunto: `Cotización de Seguro Vehicular — ${c.marca||''} ${c.modelo||''} ${c.anio||''}`.trim(),
+    cuerpo: `Estimado/a ${primerNombre(c.nombre)},
+
+Le enviamos el comparativo de seguros para su vehículo:
+
+  Vehículo:         ${c.marca||'—'} ${c.modelo||''} ${c.anio||''}
+  Placa:            ${c.placa||'—'}
+  Valor asegurado:  ${fmt(c.va||0)}
+
+Contamos con las mejores aseguradoras del mercado: GENERALI, SWEADEN, ALIANZA, MAPFRE, LATINA, ZURICH.
+
+Por favor indíquenos si desea recibir el comparativo completo o si prefiere que le llamemos para explicarle las coberturas.
+
+Quedo a su disposición para cualquier consulta.
+
+Saludos cordiales,
+${exec}
+RELIANCE — Asesores de Seguros`
+  }),
+
+  cierre: (c, exec) => ({
+    asunto: `Póliza Emitida — ${c.aseguradora||''} · ${c.polizaNueva||c.poliza||''}`.trim(),
+    cuerpo: `Estimado/a ${primerNombre(c.nombre)},
+
+Con mucho gusto le informamos que su póliza ha sido emitida exitosamente:
+
+  Aseguradora:  ${c.aseguradora||'—'}
+  N° Póliza:    ${c.polizaNueva||c.poliza||'—'}
+  Vehículo:     ${c.marca||'—'} ${c.modelo||''} ${c.anio||''}
+  Vigencia:     ${c.desde||'—'} al ${c.hasta||'—'}
+  ${c.factura ? '  Factura:     '+c.factura : ''}
+
+Ante cualquier siniestro comuníquese con nosotros de inmediato. Estamos para servirle.
+
+Gracias por confiar en RELIANCE.
+
+Saludos cordiales,
+${exec}
+RELIANCE — Asesores de Seguros`
+  }),
+
+  documentos: (c, exec) => ({
+    asunto: `Documentos requeridos — ${c.tipo==='RENOVACION'?'Renovación':'Emisión'} de Póliza`,
+    cuerpo: `Estimado/a ${primerNombre(c.nombre)},
+
+Para proceder con la ${c.tipo==='RENOVACION'?'renovación':'emisión'} de su póliza de seguro vehicular, necesitamos los siguientes documentos:
+
+  - Cédula de identidad vigente (ambos lados)
+  - Matrícula del vehículo actualizada
+  - Licencia de conducir vigente
+  ${c.tipo==='RENOVACION'?'- Póliza anterior (si la tiene disponible)':''}
+
+Por favor envíelos como adjuntos a este correo o escríbanos para coordinar.
+
+Quedo a su disposición.
+
+Saludos cordiales,
+${exec}
+RELIANCE — Asesores de Seguros`
+  }),
+
+  libre: () => ({ asunto: '', cuerpo: '' })
+};
+
+function openEmail(id, tipoInicial='vencimiento'){
+  const c = DB.find(x=>String(x.id)===String(id)); if(!c) return;
+  emailClienteId = id;
+  const exec = currentUser ? currentUser.name : 'Ejecutivo RELIANCE';
+  document.getElementById('email-destino').value = c.correo||'';
+  document.getElementById('email-cliente-meta').textContent =
+    `${c.nombre} · ${c.aseguradora||'—'} · Vence: ${c.hasta||'—'}`;
+  // Seleccionar plantilla inicial
+  document.querySelectorAll('#email-tipo-pills .pill').forEach(p=>{
+    p.classList.remove('active');
+    if(p.getAttribute('onclick')&&p.getAttribute('onclick').includes("'"+tipoInicial+"'")) p.classList.add('active');
+  });
+  const pl = EMAIL_PLANTILLAS[tipoInicial];
+  const data = pl ? pl(c, exec) : {asunto:'', cuerpo:''};
+  document.getElementById('email-asunto').value = data.asunto;
+  document.getElementById('email-cuerpo').value = data.cuerpo;
+  document.getElementById('email-char-count').textContent = data.cuerpo.length + ' caracteres';
+  openModal('modal-email');
+}
+
+function selEmailPlantilla(tipo, el){
+  document.querySelectorAll('#email-tipo-pills .pill').forEach(p=>p.classList.remove('active'));
+  if(el) el.classList.add('active');
+  const c = DB.find(x=>String(x.id)===String(emailClienteId)); if(!c) return;
+  const exec = currentUser ? currentUser.name : 'Ejecutivo RELIANCE';
+  const pl = EMAIL_PLANTILLAS[tipo];
+  const data = pl ? pl(c, exec) : {asunto:'', cuerpo:''};
+  document.getElementById('email-asunto').value = data.asunto;
+  const ta = document.getElementById('email-cuerpo');
+  ta.value = data.cuerpo;
+  document.getElementById('email-char-count').textContent = data.cuerpo.length + ' caracteres';
+}
+
+function enviarEmail(){
+  const destino = (document.getElementById('email-destino').value||'').trim();
+  const asunto  = (document.getElementById('email-asunto').value||'').trim();
+  const cuerpo  = document.getElementById('email-cuerpo').value.trim();
+  if(!destino){ showToast('Ingresa el correo del cliente','error'); return; }
+  if(!cuerpo){  showToast('El mensaje no puede estar vacío','error'); return; }
+  // Registrar en bitácora
+  const c = DB.find(x=>String(x.id)===String(emailClienteId));
+  if(c){
+    _bitacoraAdd(c, `Email enviado: ${asunto||'(sin asunto)'}`, 'manual');
+    c.ultimoContacto = new Date().toISOString().split('T')[0];
+    saveDB();
+  }
+  // Abrir cliente de correo con mailto:
+  const mailto = `mailto:${encodeURIComponent(destino)}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
+  window.location.href = mailto;
+  closeModal('modal-email');
+  showToast('Outlook abierto — revisa y envía el correo ✓');
+}
+
+function copiarEmail(){
+  const asunto = document.getElementById('email-asunto').value||'';
+  const cuerpo = document.getElementById('email-cuerpo').value||'';
+  const texto  = asunto ? `Asunto: ${asunto}\n\n${cuerpo}` : cuerpo;
+  navigator.clipboard.writeText(texto).then(()=>{
+    showToast('Correo copiado al portapapeles 📋');
+  }).catch(()=>{
+    const ta=document.getElementById('email-cuerpo');
+    ta.select(); document.execCommand('copy');
+    showToast('Correo copiado al portapapeles 📋');
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TAREAS / AGENDA
+// ══════════════════════════════════════════════════════════════
+let _tareaEditId = null;
+let _tareaDetalleId = null;
+
+function _getTareas(){
+  try{ return JSON.parse(localStorage.getItem('reliance_tareas')||'[]'); }
+  catch(e){ return []; }
+}
+function _saveTareas(arr){
+  localStorage.setItem('reliance_tareas', JSON.stringify(arr));
+}
+
+function myTareas(){
+  const all = _getTareas();
+  if(!currentUser) return [];
+  if(currentUser.rol==='admin') return all;
+  return all.filter(t => String(t.ejecutivo) === String(currentUser.id));
+}
+
+function nuevaTarea(clienteId=null){
+  _tareaEditId = null;
+  const c = clienteId ? DB.find(x=>String(x.id)===String(clienteId)) : null;
+  document.getElementById('tarea-titulo').value = c ? `Llamar a ${primerNombre(c.nombre)}` : '';
+  document.getElementById('tarea-tipo').value = 'llamada';
+  document.getElementById('tarea-prioridad').value = 'media';
+  document.getElementById('tarea-hora').value = '';
+  document.getElementById('tarea-desc').value = '';
+  // Fecha default = hoy
+  document.getElementById('tarea-fecha').value = new Date().toISOString().split('T')[0];
+  // Meta del cliente
+  const meta = document.getElementById('tarea-cliente-meta');
+  if(meta) meta.textContent = c ? `Cliente: ${c.nombre} · ${c.aseguradora||'—'}` : '';
+  // Guardar clienteId para cuando se guarde
+  document.getElementById('modal-tarea').dataset.clienteId = clienteId||'';
+  openModal('modal-tarea');
+}
+function nuevaTareaDesdeCliente(){
+  const c = DB.find(x=>String(x.id)===String(currentSegIdx));
+  if(!c) return;
+  nuevaTarea(c.id);
+}
+
+function guardarTarea(){
+  const titulo = document.getElementById('tarea-titulo').value.trim();
+  const fecha  = document.getElementById('tarea-fecha').value;
+  if(!titulo){ showToast('El título es obligatorio','error'); return; }
+  if(!fecha){  showToast('La fecha es obligatoria','error'); return; }
+
+  const clienteId = document.getElementById('modal-tarea').dataset.clienteId || null;
+  const c = clienteId ? DB.find(x=>String(x.id)===String(clienteId)) : null;
+
+  const all = _getTareas();
+  const tarea = {
+    id:            _tareaEditId || ('T' + Date.now()),
+    titulo,
+    descripcion:   document.getElementById('tarea-desc').value.trim(),
+    clienteId:     clienteId || null,
+    clienteNombre: c ? c.nombre : '',
+    fechaVence:    fecha,
+    horaVence:     document.getElementById('tarea-hora').value || '',
+    tipo:          document.getElementById('tarea-tipo').value,
+    prioridad:     document.getElementById('tarea-prioridad').value,
+    estado:        'pendiente',
+    ejecutivo:     currentUser?.id || '',
+    fechaCreacion: new Date().toISOString().split('T')[0],
+    _dirty:        true,
+  };
+
+  if(_tareaEditId){
+    const idx = all.findIndex(t=>t.id===_tareaEditId);
+    if(idx>=0) all[idx] = {...all[idx], ...tarea};
+  } else {
+    all.push(tarea);
+    // Registrar en bitácora del cliente si está vinculada
+    if(c) _bitacoraAdd(c, `Tarea creada: ${titulo} para ${fecha}`, 'sistema');
+  }
+
+  _saveTareas(all);
+  spCreate('tareas', tarea).catch(()=>{});
+  closeModal('modal-tarea');
+  actualizarBadgeTareas();
+  renderDashTareas();
+  renderCalendario();
+  renderTareasCalendario();
+  showToast(`📌 Tarea guardada — ${fecha}`,'success');
+}
+
+function completarTarea(id){
+  const all = _getTareas();
+  const t = all.find(x=>x.id===id); if(!t) return;
+  t.estado = 'completada';
+  t._dirty = true;
+  _saveTareas(all);
+  spUpdate('tareas', t).catch(()=>{});
+  // Registrar en bitácora del cliente
+  const c = t.clienteId ? DB.find(x=>String(x.id)===String(t.clienteId)) : null;
+  if(c) _bitacoraAdd(c, `Tarea completada: ${t.titulo}`, 'sistema');
+  actualizarBadgeTareas();
+  renderDashTareas();
+  renderCalendario();
+  renderTareasCalendario();
+  closeModal('modal-tarea-detalle');
+  showToast('✅ Tarea completada');
+}
+
+function eliminarTarea(id){
+  if(!confirm('¿Eliminar esta tarea?')) return;
+  const all = _getTareas().filter(t=>t.id!==id);
+  _saveTareas(all);
+  actualizarBadgeTareas();
+  renderDashTareas();
+  renderCalendario();
+  renderTareasCalendario();
+  closeModal('modal-tarea-detalle');
+  showToast('Tarea eliminada');
+}
+
+function completarTareaDetalle(){ if(_tareaDetalleId) completarTarea(_tareaDetalleId); }
+function eliminarTareaDetalle(){  if(_tareaDetalleId) eliminarTarea(_tareaDetalleId);  }
+
+function abrirDetalleTarea(id){
+  const t = _getTareas().find(x=>x.id===id); if(!t) return;
+  _tareaDetalleId = id;
+  const TIPO_LABEL = { llamada:'📞 Llamada', email:'✉️ Email', reunion:'🤝 Reunión', seguimiento:'📋 Seguimiento', otro:'📌 Otro' };
+  const PRIO_LABEL = { alta:'🔴 Alta', media:'🟡 Media', baja:'🟢 Baja' };
+  document.getElementById('tarea-det-titulo').textContent = t.titulo;
+  document.getElementById('tarea-det-body').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <span class="badge badge-blue" style="font-size:11px">${TIPO_LABEL[t.tipo]||t.tipo}</span>
+        <span class="badge" style="font-size:11px">${PRIO_LABEL[t.prioridad]||t.prioridad}</span>
+        <span class="badge ${t.estado==='completada'?'badge-green':'badge-gray'}" style="font-size:11px">
+          ${t.estado==='completada'?'✅ Completada':'⏳ Pendiente'}
+        </span>
+      </div>
+      <div style="font-size:13px">📅 <b>${t.fechaVence}</b>${t.horaVence?' a las <b>'+t.horaVence+'</b>':''}</div>
+      ${t.clienteNombre?`<div style="font-size:12px;color:var(--muted)">👤 Cliente: ${t.clienteNombre}</div>`:''}
+      ${t.descripcion?`<div style="font-size:13px;padding:10px;background:var(--warm);border-radius:6px;margin-top:4px">${t.descripcion}</div>`:''}
+    </div>`;
+  // Ocultar botón completar si ya está completada
+  const btnC = document.getElementById('tarea-det-btn-completar');
+  if(btnC) btnC.style.display = t.estado==='completada' ? 'none' : '';
+  openModal('modal-tarea-detalle');
+}
+
+// ── Renders ─────────────────────────────────────────────────
+
+function actualizarBadgeTareas(){
+  const hoy = new Date().toISOString().split('T')[0];
+  const pendHoy = myTareas().filter(t=>t.estado==='pendiente' && t.fechaVence<=hoy).length;
+  const el = document.getElementById('badge-tareas');
+  if(!el) return;
+  if(pendHoy>0){
+    el.textContent = pendHoy;
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function renderDashTareas(){
+  const el = document.getElementById('dash-tareas'); if(!el) return;
+  const hoy = new Date().toISOString().split('T')[0];
+  const tareas = myTareas()
+    .filter(t=>t.estado==='pendiente' && t.fechaVence===hoy)
+    .sort((a,b)=>(a.horaVence||'99:99').localeCompare(b.horaVence||'99:99'));
+  const manana = new Date(); manana.setDate(manana.getDate()+1);
+  const mananaStr = manana.toISOString().split('T')[0];
+  const proximas = myTareas()
+    .filter(t=>t.estado==='pendiente' && t.fechaVence>hoy && t.fechaVence<=mananaStr);
+
+  if(!tareas.length && !proximas.length){
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">Sin tareas para hoy 🎉</div>';
+    return;
+  }
+  const TIPO_ICON = { llamada:'📞', email:'✉️', reunion:'🤝', seguimiento:'📋', otro:'📌' };
+  const PRIO_COLOR = { alta:'var(--red)', media:'var(--gold)', baja:'var(--green)' };
+  el.innerHTML = tareas.map(t=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer"
+      onclick="abrirDetalleTarea('${t.id}')">
+      <span style="font-size:16px">${TIPO_ICON[t.tipo]||'📌'}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.titulo}</div>
+        ${t.horaVence?`<div style="font-size:10px;color:var(--muted)">${t.horaVence}${t.clienteNombre?' · '+primerNombre(t.clienteNombre):''}</div>`:''}
+      </div>
+      <div style="width:6px;height:6px;border-radius:50%;background:${PRIO_COLOR[t.prioridad]||'var(--muted)'};flex-shrink:0"></div>
+      <button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();completarTarea('${t.id}')">✅</button>
+    </div>`).join('') +
+  (proximas.length?`<div style="font-size:10px;color:var(--muted);padding:6px 0">Mañana: ${proximas.length} tarea${proximas.length>1?'s':''}</div>`:'');
+}
+
+function renderTareasCalendario(){
+  const el = document.getElementById('cal-tareas-lista'); if(!el) return;
+  const hoy = new Date().toISOString().split('T')[0];
+  const pendientes = myTareas()
+    .filter(t=>t.estado==='pendiente')
+    .sort((a,b)=>a.fechaVence.localeCompare(b.fechaVence));
+  if(!pendientes.length){
+    el.innerHTML='<div style="color:var(--muted);font-size:12px;padding:8px">Sin tareas pendientes</div>';
+    return;
+  }
+  const TIPO_ICON = { llamada:'📞', email:'✉️', reunion:'🤝', seguimiento:'📋', otro:'📌' };
+  const PRIO_COLOR = { alta:'var(--red)', media:'var(--gold)', baja:'var(--green)' };
+  el.innerHTML = pendientes.map(t=>{
+    const dias = Math.round((new Date(t.fechaVence) - new Date(hoy)) / 86400000);
+    const vencida = dias < 0;
+    return `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px;border-radius:6px;
+      background:${vencida?'#fde8e0':'var(--warm)'};margin-bottom:6px;cursor:pointer"
+      onclick="abrirDetalleTarea('${t.id}')">
+      <span style="font-size:16px">${TIPO_ICON[t.tipo]||'📌'}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600">${t.titulo}</div>
+        <div style="font-size:10px;color:var(--muted)">
+          ${vencida?'<span style="color:var(--red)">Vencida</span>':dias===0?'<b>Hoy</b>':dias===1?'Mañana':'En '+dias+' días'}
+          ${t.horaVence?' · '+t.horaVence:''} ${t.clienteNombre?' · '+primerNombre(t.clienteNombre):''}
+        </div>
+      </div>
+      <div style="width:6px;height:6px;border-radius:50%;background:${PRIO_COLOR[t.prioridad]||'var(--muted)'};flex-shrink:0"></div>
+      <button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();completarTarea('${t.id}')" title="Completar">✅</button>
+    </div>`; }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  NOTIFICACIONES DEL NAVEGADOR
+// ══════════════════════════════════════════════════════════════
+let _notifPermiso = false;
+let _notifDisparadas = false;
+
+async function initNotificaciones(){
+  if(!('Notification' in window)) return;
+  if(Notification.permission === 'granted'){
+    _notifPermiso = true;
+  } else if(Notification.permission !== 'denied'){
+    const perm = await Notification.requestPermission();
+    _notifPermiso = perm === 'granted';
+  }
+  if(_notifPermiso && !_notifDisparadas){
+    _notifDisparadas = true;
+    setTimeout(dispararNotificaciones, 2000);
+    // Repetir cada hora para notificaciones durante el día
+    setInterval(dispararNotificaciones, 3600000);
+  }
+}
+
+function dispararNotificaciones(){
+  if(!_notifPermiso || !currentUser) return;
+  const hoy = new Date().toISOString().split('T')[0];
+  const mine = myClientes();
+
+  // Clientes que vencen HOY
+  const hoyVenc = mine.filter(c=>c.hasta===hoy && !['RENOVADO','EMITIDO','PÓLIZA VIGENTE'].includes(c.estado));
+  if(hoyVenc.length){
+    _notif(`⚠️ ${hoyVenc.length} póliza${hoyVenc.length>1?'s':''} vence${hoyVenc.length>1?'n':''} HOY`,
+      hoyVenc.slice(0,3).map(c=>primerNombre(c.nombre)).join(', ') + (hoyVenc.length>3?` y ${hoyVenc.length-3} más`:''));
+  }
+
+  // Clientes que vencen en 7 días
+  const venc7 = mine.filter(c=>{ const d=daysUntil(c.hasta); return d>0&&d<=7&&!['RENOVADO','EMITIDO','PÓLIZA VIGENTE'].includes(c.estado); });
+  if(venc7.length){
+    _notif(`📅 ${venc7.length} cliente${venc7.length>1?'s':''} vence${venc7.length>1?'n':''} en 7 días`,
+      venc7.slice(0,3).map(c=>`${primerNombre(c.nombre)} (${daysUntil(c.hasta)}d)`).join(', '));
+  }
+
+  // Tareas pendientes de hoy o vencidas
+  const tareasHoy = myTareas().filter(t=>t.estado==='pendiente' && t.fechaVence<=hoy);
+  if(tareasHoy.length){
+    _notif(`📌 ${tareasHoy.length} tarea${tareasHoy.length>1?'s':''} pendiente${tareasHoy.length>1?'s':''}`,
+      tareasHoy.slice(0,3).map(t=>t.titulo).join(', '));
+  }
+
+  // Tareas con hora — notif cuando la hora actual coincide (±5 min)
+  const ahoraH = new Date().getHours().toString().padStart(2,'0');
+  const ahoraM = new Date().getMinutes();
+  myTareas().filter(t=>t.estado==='pendiente' && t.fechaVence===hoy && t.horaVence).forEach(t=>{
+    const [h,m] = (t.horaVence||'').split(':').map(Number);
+    if(!isNaN(h) && !isNaN(m)){
+      const diffMin = Math.abs((h*60+m) - (parseInt(ahoraH)*60+ahoraM));
+      if(diffMin <= 5){
+        _notif(`⏰ ${t.titulo}`, `${t.horaVence}${t.clienteNombre?' · '+primerNombre(t.clienteNombre):''}`);
+      }
+    }
+  });
+}
+
+function _notif(titulo, cuerpo){
+  if(!_notifPermiso) return;
+  try{
+    const n = new Notification(titulo, {
+      body:  cuerpo,
+      icon:  'https://sgrandacrm.github.io/crm-reliance/favicon.ico',
+      badge: 'https://sgrandacrm.github.io/crm-reliance/favicon.ico',
+      tag:   titulo, // evita duplicados
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+    setTimeout(()=>n.close(), 8000);
+  } catch(e){}
+}
+
 
 
 // ══════════════════════════════════════════════════════
@@ -3675,6 +4319,18 @@ async function _syncFromSP(){
       const pg3 = document.querySelector('.page.active')?.id;
       if(pg3==='page-cierres') renderCierres();
     }
+    // Cargar tareas
+    const tareas = await spGetAll('tareas');
+    const hashT = tareas.length + '|' + (tareas[tareas.length-1]?._spId||'');
+    const prevT = (_cache.tareas||[]);
+    if(hashT !== (prevT.length + '|' + (prevT[prevT.length-1]?._spId||''))){
+      _cache.tareas = tareas;
+      _saveTareas(tareas.map(t=>({...t, _spId:t._spId})));
+      actualizarBadgeTareas();
+      renderDashTareas();
+      const pg4 = document.querySelector('.page.active')?.id;
+      if(pg4==='page-calendario') renderCalendario();
+    }
   }catch(e){ /* sync silencioso — no mostrar error */ }
 }
 
@@ -3689,15 +4345,27 @@ function startAutoSync(){
 
 async function initApp(){
   // Cargar todos los datos desde SharePoint en paralelo
-  const [cotiz, cierres, spUsers] = await Promise.all([
+  const [cotiz, cierres, spUsers, spTareas] = await Promise.all([
     spGetAll('cotizaciones'),
     spGetAll('cierres'),
     spGetAll('usuarios'),
+    spGetAll('tareas'),
   ]);
   await loadDBAsync();
   _cache.cotizaciones = cotiz;
   _cache.cierres      = cierres;
   _cache.usuarios     = spUsers;
+  // Fusionar tareas SP con localStorage (SP tiene prioridad por _spId)
+  if(spTareas && spTareas.length){
+    const localT = _getTareas();
+    const merged = [...localT];
+    spTareas.forEach(st=>{
+      const idx = merged.findIndex(lt=>lt.id===st.id || lt._spId===st._spId);
+      if(idx>=0) merged[idx] = {...merged[idx], ...st};
+      else merged.push(st);
+    });
+    _saveTareas(merged);
+  }
 
   // Mezclar usuarios SP con los hardcodeados (SP tiene prioridad)
   spUsers.forEach(u=>{
@@ -3721,6 +4389,8 @@ async function initApp(){
   migrarCotizacionesIds();
   renderDashboard();
   actualizarBadgeCotizaciones();
+  actualizarBadgeTareas();
+  renderDashTareas();
 
   // Ocultar login, mostrar app
   hideLoader();
@@ -3728,4 +4398,6 @@ async function initApp(){
   const appEl=document.querySelector('.app');
   if(appEl) appEl.style.display='flex';
   startAutoSync(); // Iniciar sync bidireccional automático
+  // Notificaciones del navegador (leve delay para que cargue todo)
+  setTimeout(initNotificaciones, 3000);
 }
