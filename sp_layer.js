@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════
-//  SHAREPOINT LAYER — CRM Reliance
+//  SHAREPOINT LAYER — RelianceDesk
 //  Reemplaza localStorage con SharePoint Lists via Graph API
 //  Autenticación: MSAL.js v2 (SPA flow)
 // ═══════════════════════════════════════════════════════════════
@@ -11,6 +11,7 @@ const SP_CONFIG = {
   siteId:    null, // se resuelve automáticamente al iniciar
   lists: {
     clientes:      'CRM_Clientes',
+    tareas:        'CRM_Tareas',
     cotizaciones:  'CRM_Cotizaciones',
     cierres:       'CRM_Cierres',
     usuarios:      'CRM_Usuarios',
@@ -31,6 +32,7 @@ const _cache = {
   cotizaciones: null,
   cierres:      null,
   usuarios:     null,
+  tareas:       null,
 };
 
 // ── Inicializar MSAL ─────────────────────────────────────────
@@ -212,6 +214,16 @@ async function spGetAll(listKey){
         obj.aseguradoras  = obj.aseguradoras || [];
         obj.version       = obj.version || 1;
       }
+      if(listKey==='tareas'){
+        obj.titulo      = obj.titulo      || obj.Title || '(sin título)';
+        obj.estado      = obj.estado      || 'pendiente';
+        obj.prioridad   = obj.prioridad   || 'media';
+        obj.tipo        = obj.tipo        || 'llamada';
+        obj.fechaVence  = obj.fechaVence  || '';
+        obj.horaVence   = obj.horaVence   || '';
+        obj.clienteNombre = obj.clienteNombre || '';
+        obj.descripcion = obj.descripcion || '';
+      }
       if(listKey==='clientes'){
         obj.nombre       = obj.nombre || obj.Title || '(sin nombre)';
         obj.estado       = obj.estado || 'PENDIENTE';
@@ -362,8 +374,9 @@ const SP_SKIP = new Set(['id','ID','version','Version']);
 function spToFields(listKey, data){
   // Solo campos que realmente existen en cada lista SP
   const validos = {
-    clientes:     new Set(['Title','ci','tipo','region','ciudad','aseguradora','ejecutivo','estado','placa','marca','modelo','anio','va','pn','primaTotal','desde','hasta','celular','correo','nota','ultimoContacto','factura','poliza','obs','color','motor','chasis','dep','tasa','axavd','formaPago','crm_id','polizaNueva','aseguradoraAnterior','historialWa']),
-    cotizaciones: new Set(['Title','codigo','version','fecha','ejecutivo','clienteNombre','clienteCI','clienteId','ciudad','vehiculo','placa','va','desde','estado','asegElegida','resultados','aseguradoras','obsAcept','fechaAcept','reemplazadaPor','crm_id']),
+    clientes:     new Set(['Title','ci','tipo','region','ciudad','aseguradora','ejecutivo','estado','placa','marca','modelo','anio','va','pn','primaTotal','desde','hasta','celular','correo','nota','ultimoContacto','factura','poliza','obs','color','motor','chasis','dep','tasa','axavd','formaPago','crm_id','polizaNueva','aseguradoraAnterior','historialWa','bitacora']),
+    tareas: new Set(['Title','titulo','descripcion','clienteId','clienteNombre','fechaVence','horaVence','tipo','prioridad','estado','ejecutivo','fechaCreacion','crm_id']),
+    cotizaciones: new Set(['Title','codigo','version','fecha','ejecutivo','clienteNombre','clienteCI','clienteId','celular','correo','ciudad','region','tipo','vehiculo','marca','modelo','anio','placa','color','motor','chasis','va','desde','hasta','asegAnterior','polizaAnterior','estado','asegElegida','resultados','aseguradoras','obsAcept','fechaAcept','reemplazadaPor','crm_id']),
     cierres:      new Set(['Title','clienteNombre','aseguradora','primaTotal','primaNeta','vigDesde','vigHasta','formaPago','facturaAseg','ejecutivo','fechaRegistro','observacion','axavd','crm_id','polizaNueva']),
     usuarios:     new Set(['Title','userId','rol','email','activo','color','initials','crm_id']),
   };
@@ -423,13 +436,28 @@ async function spSetupLists(onProgress){
       {name:'axavd',type:'Text'},{name:'formaPago',type:'Text'},
       {name:'historialWa',type:'note'},{name:'crmid',type:'text'},
     ],
+    CRM_Tareas: [
+      {name:'titulo',type:'Text'},{name:'descripcion',type:'Note'},
+      {name:'clienteId',type:'Text'},{name:'clienteNombre',type:'Text'},
+      {name:'fechaVence',type:'Text'},{name:'horaVence',type:'Text'},
+      {name:'tipo',type:'Text'},{name:'prioridad',type:'Text'},
+      {name:'estado',type:'Text'},{name:'ejecutivo',type:'Text'},
+      {name:'fechaCreacion',type:'Text'},{name:'crm_id',type:'Text'},
+    ],
     CRM_Cotizaciones: [
       {name:'codigo',type:'Text'},{name:'version',type:'Number'},
       {name:'fecha',type:'Text'},{name:'ejecutivo',type:'Text'},
       {name:'clienteNombre',type:'Text'},{name:'clienteCI',type:'Text'},
-      {name:'clienteId',type:'Text'},{name:'ciudad',type:'Text'},
-      {name:'vehiculo',type:'Text'},{name:'placa',type:'Text'},
+      {name:'clienteId',type:'Text'},{name:'celular',type:'Text'},
+      {name:'correo',type:'Text'},{name:'ciudad',type:'Text'},
+      {name:'region',type:'Text'},{name:'tipo',type:'Text'},
+      {name:'vehiculo',type:'Text'},{name:'marca',type:'Text'},
+      {name:'modelo',type:'Text'},{name:'anio',type:'Number'},
+      {name:'placa',type:'Text'},{name:'color',type:'Text'},
+      {name:'motor',type:'Text'},{name:'chasis',type:'Text'},
       {name:'va',type:'Number'},{name:'desde',type:'Text'},
+      {name:'hasta',type:'Text'},{name:'asegAnterior',type:'Text'},
+      {name:'polizaAnterior',type:'Text'},
       {name:'estado',type:'Text'},{name:'asegElegida',type:'Text'},
       {name:'resultados',type:'Note'},{name:'aseguradoras',type:'Note'},
       {name:'obsAcept',type:'Note'},{name:'fechaAcept',type:'Text'},
@@ -543,8 +571,8 @@ function showSpLogin(){
   setupEl.innerHTML = `
     <div class="setup-card">
       <div style="font-size:40px;margin-bottom:16px">🛡</div>
-      <h2>CRM Reliance</h2>
-      <p>Inicia sesión con tu cuenta Microsoft para acceder al CRM compartido en SharePoint.</p>
+      <h2>RelianceDesk</h2>
+      <p>Inicia sesión con tu cuenta Microsoft para acceder a RelianceDesk compartido en SharePoint.</p>
       <button class="btn btn-primary" style="width:100%;justify-content:center;font-size:15px;padding:14px"
         onclick="spLogin()">
         <img src="https://learn.microsoft.com/en-us/azure/active-directory/develop/media/howto-add-branding-in-apps/ms-symbollockup_mssymbol_19.svg"
@@ -665,15 +693,31 @@ async function spAsegurarColumnas(logCol){
       {name:'dep',number:{}},{name:'tasa',number:{}},
       {name:'axavd',text:{}},{name:'formaPago',text:{}},
       {name:'historialWa',text:{allowMultipleLines:true}},
+      {name:'bitacora',text:{allowMultipleLines:true}},
       {name:'crm_id',text:{}},
+    ],
+    CRM_Tareas: [
+      {name:'titulo',text:{}},{name:'descripcion',text:{allowMultipleLines:true}},
+      {name:'clienteId',text:{}},{name:'clienteNombre',text:{}},
+      {name:'fechaVence',text:{}},{name:'horaVence',text:{}},
+      {name:'tipo',text:{}},{name:'prioridad',text:{}},
+      {name:'estado',text:{}},{name:'ejecutivo',text:{}},
+      {name:'fechaCreacion',text:{}},{name:'crm_id',text:{}},
     ],
     CRM_Cotizaciones: [
       {name:'codigo',text:{}},{name:'version',number:{}},
       {name:'fecha',text:{}},{name:'ejecutivo',text:{}},
       {name:'clienteNombre',text:{}},{name:'clienteCI',text:{}},
-      {name:'clienteId',text:{}},{name:'ciudad',text:{}},
-      {name:'vehiculo',text:{}},{name:'placa',text:{}},
+      {name:'clienteId',text:{}},{name:'celular',text:{}},
+      {name:'correo',text:{}},{name:'ciudad',text:{}},
+      {name:'region',text:{}},{name:'tipo',text:{}},
+      {name:'vehiculo',text:{}},{name:'marca',text:{}},
+      {name:'modelo',text:{}},{name:'anio',number:{}},
+      {name:'placa',text:{}},{name:'color',text:{}},
+      {name:'motor',text:{}},{name:'chasis',text:{}},
       {name:'va',number:{}},{name:'desde',text:{}},
+      {name:'hasta',text:{}},{name:'asegAnterior',text:{}},
+      {name:'polizaAnterior',text:{}},
       {name:'estado',text:{}},{name:'asegElegida',text:{}},
       {name:'resultados',text:{allowMultipleLines:true}},
       {name:'aseguradoras',text:{allowMultipleLines:true}},
@@ -732,7 +776,7 @@ async function _spAsegurarColumnas_UNUSED(logCol){
       {name:'dep',type:'number'},{name:'tasa',type:'number'},
       {name:'axavd',type:'text'},{name:'formaPago',type:'text'},
       {name:'crmid',type:'text'},{name:'polizaNueva',type:'text'},
-      {name:'aseguradoraAnterior',type:'text'},{name:'historialWa',type:'note'},
+      {name:'aseguradoraAnterior',type:'text'},{name:'historialWa',type:'note'},{name:'bitacora',type:'Note'},
     ],
     CRM_Cotizaciones: [
       {name:'codigo',type:'text'},
@@ -801,7 +845,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(!colsDone || colsDone !== '2'){
+      if(!colsDone || (colsDone !== '3' && colsDone !== '4')){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -823,7 +867,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','2');
+        localStorage.setItem('sp_cols_done','4');
         if(setupEl) setupEl.style.display='none';
       }
     }
@@ -851,7 +895,7 @@ async function bootApp(){
       return;
     }
 
-    // 3. Listas OK — pre-cargar usuarios SP y mostrar login CRM
+    // 3. Listas OK — pre-cargar usuarios SP y mostrar login RelianceDesk
     localStorage.setItem('sp_setup_done','1');
     try{
       const spUsers = await spGetAll('usuarios');
