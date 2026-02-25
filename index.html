@@ -46,6 +46,8 @@
 <div id="sp-setup"></div>
 
 <!-- APP (oculta hasta que SP cargue) -->
+<div class="app" style="display:none">
+
 
 <!-- ═══════════════════════════════════════════════
      LOGIN SCREEN
@@ -68,10 +70,6 @@
   </div>
 </div>
 
-<div class="app" style="display:none">
-
-
-
 <!-- ═══════════════════════════════════════════════
      SIDEBAR
 ═══════════════════════════════════════════════ -->
@@ -84,7 +82,7 @@
     <div class="nav-section">Principal</div>
     <div class="nav-item active" onclick="showPage('dashboard')"><span class="icon">◈</span><span>Dashboard</span></div>
     <div class="nav-item" onclick="showPage('clientes')"><span class="icon">◉</span><span>Clientes / Vencimientos</span><span class="nav-badge" id="badge-clientes">—</span></div>
-    <div class="nav-item" onclick="showPage('calendario')"><span class="icon">📅</span><span>Calendario</span></div>
+    <div class="nav-item" onclick="showPage('calendario')"><span class="icon">📅</span><span>Calendario</span><span class="nav-badge" id="badge-tareas" style="display:none"></span></div>
     <div class="nav-item" onclick="showPage('seguimiento')"><span class="icon">◎</span><span>Seguimiento</span></div>
     <div class="nav-item" onclick="showPage('cierres')"><span class="icon">✓</span><span>Cierres de Venta</span><span class="nav-badge" style="background:var(--green)" id="badge-cierres">0</span></div>
     <div class="nav-section">Herramientas</div>
@@ -139,6 +137,13 @@
         <div class="card-header"><div class="card-title">Estado de Seguimiento</div></div>
         <div class="card-body" id="dash-seguimiento"></div>
       </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📌 Tareas de hoy</div>
+          <button class="btn btn-ghost btn-sm" onclick="nuevaTarea()">+ Nueva</button>
+        </div>
+        <div class="card-body" style="padding:12px" id="dash-tareas"></div>
+      </div>
     </div>
     <div class="grid-2">
       <div class="card">
@@ -152,7 +157,10 @@
     </div>
   </div>
 
-  <!-- ══ CLIENTES ══ -->
+    <!-- TAREAS DEL DÍA en dashboard -->
+  <div id="dash-tareas" style="margin:0 16px 16px"></div>
+
+<!-- ══ CLIENTES ══ -->
   <div class="page" id="page-clientes">
 
     <!-- TABS -->
@@ -218,17 +226,27 @@
           <button class="btn btn-ghost btn-sm" onclick="calNav(-1)">← Anterior</button>
           <div class="cal-month" id="cal-month-title">—</div>
           <button class="btn btn-ghost btn-sm" onclick="calNav(1)">Siguiente →</button>
+          <button class="btn btn-primary btn-sm" onclick="nuevaTarea()" style="margin-left:8px">📌 Nueva tarea</button>
         </div>
-        <div style="display:flex;gap:8px;margin-left:16px">
+        <div style="display:flex;gap:8px;margin-left:16px;align-items:center">
           <span style="font-size:11px;display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;background:#fde8e0;border-radius:2px;display:inline-block;border:1px solid var(--accent)"></span>Crítico</span>
           <span style="font-size:11px;display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;background:#fff3e0;border-radius:2px;display:inline-block;border:1px solid var(--orange)"></span>Próximo</span>
           <span style="font-size:11px;display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;background:#fef3cd;border-radius:2px;display:inline-block;border:1px solid var(--gold)"></span>En cartera</span>
+          <button class="btn btn-primary btn-sm" onclick="nuevaTarea()" style="margin-left:8px">+ Nueva Tarea</button>
         </div>
       </div>
       <div class="card-body">
         <div class="cal-grid" id="cal-headers"></div>
         <div class="cal-grid" id="cal-body" style="margin-top:4px"></div>
       </div>
+    </div>
+    <!-- Panel tareas pendientes -->
+    <div class="card" style="margin-top:16px">
+      <div class="card-header">
+        <div class="card-title">📌 Tareas pendientes</div>
+        <button class="btn btn-primary btn-sm" onclick="nuevaTarea()">+ Nueva tarea</button>
+      </div>
+      <div class="card-body" style="padding:12px" id="cal-tareas-lista"></div>
     </div>
   </div>
 
@@ -799,7 +817,7 @@
 
 <!-- Modal Seguimiento -->
 <div class="modal-overlay" id="modal-seguimiento">
-  <div class="modal" style="max-width:480px">
+  <div class="modal" style="max-width:580px">
     <div class="modal-header"><div class="modal-title">Actualizar Seguimiento</div><button class="modal-close" onclick="closeModal('modal-seguimiento')">✕</button></div>
     <div class="modal-body">
       <div id="modal-seg-nombre" style="font-weight:600;font-size:15px;margin-bottom:16px"></div>
@@ -824,7 +842,22 @@
           <button class="estado-btn E17" onclick="setEstado('CLIENTE FALLECIDO')" title="Titular fallecido. Se cierra gestión o se coordina con herederos." style="font-size:11px;padding:5px 10px">🕊 Cliente Fallecido</button></div></div>
       </div>
       <div class="section-divider">Nota de seguimiento</div>
-      <textarea class="form-textarea w-full" id="seg-nota" placeholder="Resultado de la llamada, próxima acción…" style="min-height:100px"></textarea>
+      <textarea class="form-textarea w-full" id="seg-nota" placeholder="Resultado de la llamada, próxima acción…" style="min-height:80px"></textarea>
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px;font-size:11px" onclick="nuevaTareaDesdeCliente()">
+        📌 Agregar tarea para este cliente
+      </button>
+
+      <!-- BITÁCORA -->
+      <div style="margin-top:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">
+            📋 Historial de gestión <span id="bitacora-count" style="font-weight:400;color:var(--muted)"></span>
+          </div>
+        </div>
+        <div id="bitacora-lista" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 12px;background:var(--warm)">
+          <div style="color:var(--muted);font-size:12px;text-align:center;padding:12px">Sin historial de gestión aún</div>
+        </div>
+      </div>
     </div>
     <div id="seg-cierre-banner" style="display:none;margin:0 24px 4px;padding:12px 16px;background:#d4edda;border:1px solid #2d6a4f;border-radius:8px">
       <div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:6px">✓ Estado: RENOVADO — ¿Registrar cierre de venta?</div>
@@ -997,6 +1030,199 @@
       <button class="btn btn-green" onclick="enviarWhatsApp()" style="background:#25D366">
         <span style="font-size:15px">💬</span> Abrir en WhatsApp
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EMAIL -->
+<div class="modal-overlay" id="modal-email">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:22px">✉️</span> Enviar Email
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px" id="email-cliente-meta">—</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('modal-email')">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Selector plantilla -->
+      <div class="section-divider">Tipo de mensaje</div>
+      <div class="filter-pills" id="email-tipo-pills" style="margin-bottom:16px">
+        <div class="pill active" onclick="selEmailPlantilla('vencimiento',this)">⏰ Vencimiento</div>
+        <div class="pill" onclick="selEmailPlantilla('cotizacion',this)">🧮 Cotización</div>
+        <div class="pill" onclick="selEmailPlantilla('cierre',this)">✅ Cierre/Renovación</div>
+        <div class="pill" onclick="selEmailPlantilla('documentos',this)">📄 Documentos</div>
+        <div class="pill" onclick="selEmailPlantilla('libre',this)">✏ Personalizado</div>
+      </div>
+      <!-- Destino -->
+      <div class="form-group" style="margin-bottom:12px">
+        <label class="form-label">Correo destinatario <span style="color:var(--red)">*</span></label>
+        <input class="form-input" id="email-destino" placeholder="cliente@email.com" type="email">
+      </div>
+      <!-- Asunto -->
+      <div class="form-group" style="margin-bottom:12px">
+        <label class="form-label">Asunto</label>
+        <input class="form-input" id="email-asunto" placeholder="Asunto del correo">
+      </div>
+      <!-- Cuerpo -->
+      <div class="form-group">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <label class="form-label">Mensaje <span style="color:var(--red)">*</span></label>
+          <span style="font-size:10px;color:var(--muted)" id="email-char-count">0 caracteres</span>
+        </div>
+        <textarea class="form-textarea w-full" id="email-cuerpo" style="min-height:220px;font-size:13px;line-height:1.6"
+          oninput="document.getElementById('email-char-count').textContent=this.value.length+' caracteres'"></textarea>
+      </div>
+      <div style="margin-top:8px;padding:8px 12px;background:var(--warm);border-radius:6px;font-size:11px;color:var(--muted)">
+        💡 Se abrirá tu cliente de correo (Outlook) con el mensaje listo para revisar y enviar.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-email')">Cancelar</button>
+      <button class="btn btn-ghost" onclick="copiarEmail()">📋 Copiar</button>
+      <button class="btn btn-primary" onclick="enviarEmail()">
+        <span style="font-size:15px">✉️</span> Abrir en Outlook
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- MODAL NUEVA TAREA -->
+<div class="modal-overlay" id="modal-tarea">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">📌</span> Nueva Tarea
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px" id="tarea-cliente-meta"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('modal-tarea')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid form-grid-2" style="gap:12px">
+        <div class="form-group full">
+          <label class="form-label">Título <span style="color:var(--red)">*</span></label>
+          <input class="form-input" id="tarea-titulo" placeholder="Ej: Llamar a Donoso para renovación">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tipo</label>
+          <select class="form-select" id="tarea-tipo">
+            <option value="llamada">📞 Llamada</option>
+            <option value="email">✉️ Email</option>
+            <option value="reunion">🤝 Reunión</option>
+            <option value="seguimiento">📋 Seguimiento</option>
+            <option value="otro">📌 Otro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Prioridad</label>
+          <select class="form-select" id="tarea-prioridad">
+            <option value="alta">🔴 Alta</option>
+            <option value="media" selected>🟡 Media</option>
+            <option value="baja">🟢 Baja</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha <span style="color:var(--red)">*</span></label>
+          <input class="form-input" type="date" id="tarea-fecha">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Hora</label>
+          <input class="form-input" type="time" id="tarea-hora" placeholder="09:00">
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Descripción / Notas</label>
+          <textarea class="form-textarea w-full" id="tarea-desc" placeholder="Detalles adicionales…" style="min-height:70px"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-tarea')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarTarea()">📌 Guardar tarea</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DETALLE TAREA -->
+<div class="modal-overlay" id="modal-tarea-detalle">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <div class="modal-title" id="tarea-det-titulo">Tarea</div>
+      <button class="modal-close" onclick="closeModal('modal-tarea-detalle')">✕</button>
+    </div>
+    <div class="modal-body" id="tarea-det-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-tarea-detalle')">Cerrar</button>
+      <button class="btn btn-ghost" id="tarea-det-btn-completar" onclick="completarTareaDetalle()">✅ Completar</button>
+      <button class="btn btn-danger-outline" onclick="eliminarTareaDetalle()">🗑 Eliminar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- MODAL TAREA -->
+<div class="modal-overlay" id="modal-tarea" data-cliente-id="">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">📌</span> <span id="modal-tarea-titulo-header">Nueva Tarea</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px" id="modal-tarea-cliente-meta"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('modal-tarea')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid form-grid-2" style="gap:12px">
+        <!-- Título -->
+        <div class="form-group full">
+          <label class="form-label">Título <span style="color:var(--red)">*</span></label>
+          <input class="form-input" id="tarea-titulo" placeholder="Ej: Llamar a cliente para renovación">
+        </div>
+        <!-- Tipo -->
+        <div class="form-group">
+          <label class="form-label">Tipo</label>
+          <select class="form-select" id="tarea-tipo">
+            <option value="llamada">📞 Llamada</option>
+            <option value="email">✉️ Email</option>
+            <option value="reunion">🤝 Reunión</option>
+            <option value="seguimiento">📋 Seguimiento</option>
+            <option value="otro">📌 Otro</option>
+          </select>
+        </div>
+        <!-- Prioridad -->
+        <div class="form-group">
+          <label class="form-label">Prioridad</label>
+          <select class="form-select" id="tarea-prioridad">
+            <option value="alta">🔴 Alta</option>
+            <option value="media" selected>🟡 Media</option>
+            <option value="baja">🟢 Baja</option>
+          </select>
+        </div>
+        <!-- Fecha -->
+        <div class="form-group">
+          <label class="form-label">Fecha <span style="color:var(--red)">*</span></label>
+          <input class="form-input" type="date" id="tarea-fecha">
+        </div>
+        <!-- Hora -->
+        <div class="form-group">
+          <label class="form-label">Hora <span style="font-size:10px;color:var(--muted)">(opcional)</span></label>
+          <input class="form-input" type="time" id="tarea-hora">
+        </div>
+        <!-- Nota -->
+        <div class="form-group full">
+          <label class="form-label">Nota</label>
+          <textarea class="form-textarea w-full" id="tarea-nota" placeholder="Detalles adicionales…" style="min-height:70px"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-tarea')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarTarea()">💾 Guardar Tarea</button>
     </div>
   </div>
 </div>
