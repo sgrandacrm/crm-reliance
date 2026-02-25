@@ -4276,7 +4276,7 @@ function getSelectedAseg(){
   return Array.from(document.querySelectorAll('.aseg-check:checked')).map(cb=>cb.dataset.aseg);
 }
 
-// ── Sync automático SP→CRM (polling ligero) ─────────────────
+// ── Sync automático SP→RelianceDesk (polling ligero) ────────
 // Se ejecuta cada 60s para reflejar cambios de otros usuarios
 let _syncInterval = null;
 let _lastSyncHash = '';
