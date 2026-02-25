@@ -158,7 +158,6 @@
   </div>
 
     <!-- TAREAS DEL DÍA en dashboard -->
-  <div id="dash-tareas" style="margin:0 16px 16px"></div>
 
 <!-- ══ CLIENTES ══ -->
   <div class="page" id="page-clientes">
@@ -1165,67 +1164,7 @@
 
 
 <!-- MODAL TAREA -->
-<div class="modal-overlay" id="modal-tarea" data-cliente-id="">
-  <div class="modal" style="max-width:480px">
-    <div class="modal-header">
-      <div>
-        <div class="modal-title" style="display:flex;align-items:center;gap:10px">
-          <span style="font-size:20px">📌</span> <span id="modal-tarea-titulo-header">Nueva Tarea</span>
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px" id="modal-tarea-cliente-meta"></div>
-      </div>
-      <button class="modal-close" onclick="closeModal('modal-tarea')">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-grid form-grid-2" style="gap:12px">
-        <!-- Título -->
-        <div class="form-group full">
-          <label class="form-label">Título <span style="color:var(--red)">*</span></label>
-          <input class="form-input" id="tarea-titulo" placeholder="Ej: Llamar a cliente para renovación">
-        </div>
-        <!-- Tipo -->
-        <div class="form-group">
-          <label class="form-label">Tipo</label>
-          <select class="form-select" id="tarea-tipo">
-            <option value="llamada">📞 Llamada</option>
-            <option value="email">✉️ Email</option>
-            <option value="reunion">🤝 Reunión</option>
-            <option value="seguimiento">📋 Seguimiento</option>
-            <option value="otro">📌 Otro</option>
-          </select>
-        </div>
-        <!-- Prioridad -->
-        <div class="form-group">
-          <label class="form-label">Prioridad</label>
-          <select class="form-select" id="tarea-prioridad">
-            <option value="alta">🔴 Alta</option>
-            <option value="media" selected>🟡 Media</option>
-            <option value="baja">🟢 Baja</option>
-          </select>
-        </div>
-        <!-- Fecha -->
-        <div class="form-group">
-          <label class="form-label">Fecha <span style="color:var(--red)">*</span></label>
-          <input class="form-input" type="date" id="tarea-fecha">
-        </div>
-        <!-- Hora -->
-        <div class="form-group">
-          <label class="form-label">Hora <span style="font-size:10px;color:var(--muted)">(opcional)</span></label>
-          <input class="form-input" type="time" id="tarea-hora">
-        </div>
-        <!-- Nota -->
-        <div class="form-group full">
-          <label class="form-label">Nota</label>
-          <textarea class="form-textarea w-full" id="tarea-nota" placeholder="Detalles adicionales…" style="min-height:70px"></textarea>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('modal-tarea')">Cancelar</button>
-      <button class="btn btn-primary" onclick="guardarTarea()">💾 Guardar Tarea</button>
-    </div>
-  </div>
-</div>
+
 
 <!-- PRINT AREA (hidden, shown on print) -->
 <div id="print-area" style="display:none;padding:30px;font-family:'DM Sans',sans-serif;max-width:900px;margin:0 auto">
