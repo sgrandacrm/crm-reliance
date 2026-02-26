@@ -745,7 +745,7 @@ async function spAsegurarColumnas(logCol){
 
   for(const [listName, cols] of Object.entries(colsDef)){
     logCol(`Configurando ${listName}...`);
-    const listId = await spGetListId(Object.keys(SP_CONFIG.lists).find(k=>SP_CONFIG.lists[k]===listName)||listName);
+    const listId = await spGetListId(listName);
     if(!listId){ logCol(`⚠ No se encontró ${listName}`); continue; }
     let ok=0, skip=0;
     for(const col of cols){
