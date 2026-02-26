@@ -482,10 +482,11 @@ async function spSetupLists(onProgress){
 
   for(const [listName, columns] of Object.entries(listDefs)){
     onProgress(`Configurando lista: ${listName}...`);
-    const exists = await spGetListId(listName.replace('CRM_','').toLowerCase());
+    // Verificar si la lista ya existe usando su nombre real
+    const existingId = await spGetListId(listName);
 
     // Crear lista si no existe
-    let listId = _listIds[listName];
+    let listId = existingId;
     if(!listId){
       try{
         const newList = await spGraph(`sites/${_siteId}/lists`, 'POST', {
@@ -745,8 +746,25 @@ async function spAsegurarColumnas(logCol){
 
   for(const [listName, cols] of Object.entries(colsDef)){
     logCol(`Configurando ${listName}...`);
-    const listId = await spGetListId(listName);
-    if(!listId){ logCol(`⚠ No se encontró ${listName}`); continue; }
+    let listId = await spGetListId(listName);
+
+    // Si la lista no existe, crearla
+    if(!listId){
+      try{
+        logCol(`➕ Creando lista ${listName}...`);
+        const newList = await spGraph(`sites/${_siteId}/lists`, 'POST', {
+          displayName: listName,
+          list: { template: 'genericList' }
+        });
+        listId = newList.id;
+        _listIds[listName] = listId;
+        logCol(`✅ Lista ${listName} creada`);
+      }catch(e){
+        logCol(`⚠ Error creando ${listName}: ${e.message}`);
+        continue;
+      }
+    }
+
     let ok=0, skip=0;
     for(const col of cols){
       try{
@@ -902,6 +920,9 @@ async function bootApp(){
       _cache.usuarios = spUsers;
     }catch(e){ console.warn('Pre-carga usuarios SP falló:', e); }
     hideLoader();
+    // Mostrar app (contenedor) y login-screen
+    const appEl = document.querySelector('.app');
+    if(appEl) appEl.style.display = 'flex';
     const loginEl = document.getElementById('login-screen');
     if(loginEl) loginEl.style.display = 'flex';
 
