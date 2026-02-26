@@ -400,7 +400,6 @@ function filterClientes(){
         <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')" title="WhatsApp">💬</button>
         <button class="btn btn-xs" style="background:#0078d4;color:#fff" onclick="openEmail('${c.id}','vencimiento')" title="Email">✉️</button>
         <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')" title="Nueva tarea">📌</button>
-        <button class="btn btn-ghost btn-xs" onclick="nuevaTarea('${c.id}')" title="Crear tarea">📌</button>
         ${(['RENOVADO','EMITIDO'].includes(c.estado)&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')" title="Registrar cierre de venta">📋</button>`:''}
         ${c.factura?`<span title="Cierre registrado: ${c.factura}" style="font-size:14px;cursor:default">✅</span>`:''}
       </div></td>
@@ -722,8 +721,7 @@ function filterSeguimiento(){
         <button class="btn btn-blue btn-xs" onclick="openSeguimiento('${c.id}')">📞 Actualizar</button>
         <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')">💬 WA</button>
         <button class="btn btn-xs" style="background:#0078d4;color:#fff" onclick="openEmail('${c.id}','vencimiento')">✉️ Mail</button>
-        <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')">📌</button>
-        <button class="btn btn-ghost btn-xs" onclick="nuevaTarea('${c.id}')">📌</button>
+        <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')" title="Nueva tarea">📌</button>
         ${(c.estado==='RENOVADO'&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')">📋 Cierre</button>`:''}
         ${c.factura?`<span class="badge badge-green" style="font-size:10px">✅ Cerrado</span>`:''}
       </div></td>
