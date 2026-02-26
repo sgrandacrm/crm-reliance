@@ -377,7 +377,7 @@ function spToFields(listKey, data){
     clientes:     new Set(['Title','ci','tipo','region','ciudad','aseguradora','ejecutivo','estado','placa','marca','modelo','anio','va','pn','primaTotal','desde','hasta','celular','correo','nota','ultimoContacto','factura','poliza','obs','color','motor','chasis','dep','tasa','axavd','formaPago','crm_id','polizaNueva','aseguradoraAnterior','historialWa','bitacora']),
     tareas: new Set(['Title','titulo','descripcion','clienteId','clienteNombre','fechaVence','horaVence','tipo','prioridad','estado','ejecutivo','fechaCreacion','crm_id']),
     cotizaciones: new Set(['Title','codigo','version','fecha','ejecutivo','clienteNombre','clienteCI','clienteId','celular','correo','ciudad','region','tipo','vehiculo','marca','modelo','anio','placa','color','motor','chasis','va','desde','hasta','asegAnterior','polizaAnterior','estado','asegElegida','resultados','aseguradoras','obsAcept','fechaAcept','reemplazadaPor','crm_id']),
-    cierres:      new Set(['Title','clienteNombre','aseguradora','primaTotal','primaNeta','vigDesde','vigHasta','formaPago','facturaAseg','ejecutivo','fechaRegistro','observacion','axavd','crm_id','polizaNueva']),
+    cierres:      new Set(['Title','clienteNombre','aseguradora','primaTotal','primaNeta','vigDesde','vigHasta','formaPago','facturaAseg','ejecutivo','fechaRegistro','observacion','axavd','crm_id','polizaNueva','chasis']),
     usuarios:     new Set(['Title','userId','rol','email','activo','color','initials','crm_id']),
   };
   const permitidos = validos[listKey] || new Set();
@@ -389,6 +389,7 @@ function spToFields(listKey, data){
   // Title = identificador principal
   let title = '';
   if(listKey==='clientes')     title = data.nombre || data.name || data.id || '';
+  if(listKey==='tareas')       title = data.titulo || data.id || '';
   if(listKey==='cotizaciones') title = data.codigo || data.id || '';
   if(listKey==='cierres')      title = data.polizaNueva || data.id || '';
   if(listKey==='usuarios')     title = data.nombre || data.name || data.email || '';
@@ -482,11 +483,10 @@ async function spSetupLists(onProgress){
 
   for(const [listName, columns] of Object.entries(listDefs)){
     onProgress(`Configurando lista: ${listName}...`);
-    // Verificar si la lista ya existe usando su nombre real
-    const existingId = await spGetListId(listName);
+    const exists = await spGetListId(listName.replace('CRM_','').toLowerCase());
 
     // Crear lista si no existe
-    let listId = existingId;
+    let listId = _listIds[listName];
     if(!listId){
       try{
         const newList = await spGraph(`sites/${_siteId}/lists`, 'POST', {
@@ -746,25 +746,8 @@ async function spAsegurarColumnas(logCol){
 
   for(const [listName, cols] of Object.entries(colsDef)){
     logCol(`Configurando ${listName}...`);
-    let listId = await spGetListId(listName);
-
-    // Si la lista no existe, crearla
-    if(!listId){
-      try{
-        logCol(`➕ Creando lista ${listName}...`);
-        const newList = await spGraph(`sites/${_siteId}/lists`, 'POST', {
-          displayName: listName,
-          list: { template: 'genericList' }
-        });
-        listId = newList.id;
-        _listIds[listName] = listId;
-        logCol(`✅ Lista ${listName} creada`);
-      }catch(e){
-        logCol(`⚠ Error creando ${listName}: ${e.message}`);
-        continue;
-      }
-    }
-
+    const listId = await spGetListId(Object.keys(SP_CONFIG.lists).find(k=>SP_CONFIG.lists[k]===listName)||listName);
+    if(!listId){ logCol(`⚠ No se encontró ${listName}`); continue; }
     let ok=0, skip=0;
     for(const col of cols){
       try{
@@ -920,9 +903,6 @@ async function bootApp(){
       _cache.usuarios = spUsers;
     }catch(e){ console.warn('Pre-carga usuarios SP falló:', e); }
     hideLoader();
-    // Mostrar app (contenedor) y login-screen
-    const appEl = document.querySelector('.app');
-    if(appEl) appEl.style.display = 'flex';
     const loginEl = document.getElementById('login-screen');
     if(loginEl) loginEl.style.display = 'flex';
 
