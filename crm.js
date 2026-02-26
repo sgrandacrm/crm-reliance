@@ -1522,10 +1522,14 @@ function guardarCierreVenta(){
   }
   const axavd=document.getElementById('cv-axavd')?.value||'';
 
-  // Buscar cliente en DB o crear registro de cierre
+  // Buscar cliente en DB
+  const c=cierreVentaData.clienteId ? DB.find(x=>String(x.id)===String(cierreVentaData.clienteId)) : DB.find(x=>x.nombre.trim().toUpperCase()===clienteNombre.trim().toUpperCase());
+
+  // Armar registro de cierre (incluye placa y chasis del vehículo para identificar duplicados)
   const cierre={
     id: Date.now(),
     fechaRegistro: new Date().toISOString().split('T')[0],
+    clienteId: c ? String(c.id) : '',
     clienteNombre, aseguradora:aseg, polizaNueva:poliza,
     facturaAseg:factura, primaTotal:total,
     primaNeta:parseFloat(document.getElementById('cv-pn')?.value)||cierreVentaData.pn||0,
@@ -1533,20 +1537,9 @@ function guardarCierreVenta(){
     formaPago:pago, observacion:obs,
     axavd, cuenta:document.getElementById('cv-cuenta')?.value||'',
     ejecutivo:currentUser?currentUser.id:'',
+    placa: c?.placa||'',
+    chasis: c?.chasis||'',
   };
-
-  // Actualizar cliente en DB — busca por id si viene de cliente directo, si no por nombre
-  // Actualizar cliente en DB
-  const c=cierreVentaData.clienteId ? DB.find(x=>String(x.id)===String(cierreVentaData.clienteId)) : DB.find(x=>x.nombre.trim().toUpperCase()===clienteNombre.trim().toUpperCase());
-  if(c){
-    c.polizaNueva=poliza; c.factura=factura; c.aseguradora=aseg;
-    c.desde=desde; c.hasta=hasta; c.formaPago=pago;
-    c.primaTotal=total; c.axavd=axavd;
-    c.estado='RENOVADO'; _bitacoraAdd(c, `Cierre registrado${obs?' — '+obs:''}. Aseg: ${cierre?.aseguradora||''}`, 'cierre');
-    c.ultimoContacto=new Date().toISOString().split('T')[0];
-    saveDB();
-    sincronizarCotizPorCliente(c.id, c.nombre, c.ci, 'RENOVADO');
-  }
 
   const allCierres=_getCierres();
 
@@ -1562,11 +1555,42 @@ function guardarCierreVenta(){
     _saveCierres(allCierres);
     showToast(`✓ Cierre actualizado — ${aseg} — Póliza ${poliza}`,'success');
   } else {
-    // MODO NUEVO
+    // MODO NUEVO — validar duplicados antes de guardar
+
+    // 1. Duplicado por póliza (una póliza no puede registrarse dos veces)
+    const dupPoliza = allCierres.find(x => x.polizaNueva && x.polizaNueva.trim().toLowerCase() === poliza.trim().toLowerCase());
+    if(dupPoliza){
+      showToast(`Ya existe un cierre con la póliza ${poliza} registrado el ${dupPoliza.fechaRegistro} para ${dupPoliza.clienteNombre}`, 'error');
+      return;
+    }
+
+    // 2. Duplicado por cliente + placa (mismo vehículo)
+    if(cierre.clienteId && cierre.placa){
+      const dupVehiculo = allCierres.find(x =>
+        x.clienteId && String(x.clienteId) === cierre.clienteId &&
+        x.placa && x.placa.trim().toUpperCase() === cierre.placa.trim().toUpperCase()
+      );
+      if(dupVehiculo){
+        showToast(`Ya existe un cierre para ${clienteNombre} con placa ${cierre.placa} (${dupVehiculo.fechaRegistro}). Si es un vehículo distinto, actualiza la placa del cliente primero.`, 'error');
+        return;
+      }
+    }
+
     cierre._dirty = true;
     allCierres.push(cierre);
     _saveCierres(allCierres);
     showToast(`✓ Venta cerrada — ${aseg} — Póliza ${poliza}`,'success');
+  }
+
+  // Actualizar cliente en DB
+  if(c){
+    c.polizaNueva=poliza; c.factura=factura; c.aseguradora=aseg;
+    c.desde=desde; c.hasta=hasta; c.formaPago=pago;
+    c.primaTotal=total; c.axavd=axavd;
+    c.estado='RENOVADO'; _bitacoraAdd(c, `Cierre registrado${obs?' — '+obs:''}. Aseg: ${cierre?.aseguradora||''}`, 'cierre');
+    c.ultimoContacto=new Date().toISOString().split('T')[0];
+    saveDB();
+    sincronizarCotizPorCliente(c.id, c.nombre, c.ci, 'RENOVADO');
   }
 
   // Reset modo edición y botón
@@ -3107,6 +3131,7 @@ function renderCierres(){
     return `<tr>
       <td><span class="mono" style="font-size:11px">${c.fechaRegistro||'—'}</span></td>
       <td><span style="font-weight:500;font-size:12px">${c.clienteNombre||'—'}</span></td>
+      <td><span class="mono" style="font-size:11px">${c.placa||'—'}</span></td>
       <td><span style="font-size:11px">${c.aseguradora||'—'}</span></td>
       <td><span class="mono" style="font-size:10px">${c.polizaNueva||'—'}</span></td>
       <td><span class="mono" style="font-size:10px">${c.facturaAseg||'—'}</span></td>
