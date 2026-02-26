@@ -753,20 +753,10 @@ function setEstado(e){
     b.classList.remove('active');
     if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+e+"'")) b.classList.add('active');
   });
+  // Mostrar banner "Registrar Cierre" solo al seleccionar RENOVADO
   const banner=document.getElementById('seg-cierre-banner');
   if(banner) banner.style.display=(e==='RENOVADO')?'block':'none';
-  if(e==='RENOVADO'){
-    const cli=DB.find(x=>String(x.id)===String(currentSegIdx)); if(!cli) return;
-    cli.estado='RENOVADO';
-    cli.ultimoContacto=new Date().toISOString().split('T')[0];
-    saveDB();
-    sincronizarCotizPorCliente(cli.id, cli.nombre, cli.ci, 'RENOVADO');
-    renderDashboard();
-    closeModal('modal-seguimiento');
-  renderCierres();
-  renderDashboard();
-    setTimeout(()=> abrirCierreDesdeCliente(currentSegIdx), 150);
-  }
+  // Solo actualiza la UI — el estado se persiste al presionar "Guardar" o "Guardar y Cierre"
 }
 
 // ── Bitácora de gestión ──────────────────────────────────────
@@ -841,43 +831,15 @@ function guardarSeguimiento(){
 }
 function guardarSeguimientoYCierre(){
   const c=DB.find(x=>String(x.id)===String(currentSegIdx)); if(!c) return;
-  c.estado='RENOVADO';
-  c.ultimoContacto=new Date().toISOString().split('T')[0];
   const notaYC = document.getElementById('seg-nota').value.trim();
-  _bitacoraAdd(c, notaYC || 'Estado → RENOVADO. Registrando cierre de venta.', 'cierre');
-  saveDB();
-  sincronizarCotizPorCliente(c.id, c.nombre, c.ci, 'RENOVADO');
-  renderSeguimiento(); renderVencimientos(); renderDashboard();
-  closeModal('modal-seguimiento');
-  // Calcular prima con aseguradora actual del cliente para pre-rellenar
-  const aseg=c.aseguradora||'';
-  const va=c.va||0;
-  const cfg=Object.entries(ASEGURADORAS).find(([k])=>aseg.toUpperCase().includes(k));
-  let total=0,pn=0,tcN=12,debN=10,tcCuota=0,debCuota=0,asegKey=aseg;
-  if(cfg&&va>0){
-    const [key,cfgObj]=cfg;
-    const tasa=cfgObj.tasa(va);
-    const p=calcPrima(va,tasa,cfgObj.pnMin);
-    const tc=calcCuotasTc(p.total,cfgObj.tcMax,12);
-    const deb=calcCuotasDeb(p.total,cfgObj.debMax||10);
-    total=p.total; pn=p.pn; tcN=tc.n; debN=deb.n; tcCuota=tc.cuota; debCuota=deb.cuota; asegKey=key;
+  // Solo guarda la nota en bitácora; el estado RENOVADO lo fija guardarCierreVenta al completar el cierre
+  if(notaYC){
+    _bitacoraAdd(c, notaYC, 'cierre');
+    saveDB();
   }
-  // Pre-rellenar datos del cliente en el formulario de cierre
-  cierreVentaData={asegNombre:asegKey||aseg,total,pn,cuotaTc:tcCuota,cuotaDeb:debCuota,nTc:tcN,nDeb:debN,clienteId:c.id};
-  document.getElementById('cv-aseg').textContent=aseg;
-  document.getElementById('cv-total').textContent=total>0?`${fmt(total)} total`:'Ingrese prima manualmente';
-  document.getElementById('cv-cliente').value=c.nombre;
-  document.getElementById('cv-nueva-aseg').value=aseg;
-  const hoy=new Date().toISOString().split('T')[0];
-  const hoyPlus1=new Date(); hoyPlus1.setFullYear(hoyPlus1.getFullYear()+1);
-  document.getElementById('cv-desde').value=c.hasta||hoy;
-  document.getElementById('cv-hasta').value=hoyPlus1.toISOString().split('T')[0];
-  document.getElementById('cv-pn').value=pn>0?pn.toFixed(2):'';
-  document.getElementById('cv-total-val').value=total>0?total.toFixed(2):'';
-  ['cv-factura','cv-poliza','cv-observacion'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
-  document.getElementById('cv-forma-pago').value='DEBITO_BANCARIO';
-  renderCvFormaPago();
-  openModal('modal-cierre-venta');
+  closeModal('modal-seguimiento');
+  // Abrir modal de cierre saltando la validación de estado (aún no es RENOVADO en DB)
+  abrirCierreDesdeCliente(c.id, true);
 }
 
 // ══════════════════════════════════════════════════════
@@ -1198,9 +1160,9 @@ function calcCotizacion(){
 
 // ── CIERRE DE VENTA ──────────────────────────────────
 let cierreVentaData={};
-function abrirCierreDesdeCliente(id){
+function abrirCierreDesdeCliente(id, skipEstadoCheck=false){
   const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
-  if(!['RENOVADO','EMITIDO'].includes(c.estado)){showToast('El estado debe ser RENOVADO o EMITIDO para registrar un cierre','error');return;}
+  if(!skipEstadoCheck && !['RENOVADO','EMITIDO'].includes(c.estado)){showToast('El estado debe ser RENOVADO o EMITIDO para registrar un cierre','error');return;}
   currentSegIdx=id;
   const aseg=c.aseguradora||'';
   const va=c.va||0;
