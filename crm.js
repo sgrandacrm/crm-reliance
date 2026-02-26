@@ -399,7 +399,6 @@ function filterClientes(){
         <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')" title="WhatsApp">💬</button>
         <button class="btn btn-xs" style="background:#0078d4;color:#fff" onclick="openEmail('${c.id}','vencimiento')" title="Email">✉️</button>
         <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')" title="Nueva tarea">📌</button>
-        <button class="btn btn-ghost btn-xs" onclick="nuevaTarea('${c.id}')" title="Crear tarea">📌</button>
         ${(['RENOVADO','EMITIDO'].includes(c.estado)&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')" title="Registrar cierre de venta">📋</button>`:''}
         ${c.factura?`<span title="Cierre registrado: ${c.factura}" style="font-size:14px;cursor:default">✅</span>`:''}
       </div></td>
@@ -721,8 +720,7 @@ function filterSeguimiento(){
         <button class="btn btn-blue btn-xs" onclick="openSeguimiento('${c.id}')">📞 Actualizar</button>
         <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')">💬 WA</button>
         <button class="btn btn-xs" style="background:#0078d4;color:#fff" onclick="openEmail('${c.id}','vencimiento')">✉️ Mail</button>
-        <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')">📌</button>
-        <button class="btn btn-ghost btn-xs" onclick="nuevaTarea('${c.id}')">📌</button>
+        <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')" title="Nueva tarea">📌</button>
         ${(c.estado==='RENOVADO'&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')">📋 Cierre</button>`:''}
         ${c.factura?`<span class="badge badge-green" style="font-size:10px">✅ Cerrado</span>`:''}
       </div></td>
@@ -1489,6 +1487,25 @@ function guardarCierreVenta(){
   }
   if(errors.length){showToast('Campos obligatorios: '+errors.join(', '),'error');return;}
 
+  // Validar cierre duplicado por chasis (solo en modo NUEVO, no edición)
+  if(!cierreVentaData.editandoCierreId){
+    const clienteActual = cierreVentaData.clienteId
+      ? DB.find(x=>String(x.id)===String(cierreVentaData.clienteId))
+      : DB.find(x=>x.nombre.trim().toUpperCase()===clienteNombre.trim().toUpperCase());
+    if(clienteActual && clienteActual.chasis){
+      const chasisActual = clienteActual.chasis.trim().toUpperCase();
+      const cierresExistentes = _getCierres();
+      const cierreDuplicado = cierresExistentes.find(x=>{
+        if(!x.chasis) return false;
+        return x.chasis.trim().toUpperCase() === chasisActual;
+      });
+      if(cierreDuplicado){
+        showToast(`⚠ Ya existe un cierre para el chasis ${clienteActual.chasis} (${cierreDuplicado.clienteNombre} — ${cierreDuplicado.fechaRegistro}). Si es un vehículo distinto, verifique el chasis del cliente.`,'error');
+        return;
+      }
+    }
+  }
+
   // Armar registro de cierre
   const total=getTotal();
   const pago={forma:fp};
@@ -1534,6 +1551,9 @@ function guardarCierreVenta(){
     formaPago:pago, observacion:obs,
     axavd, cuenta:document.getElementById('cv-cuenta')?.value||'',
     ejecutivo:currentUser?currentUser.id:'',
+    chasis: (cierreVentaData.clienteId
+      ? (DB.find(x=>String(x.id)===String(cierreVentaData.clienteId))?.chasis||'')
+      : ''),
   };
 
   // Actualizar cliente en DB — busca por id si viene de cliente directo, si no por nombre
