@@ -1525,11 +1525,11 @@ function guardarCierreVenta(){
   // Buscar cliente en DB
   const c=cierreVentaData.clienteId ? DB.find(x=>String(x.id)===String(cierreVentaData.clienteId)) : DB.find(x=>x.nombre.trim().toUpperCase()===clienteNombre.trim().toUpperCase());
 
-  // Armar registro de cierre (incluye placa y chasis del vehículo para identificar duplicados)
+  // Armar registro de cierre
+  // _clienteId y _placa usan prefijo _ para ser solo locales (no se envían a SharePoint)
   const cierre={
     id: Date.now(),
     fechaRegistro: new Date().toISOString().split('T')[0],
-    clienteId: c ? String(c.id) : '',
     clienteNombre, aseguradora:aseg, polizaNueva:poliza,
     facturaAseg:factura, primaTotal:total,
     primaNeta:parseFloat(document.getElementById('cv-pn')?.value)||cierreVentaData.pn||0,
@@ -1537,8 +1537,8 @@ function guardarCierreVenta(){
     formaPago:pago, observacion:obs,
     axavd, cuenta:document.getElementById('cv-cuenta')?.value||'',
     ejecutivo:currentUser?currentUser.id:'',
-    placa: c?.placa||'',
-    chasis: c?.chasis||'',
+    _clienteId: c ? String(c.id) : '',
+    _placa: c?.placa||'',
   };
 
   const allCierres=_getCierres();
@@ -1565,13 +1565,13 @@ function guardarCierreVenta(){
     }
 
     // 2. Duplicado por cliente + placa (mismo vehículo)
-    if(cierre.clienteId && cierre.placa){
+    if(cierre._clienteId && cierre._placa){
       const dupVehiculo = allCierres.find(x =>
-        x.clienteId && String(x.clienteId) === cierre.clienteId &&
-        x.placa && x.placa.trim().toUpperCase() === cierre.placa.trim().toUpperCase()
+        x._clienteId && String(x._clienteId) === cierre._clienteId &&
+        x._placa && x._placa.trim().toUpperCase() === cierre._placa.trim().toUpperCase()
       );
       if(dupVehiculo){
-        showToast(`Ya existe un cierre para ${clienteNombre} con placa ${cierre.placa} (${dupVehiculo.fechaRegistro}). Si es un vehículo distinto, actualiza la placa del cliente primero.`, 'error');
+        showToast(`Ya existe un cierre para ${clienteNombre} con placa ${cierre._placa} (${dupVehiculo.fechaRegistro}). Si es un vehículo distinto, actualiza la placa del cliente primero.`, 'error');
         return;
       }
     }
@@ -3131,7 +3131,7 @@ function renderCierres(){
     return `<tr>
       <td><span class="mono" style="font-size:11px">${c.fechaRegistro||'—'}</span></td>
       <td><span style="font-weight:500;font-size:12px">${c.clienteNombre||'—'}</span></td>
-      <td><span class="mono" style="font-size:11px">${c.placa||'—'}</span></td>
+      <td><span class="mono" style="font-size:11px">${c._placa||'—'}</span></td>
       <td><span style="font-size:11px">${c.aseguradora||'—'}</span></td>
       <td><span class="mono" style="font-size:10px">${c.polizaNueva||'—'}</span></td>
       <td><span class="mono" style="font-size:10px">${c.facturaAseg||'—'}</span></td>
