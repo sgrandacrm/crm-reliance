@@ -50,7 +50,7 @@ async function _flushDB(){
     }
   }
   if(changed){
-    localStorage.setItem('reliance_clientes', JSON.stringify(DB));
+    // localStorage ya fue guardado en saveDB(); solo re-renderizar
     const activePage = document.querySelector('.page.active');
     if(activePage && (activePage.id==='page-clientes')) renderClientes();
     renderDashboard();
@@ -77,7 +77,7 @@ async function _flushCotizaciones(all){
     }
   }
   if(changed){
-    localStorage.setItem('reliance_cotizaciones', JSON.stringify(all));
+    // localStorage ya fue guardado en _saveCotizaciones(); solo re-renderizar
     const activePage = document.querySelector('.page.active');
     if(activePage && activePage.id==='page-cotizaciones') renderCotizaciones();
   }
@@ -101,7 +101,7 @@ async function _flushCierres(all){
     }
   }
   if(changed){
-    localStorage.setItem('reliance_cierres', JSON.stringify(all));
+    // localStorage ya fue guardado en _saveCierres(); solo re-renderizar
     const activePage = document.querySelector('.page.active');
     if(activePage && activePage.id==='page-cierres') renderCierres();
     renderDashboard();
@@ -257,10 +257,11 @@ function openModal(id){document.getElementById(id).classList.add('open')}
 const pageTitles={dashboard:'Dashboard',cierres:'Cierres de Venta',clientes:'Cartera de Clientes',vencimientos:'Vencimientos de Pólizas',calendario:'Calendario de Vencimientos',seguimiento:'Seguimiento de Clientes',cotizador:'Cotizador de Primas',comparativo:'Comparativo de Coberturas',tasas:'Tabla de Tasas',admin:'Panel de Administración','nuevo-cliente':'Registrar Cliente'};
 function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  const navItems = document.querySelectorAll('.nav-item');
+  navItems.forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');
   document.getElementById('page-title').textContent=pageTitles[id]||id;
-  document.querySelectorAll('.nav-item').forEach(n=>{
+  navItems.forEach(n=>{
     if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes("'"+id+"'")) n.classList.add('active');
   });
   const renders={clientes:()=>{renderClientes();renderVencimientos();},vencimientos:()=>{showPage('clientes');switchClienteTab('vencimientos');},calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones};
@@ -526,7 +527,7 @@ function openEditar(id){
       ${currentUser&&currentUser.rol==='admin'?`<div class="form-group"><label class="form-label">Asignar a Ejecutivo</label><select class="form-select" id="ed-ejecutivo">${USERS.filter(u=>u.rol==='ejecutivo').map(u=>`<option value="${u.id}"${c.ejecutivo===u.id?' selected':''}>${u.name}</option>`).join('')}</select></div>`:''}
       <div class="form-group full"><label class="form-label">Comentarios</label><textarea class="form-textarea" id="ed-comentario">${c.comentario||''}</textarea></div>
     </div>`;
-  document.getElementById('modal-btn-guardar-editar').onclick=()=>{
+  document.getElementById('modal-btn-guardar-editar').onclick=async()=>{
     c.nombre=document.getElementById('ed-nombre').value;
     c.ci=document.getElementById('ed-ci').value;
     c.celular=document.getElementById('ed-cel').value;
@@ -541,8 +542,8 @@ function openEditar(id){
     c.placa=document.getElementById('ed-placa').value;
     c.comentario=document.getElementById('ed-comentario').value;
     if(document.getElementById('ed-ejecutivo')) c.ejecutivo=document.getElementById('ed-ejecutivo').value;
-    sincronizarCotizPorCliente(c.id, c.nombre, c.ci, c.estado);
-  saveDB(); closeModal('modal-editar'); renderClientes(); renderDashboard(); showToast('Cliente actualizado');
+    await sincronizarCotizPorCliente(c.id, c.nombre, c.ci, c.estado);
+    saveDB(); closeModal('modal-editar'); renderClientes(); renderDashboard(); showToast('Cliente actualizado');
   };
   openModal('modal-editar');
 }
@@ -3835,6 +3836,7 @@ function renderTareasCalendario(){
 // ══════════════════════════════════════════════════════════════
 let _notifPermiso = false;
 let _notifDisparadas = false;
+let _notifInterval = null;
 
 async function initNotificaciones(){
   if(!('Notification' in window)) return;
@@ -3847,8 +3849,8 @@ async function initNotificaciones(){
   if(_notifPermiso && !_notifDisparadas){
     _notifDisparadas = true;
     setTimeout(dispararNotificaciones, 2000);
-    // Repetir cada hora para notificaciones durante el día
-    setInterval(dispararNotificaciones, 3600000);
+    // Repetir cada hora — guardar referencia para poder limpiarlo
+    if(!_notifInterval) _notifInterval = setInterval(dispararNotificaciones, 3600000);
   }
 }
 
@@ -4282,56 +4284,59 @@ function getSelectedAseg(){
 // Se ejecuta cada 60s para reflejar cambios de otros usuarios
 let _syncInterval = null;
 let _lastSyncHash = '';
+let _visibilityHandler = null;
 
 async function _syncFromSP(){
   if(!_spReady || !currentUser) return;
   try{
-    // Cargar clientes
-    const clientes = await spGetAll('clientes');
+    // Capturar hashes previos ANTES de las llamadas a SP
+    const prevCot = (_cache.cotizaciones||[]);
+    const prevC   = (_cache.cierres||[]);
+    const prevT   = (_cache.tareas||[]);
+    const prevHashCot = prevCot.length + '|' + (prevCot[prevCot.length-1]?._spId||'');
+    const prevHashC   = prevC.length   + '|' + (prevC[prevC.length-1]?._spId||'');
+    const prevHashT   = prevT.length   + '|' + (prevT[prevT.length-1]?._spId||'');
+
+    // Cargar las 4 listas en paralelo (spGetAll actualiza _cache internamente)
+    const [clientes, cotizaciones, cierres, tareas] = await Promise.all([
+      spGetAll('clientes'),
+      spGetAll('cotizaciones'),
+      spGetAll('cierres'),
+      spGetAll('tareas'),
+    ]);
+
+    // Una sola query al DOM para toda la función
+    const pg = document.querySelector('.page.active')?.id;
+
+    // Clientes
     const hash = clientes.length + '|' + (clientes[0]?._spId||'');
     if(hash !== _lastSyncHash){
       _lastSyncHash = hash;
       DB = clientes;
-      _cache.clientes = clientes;
       localStorage.setItem('reliance_clientes', JSON.stringify(clientes));
-      // Re-render si está en una página relevante
-      const pg = document.querySelector('.page.active')?.id;
-      if(pg==='page-clientes') renderClientes();
-      if(pg==='page-clientes') renderVencimientos();
+      if(pg==='page-clientes'){ renderClientes(); renderVencimientos(); }
       renderDashboard();
     }
-    // Cargar cotizaciones
-    const cotizaciones = await spGetAll('cotizaciones');
+    // Cotizaciones
     const hashCot = cotizaciones.length + '|' + (cotizaciones[cotizaciones.length-1]?._spId||'');
-    const prevCot = (_cache.cotizaciones||[]);
-    if(hashCot !== (prevCot.length + '|' + (prevCot[prevCot.length-1]?._spId||''))){
-      _cache.cotizaciones = cotizaciones;
+    if(hashCot !== prevHashCot){
       localStorage.setItem('reliance_cotizaciones', JSON.stringify(cotizaciones));
-      const pg2 = document.querySelector('.page.active')?.id;
-      if(pg2==='page-cotizaciones') renderCotizaciones();
+      if(pg==='page-cotizaciones') renderCotizaciones();
       actualizarBadgeCotizaciones();
     }
-    // Cargar cierres
-    const cierres = await spGetAll('cierres');
+    // Cierres
     const hashC = cierres.length + '|' + (cierres[cierres.length-1]?._spId||'');
-    const prevC = (_cache.cierres||[]);
-    if(hashC !== (prevC.length + '|' + (prevC[prevC.length-1]?._spId||''))){
-      _cache.cierres = cierres;
+    if(hashC !== prevHashC){
       localStorage.setItem('reliance_cierres', JSON.stringify(cierres));
-      const pg3 = document.querySelector('.page.active')?.id;
-      if(pg3==='page-cierres') renderCierres();
+      if(pg==='page-cierres') renderCierres();
     }
-    // Cargar tareas
-    const tareas = await spGetAll('tareas');
+    // Tareas
     const hashT = tareas.length + '|' + (tareas[tareas.length-1]?._spId||'');
-    const prevT = (_cache.tareas||[]);
-    if(hashT !== (prevT.length + '|' + (prevT[prevT.length-1]?._spId||''))){
-      _cache.tareas = tareas;
+    if(hashT !== prevHashT){
       _saveTareas(tareas.map(t=>({...t, _spId:t._spId})));
       actualizarBadgeTareas();
       renderDashTareas();
-      const pg4 = document.querySelector('.page.active')?.id;
-      if(pg4==='page-calendario') renderCalendario();
+      if(pg==='page-calendario') renderCalendario();
     }
   }catch(e){ /* sync silencioso — no mostrar error */ }
 }
@@ -4339,10 +4344,10 @@ async function _syncFromSP(){
 function startAutoSync(){
   if(_syncInterval) clearInterval(_syncInterval);
   _syncInterval = setInterval(_syncFromSP, 60000); // cada 60 segundos
-  // También sync al volver a la pestaña
-  document.addEventListener('visibilitychange', ()=>{
-    if(document.visibilityState==='visible' && currentUser) _syncFromSP();
-  });
+  // También sync al volver a la pestaña — remover handler previo para evitar acumulación
+  if(_visibilityHandler) document.removeEventListener('visibilitychange', _visibilityHandler);
+  _visibilityHandler = ()=>{ if(document.visibilityState==='visible' && currentUser) _syncFromSP(); };
+  document.addEventListener('visibilitychange', _visibilityHandler);
 }
 
 async function initApp(){

@@ -563,11 +563,16 @@ function updateSpStatus(state, text){
 }
 
 // ── LOGIN UI ─────────────────────────────────────────────────
+let _showSpLoginRetries = 0;
 function showSpLogin(){
   // Ocultar loader con pequeño delay para que el DOM esté listo
   setTimeout(hideLoader, 100);
   const setupEl = document.getElementById('sp-setup');
-  if(!setupEl){ setTimeout(showSpLogin, 200); return; }
+  if(!setupEl){
+    if(_showSpLoginRetries++ < 20) setTimeout(showSpLogin, 200);
+    return;
+  }
+  _showSpLoginRetries = 0;
   setupEl.style.display = 'flex';
   setupEl.innerHTML = `
     <div class="setup-card">
