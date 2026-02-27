@@ -13,6 +13,17 @@ const USERS = [
   {id:'diego',name:'Diego Ruiz',email:'diego@reliance.ec',pass:'diego2026',rol:'ejecutivo',color:'#28a745',initials:'DR'},
 ];
 
+// ── Tasas de comisión por aseguradora (editables desde Admin) ────────────────
+const COMISIONES_DEFAULT = {
+  SWEADEN:15, MAPFRE:12, GENERALI:12, ZURICH:14,
+  LATINA:15, ALIANZA:15, 'ASEG. DEL SUR':13, 'AXA ASSISTANCE':10,
+};
+function _getComisiones(){
+  try{ return Object.assign({...COMISIONES_DEFAULT}, JSON.parse(localStorage.getItem('reliance_comisiones')||'{}')); }
+  catch(e){ return {...COMISIONES_DEFAULT}; }
+}
+function _saveComisiones(obj){ localStorage.setItem('reliance_comisiones',JSON.stringify(obj)); }
+
 let currentUser = null;
 let currentSegIdx = null;
 let currentSegEstado = 'PENDIENTE';
@@ -39,6 +50,22 @@ function saveDB(){
   }
 }
 
+function _countDirty(){
+  let n = 0;
+  DB.forEach(c=>{ if(c._dirty) n++; });
+  (_getCotizaciones()||[]).forEach(c=>{ if(c._dirty) n++; });
+  (_getCierres()||[]).forEach(c=>{ if(c._dirty) n++; });
+  (_getTareas()||[]).forEach(t=>{ if(t._dirty) n++; });
+  return n;
+}
+function _forceSync(){
+  if(!_spReady){ showToast('SharePoint no disponible','error'); return; }
+  showToast('⟳ Sincronizando con SharePoint…','info');
+  saveDB();
+  const allC=_getCotizaciones(); if(allC.some(x=>x._dirty)) _flushCotizaciones(allC);
+  const allCi=_getCierres();     if(allCi.some(x=>x._dirty)) _flushCierres(allCi);
+}
+
 async function _flushDB(){
   let changed = false;
   for(const cliente of DB){
@@ -54,6 +81,7 @@ async function _flushDB(){
     const activePage = document.querySelector('.page.active');
     if(activePage && (activePage.id==='page-clientes')) renderClientes();
     renderDashboard();
+    updateSpStatus('online','● SharePoint');
   }
 }
 
@@ -80,6 +108,7 @@ async function _flushCotizaciones(all){
     // localStorage ya fue guardado en _saveCotizaciones(); solo re-renderizar
     const activePage = document.querySelector('.page.active');
     if(activePage && activePage.id==='page-cotizaciones') renderCotizaciones();
+    updateSpStatus('online','● SharePoint');
   }
 }
 function _getCierres(){
@@ -105,6 +134,7 @@ async function _flushCierres(all){
     const activePage = document.querySelector('.page.active');
     if(activePage && activePage.id==='page-cierres') renderCierres();
     renderDashboard();
+    updateSpStatus('online','● SharePoint');
   }
 }
 
@@ -485,7 +515,35 @@ function showClienteModal(id){
         </div>
         ${c.comentario?`<div style="padding:10px 14px;background:var(--warm);border-radius:8px;font-size:12px;color:var(--muted)">💬 ${c.comentario}</div>`:''}
       </div></div>
-    </div>`;
+    </div>
+    ${(()=>{
+      const hist = _getCierres()
+        .filter(x=> (x._clienteId && String(x._clienteId)===String(id)) || (x.clienteNombre||'').toUpperCase().trim()===(c.nombre||'').toUpperCase().trim())
+        .sort((a,b)=>(b.fechaRegistro||'').localeCompare(a.fechaRegistro||''));
+      if(!hist.length) return '';
+      return `<div class="card" style="margin-top:12px"><div class="card-body">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px">📜 Historial de Pólizas (${hist.length})</div>
+        <table style="width:100%;font-size:11px;border-collapse:collapse">
+          <thead><tr style="background:var(--warm)">
+            <th style="padding:5px 8px;text-align:left;color:var(--muted)">Fecha</th>
+            <th style="padding:5px 8px;text-align:left;color:var(--muted)">Aseguradora</th>
+            <th style="padding:5px 8px;text-align:left;color:var(--muted)">Póliza</th>
+            <th style="padding:5px 8px;text-align:right;color:var(--muted)">Prima</th>
+            <th style="padding:5px 8px;text-align:left;color:var(--muted)">Pago</th>
+          </tr></thead>
+          <tbody>
+            ${hist.map(h=>`<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:5px 8px;font-family:'DM Mono',monospace">${h.fechaRegistro||'—'}</td>
+              <td style="padding:5px 8px;font-weight:500">${h.aseguradora||'—'}</td>
+              <td style="padding:5px 8px;font-family:'DM Mono',monospace;font-size:10px">${h.polizaNueva||h.Title||'—'}</td>
+              <td style="padding:5px 8px;text-align:right;font-weight:600;color:var(--green)">${fmt(h.primaTotal||0)}</td>
+              <td style="padding:5px 8px;font-size:10px;color:var(--muted)">${(h.formaPago?.forma||'').replace('_',' ')||'—'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div></div>`;
+    })()}
+    `;
   document.getElementById('modal-btn-cotizar').style.display='';
   document.getElementById('modal-btn-editar').style.display='';
   document.getElementById('modal-btn-eliminar').style.display='';
@@ -1662,6 +1720,11 @@ function guardarCierreVenta(){
       return;
     }
 
+    // Calcular comisión estimada para este cierre
+    const _comisiones = _getComisiones();
+    cierre.comisionPct = _comisiones[aseg] || 0;
+    cierre.comision    = Math.round((cierre.primaNeta||0) * (cierre.comisionPct/100) * 100) / 100;
+
     cierre._dirty = true;
     allCierres.push(cierre);
     _saveCierres(allCierres);
@@ -2756,6 +2819,43 @@ async function reconfigurarColumnasSP(){
   }
 }
 
+function renderComisionesAdmin(){
+  const el = document.getElementById('admin-comisiones-body'); if(!el) return;
+  const comis = _getComisiones();
+  const aseguradoras = Object.keys(COMISIONES_DEFAULT);
+  el.innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Porcentaje de comisión sobre prima neta que recibe Reliance por cada aseguradora.
+      Se usa para calcular la comisión estimada en cada cierre de venta.
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      ${aseguradoras.map(a=>`
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:11px">${a}</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input class="form-input" type="number" min="0" max="50" step="0.5"
+              id="comis-${a.replace(/[^a-zA-Z0-9]/g,'_')}"
+              value="${comis[a]||COMISIONES_DEFAULT[a]||0}"
+              style="text-align:right;width:80px">
+            <span style="font-size:13px;color:var(--muted)">%</span>
+          </div>
+        </div>`).join('')}
+    </div>
+    <button class="btn btn-primary w-full" onclick="guardarComisionesAdmin()">💾 Guardar comisiones</button>
+  `;
+}
+
+function guardarComisionesAdmin(){
+  const comis = {};
+  Object.keys(COMISIONES_DEFAULT).forEach(a=>{
+    const id = 'comis-'+a.replace(/[^a-zA-Z0-9]/g,'_');
+    const el = document.getElementById(id);
+    if(el) comis[a] = parseFloat(el.value)||0;
+  });
+  _saveComisiones(comis);
+  showToast('✅ Comisiones actualizadas','success');
+}
+
 function renderAdmin(){
   const execs=USERS.filter(u=>u.rol==='ejecutivo');
   // Poblar select ejecutivos
@@ -2833,6 +2933,7 @@ function renderAdmin(){
 
   // Historial importaciones
   renderImportHistorial();
+  renderComisionesAdmin();
 }
 function showAdminTab(tab, el){
   ['importar','historial','ejecutivos','datos'].forEach(t=>{
@@ -3986,29 +4087,84 @@ function dispararNotificaciones(){
   if(!_notifPermiso || !currentUser) return;
   const hoy = new Date().toISOString().split('T')[0];
   const mine = myClientes();
+  const excluir = ['EMITIDO','PÓLIZA VIGENTE'];
 
-  // Clientes que vencen HOY
-  const hoyVenc = mine.filter(c=>c.hasta===hoy && !['EMITIDO','PÓLIZA VIGENTE'].includes(c.estado));
+  // ── Deduplicación diaria por categoría ──────────────────────────────────────
+  // Notificaciones de vencimiento lejano solo se disparan UNA VEZ por día
+  const _logKey = `notif_diario_${currentUser.id}_${hoy}`;
+  let _fired = {};
+  try{ _fired = JSON.parse(localStorage.getItem(_logKey)||'{}'); }catch(e){}
+  const _markFired = (cat) => {
+    _fired[cat] = true;
+    localStorage.setItem(_logKey, JSON.stringify(_fired));
+  };
+  // Limpiar logs antiguos (>2 días)
+  const ayer = new Date(); ayer.setDate(ayer.getDate()-2);
+  const ayerStr = ayer.toISOString().split('T')[0];
+  Object.keys(localStorage).filter(k=>k.startsWith('notif_diario_')&&k<`notif_diario_${currentUser.id}_${ayerStr}`).forEach(k=>localStorage.removeItem(k));
+
+  // ── Vence HOY — siempre notificar ──────────────────────────────────────────
+  const hoyVenc = mine.filter(c=>c.hasta===hoy && !excluir.includes(c.estado));
   if(hoyVenc.length){
     _notif(`⚠️ ${hoyVenc.length} póliza${hoyVenc.length>1?'s':''} vence${hoyVenc.length>1?'n':''} HOY`,
-      hoyVenc.slice(0,3).map(c=>primerNombre(c.nombre)).join(', ') + (hoyVenc.length>3?` y ${hoyVenc.length-3} más`:''));
+      hoyVenc.slice(0,3).map(c=>primerNombre(c.nombre)).join(', ')+(hoyVenc.length>3?` y ${hoyVenc.length-3} más`:''));
   }
 
-  // Clientes que vencen en 7 días
-  const venc7 = mine.filter(c=>{ const d=daysUntil(c.hasta); return d>0&&d<=7&&!['EMITIDO','PÓLIZA VIGENTE'].includes(c.estado); });
+  // ── Vence en 7 días — siempre notificar ───────────────────────────────────
+  const venc7 = mine.filter(c=>{ const d=daysUntil(c.hasta); return d>0&&d<=7&&!excluir.includes(c.estado); });
   if(venc7.length){
     _notif(`📅 ${venc7.length} cliente${venc7.length>1?'s':''} vence${venc7.length>1?'n':''} en 7 días`,
       venc7.slice(0,3).map(c=>`${primerNombre(c.nombre)} (${daysUntil(c.hasta)}d)`).join(', '));
   }
 
-  // Tareas pendientes de hoy o vencidas
+  // ── Vence en 8-15 días — una vez por día ──────────────────────────────────
+  if(!_fired['15d']){
+    const venc15 = mine.filter(c=>{ const d=daysUntil(c.hasta); return d>7&&d<=15&&!excluir.includes(c.estado); });
+    if(venc15.length){
+      _notif(`🔴 ${venc15.length} póliza${venc15.length>1?'s':''} vence${venc15.length>1?'n':''} en 15 días — urgente`,
+        venc15.slice(0,3).map(c=>`${primerNombre(c.nombre)} (${daysUntil(c.hasta)}d)`).join(', '));
+      _markFired('15d');
+    }
+  }
+
+  // ── Vence en 16-30 días — una vez por día ─────────────────────────────────
+  if(!_fired['30d']){
+    const venc30 = mine.filter(c=>{ const d=daysUntil(c.hasta); return d>15&&d<=30&&!excluir.includes(c.estado); });
+    if(venc30.length){
+      _notif(`⚡ ${venc30.length} póliza${venc30.length>1?'s':''} vence${venc30.length>1?'n':''} en 30 días`,
+        venc30.slice(0,3).map(c=>`${primerNombre(c.nombre)} (${daysUntil(c.hasta)}d)`).join(', '));
+      _markFired('30d');
+    }
+  }
+
+  // ── Vence en 31-60 días — una vez por día ─────────────────────────────────
+  if(!_fired['60d']){
+    const venc60 = mine.filter(c=>{ const d=daysUntil(c.hasta); return d>30&&d<=60&&!excluir.includes(c.estado); });
+    if(venc60.length){
+      _notif(`⏳ ${venc60.length} póliza${venc60.length>1?'s':''} vence${venc60.length>1?'n':''} en 60 días — agenda renovaciones`,
+        venc60.slice(0,3).map(c=>`${primerNombre(c.nombre)} (${daysUntil(c.hasta)}d)`).join(', '));
+      _markFired('60d');
+    }
+  }
+
+  // ── Vence en 61-90 días — una vez por día ─────────────────────────────────
+  if(!_fired['90d']){
+    const venc90 = mine.filter(c=>{ const d=daysUntil(c.hasta); return d>60&&d<=90&&!excluir.includes(c.estado); });
+    if(venc90.length){
+      _notif(`🗓️ ${venc90.length} póliza${venc90.length>1?'s':''} vence${venc90.length>1?'n':''} en 90 días — inicia cotización`,
+        venc90.slice(0,3).map(c=>`${primerNombre(c.nombre)} (${daysUntil(c.hasta)}d)`).join(', '));
+      _markFired('90d');
+    }
+  }
+
+  // ── Tareas pendientes de hoy o vencidas — siempre notificar ───────────────
   const tareasHoy = myTareas().filter(t=>t.estado==='pendiente' && t.fechaVence<=hoy);
   if(tareasHoy.length){
     _notif(`📌 ${tareasHoy.length} tarea${tareasHoy.length>1?'s':''} pendiente${tareasHoy.length>1?'s':''}`,
       tareasHoy.slice(0,3).map(t=>t.titulo).join(', '));
   }
 
-  // Tareas con hora — notif cuando la hora actual coincide (±5 min)
+  // ── Tareas con hora — notif cuando la hora actual coincide (±5 min) ────────
   const ahoraH = new Date().getHours().toString().padStart(2,'0');
   const ahoraM = new Date().getMinutes();
   myTareas().filter(t=>t.estado==='pendiente' && t.fechaVence===hoy && t.horaVence).forEach(t=>{
@@ -4088,6 +4244,10 @@ function renderReportes(){
     <div class="stat-card">
       <div class="stat-label">Vencen en 30 días</div>
       <div class="stat-value" style="color:var(--accent)">${venc30}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Comisión estimada período</div>
+      <div class="stat-value" style="color:var(--gold);font-size:20px" id="rep-kpi-comision">${fmt(cierresPeriodo.reduce((s,c)=>s+((c.comision)||(Math.round((c.primaNeta||0)*((_getComisiones()[c.aseguradora]||0)/100)*100)/100)),0))}</div>
     </div>`;
 
   // ── CHART 1: Estados ──
@@ -4150,9 +4310,13 @@ function renderReportes(){
       const mine = DB.filter(c=>c.ejecutivo===u.id);
       const myCierres = cierresPeriodo.filter(c=>c.ejecutivo===u.id);
       const prima = myCierres.reduce((s,c)=>s+(c.primaTotal||0),0);
+      const comisionTotal = myCierres.reduce((s,c)=>{
+        const com = c.comision || Math.round((c.primaNeta||0)*((_getComisiones()[c.aseguradora]||0)/100)*100)/100;
+        return s+com;
+      },0);
       const renovados = mine.filter(c=>c.estado==='RENOVADO').length;
       const tasa = mine.length > 0 ? Math.round(renovados/mine.length*100) : 0;
-      return {u, mine:mine.length, cierres:myCierres.length, prima, tasa};
+      return {u, mine:mine.length, cierres:myCierres.length, prima, comisionTotal, tasa};
     }).sort((a,b)=>b.prima-a.prima);
 
     rankingEl.innerHTML = `<table style="width:100%;font-size:13px">
@@ -4162,6 +4326,7 @@ function renderReportes(){
         <th style="padding:8px;color:var(--muted)">Clientes</th>
         <th style="padding:8px;color:var(--muted)">Cierres período</th>
         <th style="padding:8px;color:var(--muted)">Prima recaudada</th>
+        <th style="padding:8px;color:var(--muted)">Comisión estimada</th>
         <th style="padding:8px;color:var(--muted)">Tasa renovación</th>
         <th style="padding:8px;color:var(--muted)">Progreso</th>
       </tr></thead>
@@ -4177,6 +4342,7 @@ function renderReportes(){
           <td style="padding:8px;text-align:center">${s.mine}</td>
           <td style="padding:8px;text-align:center;font-weight:600;color:var(--accent2)">${s.cierres}</td>
           <td style="padding:8px;text-align:center;font-weight:700;color:var(--green)">${fmt(s.prima)}</td>
+          <td style="padding:8px;text-align:center;font-weight:600;color:var(--gold)">${fmt(s.comisionTotal)}</td>
           <td style="padding:8px;text-align:center">
             <span style="color:${s.tasa>=60?'var(--green)':'var(--accent)'};font-weight:600">${s.tasa}%</span>
           </td>
@@ -4478,6 +4644,27 @@ function startAutoSync(){
   document.addEventListener('visibilitychange', _visibilityHandler);
 }
 
+// ─── Auto-vencimiento de cotizaciones antiguas ────────────────────────────────
+// Cotizaciones ENVIADA/VISTA con más de 30 días sin respuesta → VENCIDA
+function _vencerCotizacionesAntiguas(){
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-30);
+  const cutoffStr = cutoff.toISOString().split('T')[0];
+  const all = _getCotizaciones();
+  let n = 0;
+  all.forEach(c=>{
+    if(['ENVIADA','VISTA'].includes(c.estado) && c.fecha && c.fecha < cutoffStr){
+      c.estado  = 'VENCIDA';
+      c._dirty  = true;
+      n++;
+    }
+  });
+  if(n){
+    _saveCotizaciones(all);
+    actualizarBadgeCotizaciones();
+    console.info(`_vencerCotizacionesAntiguas: ${n} cotización(es) marcadas VENCIDA`);
+  }
+}
+
 // ─── Auto-reset renovación anual ─────────────────────────────────────────────
 // Detecta clientes en RENOVADO cuya póliza vence en ≤90 días y los reactiva
 // como PENDIENTE para iniciar el ciclo de renovación, preservando datos de la
@@ -4554,6 +4741,7 @@ async function initApp(){
   }
   initAsegSelector();
   migrarCotizacionesIds();
+  _vencerCotizacionesAntiguas();
   _resetearCicloRenovacion();
   renderDashboard();
   actualizarBadgeCotizaciones();

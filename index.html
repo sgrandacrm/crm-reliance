@@ -115,7 +115,6 @@
     <div class="topbar-title" id="page-title">Dashboard</div>
     <div class="topbar-actions">
       <span class="text-muted mono" style="font-size:11px" id="current-date"></span>
-      <button class="btn btn-secondary btn-sm no-print" onclick="showPage('cotizador')">🧮 Cotizar</button>
       <button class="btn btn-primary no-print" onclick="showPage('nuevo-cliente')">+ Nuevo Cliente</button>
     </div>
   </div>
@@ -658,6 +657,13 @@
           <div class="card-body">
             <div id="admin-exec-resumen"></div>
           </div>
+        </div>
+      </div>
+      <!-- Comisiones card -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-header"><div class="card-title">💰 Comisiones por Aseguradora</div></div>
+        <div class="card-body" id="admin-comisiones-body">
+          <div style="color:var(--muted);font-size:12px;text-align:center;padding:12px">Cargando…</div>
         </div>
       </div>
     </div>

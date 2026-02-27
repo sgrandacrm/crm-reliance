@@ -377,11 +377,11 @@ function spToFields(listKey, data){
     clientes:     new Set(['Title','ci','tipo','region','ciudad','aseguradora','ejecutivo','estado','placa','marca','modelo','anio','va','pn','primaTotal','desde','hasta','celular','correo','nota','ultimoContacto','factura','poliza','obs','color','motor','chasis','dep','tasa','axavd','formaPago','crm_id','polizaNueva','aseguradoraAnterior','historialWa','bitacora']),
     tareas: new Set(['Title','titulo','descripcion','clienteId','clienteNombre','fechaVence','horaVence','tipo','prioridad','estado','ejecutivo','fechaCreacion','crm_id']),
     cotizaciones: new Set(['Title','codigo','version','fecha','ejecutivo','clienteNombre','clienteCI','clienteId','celular','correo','ciudad','region','tipo','vehiculo','marca','modelo','anio','placa','color','motor','chasis','va','desde','hasta','asegAnterior','polizaAnterior','estado','asegElegida','resultados','aseguradoras','obsAcept','fechaAcept','reemplazadaPor','crm_id','cuotasTc','cuotasDeb','autoSust']),
-    cierres:      new Set(['Title','clienteNombre','aseguradora','primaTotal','primaNeta','vigDesde','vigHasta','formaPago','facturaAseg','ejecutivo','fechaRegistro','observacion','axavd','crm_id','polizaNueva','cuenta','clienteId','cotizacionId']),
+    cierres:      new Set(['Title','clienteNombre','aseguradora','primaTotal','primaNeta','vigDesde','vigHasta','formaPago','facturaAseg','ejecutivo','fechaRegistro','observacion','axavd','crm_id','polizaNueva','cuenta','clienteId','cotizacionId','comision','comisionPct']),
     usuarios:     new Set(['Title','userId','rol','email','activo','color','initials','crm_id']),
   };
   const permitidos = validos[listKey] || new Set();
-  const camposNum  = new Set(['anio','va','pn','primaTotal','dep','tasa','version','primaNeta','cuotasTc','cuotasDeb']);
+  const camposNum  = new Set(['anio','va','pn','primaTotal','dep','tasa','version','primaNeta','cuotasTc','cuotasDeb','comision','comisionPct']);
   const ignorar    = new Set(['id','nombre','name','pass','password','_spId','_dirty','_spEtag']);
 
   const fields = {};
@@ -554,12 +554,23 @@ async function spMigrateFromLocal(onProgress){
 
 // ── STATUS INDICATOR ─────────────────────────────────────────
 function updateSpStatus(state, text){
-  try{
-    const el = document.getElementById('sp-status');
-    if(!el) return;
-    el.className = `sp-status ${state}`;
-    el.textContent = text;
-  }catch(e){}
+  const el = document.getElementById('sp-status');
+  if(!el) return;
+  el.className = 'sp-status ' + (state||'');
+  // Count pending dirty records if available
+  let badge = '';
+  if(typeof _countDirty === 'function' && state !== 'syncing'){
+    const n = _countDirty();
+    if(n > 0){
+      badge = ` <span style="background:#c84b1a;color:#fff;border-radius:99px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:3px" title="${n} cambio(s) pendiente(s) de sincronizar">${n}</span>`;
+    }
+  }
+  el.innerHTML = (text||'') + badge;
+  el.title = state==='online' ? (badge?`${(el.querySelector('span')?el.querySelector('span').title:'')}`:'Sincronizado con SharePoint') : (text||'');
+  el.style.cursor = (state==='online'||state==='error') ? 'pointer' : 'default';
+  el.onclick = (state==='online'||state==='error') && typeof _forceSync==='function'
+    ? ()=>_forceSync()
+    : null;
 }
 
 // ── LOGIN UI ─────────────────────────────────────────────────
@@ -742,6 +753,7 @@ async function spAsegurarColumnas(logCol){
       {name:'axavd',text:{}},{name:'polizaNueva',text:{}},
       {name:'crm_id',text:{}},
       {name:'cuenta',text:{}},{name:'clienteId',text:{}},{name:'cotizacionId',text:{}},
+      {name:'comision',number:{}},{name:'comisionPct',number:{}},
     ],
     CRM_Usuarios: [
       {name:'userId',text:{}},{name:'rol',text:{}},
@@ -854,7 +866,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(!colsDone || !['3','4','5','6'].includes(colsDone)){
+      if(!colsDone || !['3','4','5','6','7'].includes(colsDone)){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -876,7 +888,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','6');
+        localStorage.setItem('sp_cols_done','7');
         if(setupEl) setupEl.style.display='none';
       }
     }
