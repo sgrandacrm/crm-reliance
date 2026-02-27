@@ -1589,18 +1589,6 @@ function guardarCierreVenta(){
       return;
     }
 
-    // 2. Duplicado por cliente + placa (mismo vehículo)
-    if(cierre._clienteId && cierre._placa){
-      const dupVehiculo = allCierres.find(x =>
-        x._clienteId && String(x._clienteId) === cierre._clienteId &&
-        x._placa && x._placa.trim().toUpperCase() === cierre._placa.trim().toUpperCase()
-      );
-      if(dupVehiculo){
-        showToast(`Ya existe un cierre para ${clienteNombre} con placa ${cierre._placa} (${dupVehiculo.fechaRegistro}). Si es un vehículo distinto, actualiza la placa del cliente primero.`, 'error');
-        return;
-      }
-    }
-
     cierre._dirty = true;
     allCierres.push(cierre);
     _saveCierres(allCierres);
@@ -3912,14 +3900,14 @@ function dispararNotificaciones(){
   const mine = myClientes();
 
   // Clientes que vencen HOY
-  const hoyVenc = mine.filter(c=>c.hasta===hoy && !['RENOVADO','EMITIDO','PÓLIZA VIGENTE'].includes(c.estado));
+  const hoyVenc = mine.filter(c=>c.hasta===hoy && !['EMITIDO','PÓLIZA VIGENTE'].includes(c.estado));
   if(hoyVenc.length){
     _notif(`⚠️ ${hoyVenc.length} póliza${hoyVenc.length>1?'s':''} vence${hoyVenc.length>1?'n':''} HOY`,
       hoyVenc.slice(0,3).map(c=>primerNombre(c.nombre)).join(', ') + (hoyVenc.length>3?` y ${hoyVenc.length-3} más`:''));
   }
 
   // Clientes que vencen en 7 días
-  const venc7 = mine.filter(c=>{ const d=daysUntil(c.hasta); return d>0&&d<=7&&!['RENOVADO','EMITIDO','PÓLIZA VIGENTE'].includes(c.estado); });
+  const venc7 = mine.filter(c=>{ const d=daysUntil(c.hasta); return d>0&&d<=7&&!['EMITIDO','PÓLIZA VIGENTE'].includes(c.estado); });
   if(venc7.length){
     _notif(`📅 ${venc7.length} cliente${venc7.length>1?'s':''} vence${venc7.length>1?'n':''} en 7 días`,
       venc7.slice(0,3).map(c=>`${primerNombre(c.nombre)} (${daysUntil(c.hasta)}d)`).join(', '));
@@ -4402,6 +4390,38 @@ function startAutoSync(){
   document.addEventListener('visibilitychange', _visibilityHandler);
 }
 
+// ─── Auto-reset renovación anual ─────────────────────────────────────────────
+// Detecta clientes en RENOVADO cuya póliza vence en ≤90 días y los reactiva
+// como PENDIENTE para iniciar el ciclo de renovación, preservando datos de la
+// póliza anterior en los campos polizaAnterior / aseguradoraAnterior.
+function _resetearCicloRenovacion(){
+  if(!currentUser) return;
+  const d90 = new Date(); d90.setDate(d90.getDate()+90);
+  const d90Str = d90.toISOString().split('T')[0];
+
+  const paraReset = myClientes().filter(c=>
+    c.estado==='RENOVADO' && c.hasta && c.hasta <= d90Str
+  );
+  if(!paraReset.length) return;
+
+  paraReset.forEach(c=>{
+    c.polizaAnterior      = c.polizaNueva || c.poliza || '';
+    c.aseguradoraAnterior = c.aseguradora || '';
+    c.estado              = 'PENDIENTE';
+    c._dirty              = true;
+    _bitacoraAdd(c,
+      `Ciclo de renovación iniciado automáticamente — póliza anterior: ${c.polizaAnterior} (vigente hasta ${c.hasta})`,
+      'sistema'
+    );
+  });
+
+  saveDB();
+  showToast(
+    `🔄 ${paraReset.length} cliente${paraReset.length>1?'s':''} reactivado${paraReset.length>1?'s':''} para renovación`,
+    'info'
+  );
+}
+
 async function initApp(){
   // Cargar todos los datos desde SharePoint en paralelo
   const [cotiz, cierres, spUsers, spTareas] = await Promise.all([
@@ -4446,6 +4466,7 @@ async function initApp(){
   }
   initAsegSelector();
   migrarCotizacionesIds();
+  _resetearCicloRenovacion();
   renderDashboard();
   actualizarBadgeCotizaciones();
   actualizarBadgeTareas();
