@@ -264,7 +264,7 @@ function showPage(id){
   navItems.forEach(n=>{
     if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes("'"+id+"'")) n.classList.add('active');
   });
-  const renders={clientes:()=>{renderClientes();renderVencimientos();},vencimientos:()=>{showPage('clientes');switchClienteTab('vencimientos');},calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones};
+  const renders={clientes:renderClientes,vencimientos:()=>showPage('seguimiento'),calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones};
   if(renders[id]) renders[id]();
 }
 
@@ -337,28 +337,17 @@ function renderDashboard(){
     <div class="tl-text"><b>${c.nombre.split(' ').slice(0,2).join(' ')}</b> — ${c.obs} <span class="badge ${c.tipo==='NUEVO'?'badge-blue':'badge-gold'}" style="font-size:10px">${c.tipo}</span></div>
     </div>`).join('');
 
-  // Badge
-  const vencBadge = mine.filter(c=>{ const d=daysUntil(c.hasta); return d>=0&&d<=30; }).length;
-  document.getElementById('badge-venc').textContent = vencBadge||'0';
+  // Actualizar badge de urgencia en sidebar Seguimiento
+  const vencBadge = mine.filter(c=>{ const d=daysUntil(c.hasta); return d<0||d<=30; }).length;
+  const badgeSeg=document.getElementById('badge-seg-urgente');
+  if(badgeSeg){ badgeSeg.textContent=vencBadge||'0'; badgeSeg.style.display=vencBadge>0?'':'none'; }
 }
 
 // ══════════════════════════════════════════════════════
 //  CLIENTES
 // ══════════════════════════════════════════════════════
 let clientesFiltrados = [];
-function switchClienteTab(tab){
-  // tabs
-  document.getElementById('tab-cartera').style.color      = tab==='cartera'     ?'var(--accent)':'var(--muted)';
-  document.getElementById('tab-vencimientos').style.color = tab==='vencimientos'?'var(--accent)':'var(--muted)';
-  document.getElementById('tab-cartera').style.borderBottomColor      = tab==='cartera'     ?'var(--accent)':'transparent';
-  document.getElementById('tab-vencimientos').style.borderBottomColor = tab==='vencimientos'?'var(--accent)':'transparent';
-  // subtabs
-  document.getElementById('subtab-cartera').style.display      = tab==='cartera'     ?'':'none';
-  document.getElementById('subtab-vencimientos').style.display = tab==='vencimientos'?'':'none';
-  // render el subtab activo
-  if(tab==='cartera')     renderClientes();
-  if(tab==='vencimientos') renderVencimientos();
-}
+
 function renderClientes(){
   initFilters();
   filterClientes();
@@ -551,42 +540,8 @@ function openEditar(id){
 //  VENCIMIENTOS
 // ══════════════════════════════════════════════════════
 let vencFilter='all';
-function renderVencimientos(){
-  const mine=myClientes();
-  const all=mine.filter(c=>c.hasta&&daysUntil(c.hasta)<=90).sort((a,b)=>new Date(a.hasta)-new Date(b.hasta));
-  const venc0=mine.filter(c=>daysUntil(c.hasta)<0).length;
-  const venc30=mine.filter(c=>{const d=daysUntil(c.hasta);return d>=0&&d<=30}).length;
-  const venc60=mine.filter(c=>{const d=daysUntil(c.hasta);return d>30&&d<=60}).length;
-  const venc90=mine.filter(c=>{const d=daysUntil(c.hasta);return d>60&&d<=90}).length;
-  document.getElementById('vstat-0').textContent=venc0;
-  document.getElementById('vstat-30').textContent=venc30;
-  document.getElementById('vstat-60').textContent=venc60;
-  document.getElementById('vstat-90').textContent=venc90;
-  document.getElementById('badge-venc').textContent=venc30+venc0;
-  let filtered=all;
-  if(vencFilter==='vencida') filtered=all.filter(c=>daysUntil(c.hasta)<0);
-  else if(vencFilter==='30') filtered=all.filter(c=>{const d=daysUntil(c.hasta);return d>=0&&d<=30});
-  else if(vencFilter==='60') filtered=all.filter(c=>{const d=daysUntil(c.hasta);return d>30&&d<=60});
-  else if(vencFilter==='90') filtered=all.filter(c=>{const d=daysUntil(c.hasta);return d>60&&d<=90});
-  document.getElementById('vencimientos-list').innerHTML = filtered.length
-    ? filtered.map(c=>{ const days=daysUntil(c.hasta); return `
-      <div class="venc-alert ${vencClass(days)}">
-        <div class="venc-days">${days<0?`<span style="font-size:11px">hace</span><br>${Math.abs(days)}d`:days+'d'}</div>
-        <div class="venc-info">
-          <div class="venc-name">${c.nombre}</div>
-          <div class="venc-meta">${c.aseguradora} · ${c.marca} ${c.anio} · Placa: ${c.placa||'—'} · ${fmt(c.va)} · Vence: ${c.hasta}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-          ${estadoBadge(c.estado||'PENDIENTE')}
-          <button class="btn btn-ghost btn-xs" onclick="openSeguimiento('${c.id}')">📞 Gestionar</button>
-          <button class="btn btn-ghost btn-xs" onclick="prefillCotizador_show('${c.id}')">🧮 Cotizar</button>
-          <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')">💬 WhatsApp</button>
-          <button class="btn btn-xs" style="background:#0078d4;color:#fff" onclick="openEmail('${c.id}','vencimiento')">✉️ Email</button>
-          <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')">📌 Tarea</button>
-        </div>
-      </div>` }).join('')
-    : '<div class="empty-state"><div class="empty-icon">✅</div><p>No hay vencimientos en este rango</p></div>';
-}
+// renderVencimientos: ahora delega en _updateVencStats (las stat-cards viven en Seguimiento)
+function renderVencimientos(){ _updateVencStats(); }
 function filterVencimientos(f,el){
   vencFilter=f;
   document.querySelectorAll('#venc-pills .pill').forEach(p=>p.classList.remove('active'));
@@ -695,15 +650,53 @@ function showCalDia(dateStr){
 //  SEGUIMIENTO
 // ══════════════════════════════════════════════════════
 let segFilterEstado='';
+let segVencFilter='all'; // 'all'|'vencida'|'30'|'60'|'90'
+
+// Actualiza las 4 stat-cards de urgencia y el badge del sidebar
+function _updateVencStats(){
+  const mine=myClientes();
+  const venc0 =mine.filter(c=>daysUntil(c.hasta)<0).length;
+  const venc30=mine.filter(c=>{const d=daysUntil(c.hasta);return d>=0&&d<=30}).length;
+  const venc60=mine.filter(c=>{const d=daysUntil(c.hasta);return d>30&&d<=60}).length;
+  const venc90=mine.filter(c=>{const d=daysUntil(c.hasta);return d>60&&d<=90}).length;
+  const vals=[venc0,venc30,venc60,venc90];
+  ['vstat-0','vstat-30','vstat-60','vstat-90'].forEach((id,i)=>{
+    const el=document.getElementById(id); if(el) el.textContent=vals[i];
+  });
+  // Resaltar tarjeta activa
+  ['vencida','30','60','90'].forEach(f=>{
+    const card=document.getElementById('svcard-'+f);
+    if(card) card.style.outline=segVencFilter===f?'2px solid var(--accent)':'none';
+  });
+  const urgent=venc0+venc30;
+  const badge=document.getElementById('badge-seg-urgente');
+  if(badge){ badge.textContent=urgent; badge.style.display=urgent>0?'':'none'; }
+}
+
 function renderSeguimiento(){
+  _updateVencStats();
   filterSeguimiento();
 }
+
+// Toggle filtro de urgencia por vencimiento (click de nuevo para limpiar)
+function filterSegVenc(f){
+  segVencFilter=(segVencFilter===f)?'all':f;
+  _updateVencStats();
+  filterSeguimiento();
+}
+
 function filterSeguimiento(){
   const q=(document.getElementById('search-seg').value||'').toLowerCase();
   let data=myClientes().filter(c=>{
     const mq=!q||(c.nombre||'').toLowerCase().includes(q);
     const me=!segFilterEstado||(c.estado||'PENDIENTE')===segFilterEstado;
-    return mq&&me;
+    const days=daysUntil(c.hasta);
+    let mv=true;
+    if(segVencFilter==='vencida') mv=days<0;
+    else if(segVencFilter==='30')  mv=days>=0&&days<=30;
+    else if(segVencFilter==='60')  mv=days>30&&days<=60;
+    else if(segVencFilter==='90')  mv=days>60&&days<=90;
+    return mq&&me&&mv;
   }).sort((a,b)=>daysUntil(a.hasta)-daysUntil(b.hasta));
   document.getElementById('seg-count').textContent=data.length+' clientes';
   document.getElementById('seguimiento-tbody').innerHTML=data.map(c=>{
@@ -826,7 +819,7 @@ function guardarSeguimiento(){
   }
   saveDB();
   sincronizarCotizPorCliente(c.id, c.nombre, c.ci, currentSegEstado);
-  closeModal('modal-seguimiento'); renderSeguimiento(); renderVencimientos(); renderDashboard();
+  closeModal('modal-seguimiento'); renderSeguimiento(); renderDashboard();
   showToast('Seguimiento actualizado');
 }
 function guardarSeguimientoYCierre(){
