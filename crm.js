@@ -2000,7 +2000,7 @@ function guardarCotizacion(){
     ejecutivo: currentUser?.id||'',
     // Datos cliente
     clienteNombre: nombre, clienteCI: ci,
-    clienteId: clienteMatch?.id||null,
+    clienteId: clienteMatch ? String(clienteMatch.id) : '',
     celular, correo, ciudad, region,
     // Datos vehículo
     vehiculo: `${marca} ${modelo} ${anio}`.trim(),
@@ -2741,6 +2741,21 @@ function renderComparativo(){
 // ══════════════════════════════════════════════════════
 //  ADMIN — EJECUTIVOS
 // ══════════════════════════════════════════════════════
+async function reconfigurarColumnasSP(){
+  if(!confirm('¿Reconfigurar columnas en SharePoint?\n\nEsto creará columnas que falten (no borra datos existentes).\nSe recargará la página al terminar.')) return;
+  localStorage.removeItem('sp_cols_done');
+  showToast('🔄 Reconfigurando columnas SP…', 'info');
+  try{
+    await spAsegurarColumnas(msg => console.log('[SP cols]', msg));
+    localStorage.setItem('sp_cols_done','6');
+    showToast('✅ Columnas configuradas — recargando…', 'success');
+    setTimeout(()=>location.reload(), 1500);
+  }catch(e){
+    showToast('⚠ Error al reconfigurar: ' + e.message, 'error');
+    console.error('reconfigurarColumnasSP error:', e);
+  }
+}
+
 function renderAdmin(){
   const execs=USERS.filter(u=>u.rol==='ejecutivo');
   // Poblar select ejecutivos

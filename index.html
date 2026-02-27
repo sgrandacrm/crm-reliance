@@ -647,6 +647,8 @@
               <button class="btn btn-secondary w-full" onclick="document.getElementById('restore-input').click()">📂 Restaurar desde backup</button>
               <input type="file" id="restore-input" accept=".json" style="display:none" onchange="restaurarBackup(event)">
               <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
+              <button class="btn btn-secondary w-full" onclick="reconfigurarColumnasSP()" title="Vuelve a crear todas las columnas SP faltantes (no destruye datos existentes)">🔄 Reconfigurar columnas SharePoint</button>
+              <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
               <button class="btn w-full" style="background:#fff0f0;color:var(--red);border:1px solid var(--red)" onclick="limpiarCarteraEjecutivo()">🧹 Limpiar cartera de un ejecutivo</button>
             </div>
           </div>

@@ -272,8 +272,8 @@ async function spCreate(listKey, data){
     updateSpStatus('online','● SharePoint');
     return r.id;
   }catch(e){
-    // Si falla con 500 (campo no existe), reintentar con campos mínimos
-    if(e.message && (e.message.includes('500') || e.message.includes('General exception'))){
+    // Si falla (campo no existe / tipo incorrecto), reintentar con campos mínimos
+    if(e.message){
       try{
         const listId = await spGetListId(listName);
         const minFields = { Title: spToFields(listKey, data).Title || String(data.id||''), crm_id: String(data.id||'') };
@@ -327,7 +327,7 @@ async function spUpdate(listKey, spId, data){
     updateSpStatus('online','● SharePoint');
     return true;
   }catch(e){
-    if(e.message && (e.message.includes('500') || e.message.includes('General exception'))){
+    if(e.message){
       try{
         const listId = await spGetListId(listName);
         const minFields = { Title: spToFields(listKey, data).Title || String(data.id||''), crm_id: String(data.id||'') };
@@ -338,7 +338,7 @@ async function spUpdate(listKey, spId, data){
           if(ci>=0) _cache[listKey][ci] = {..._cache[listKey][ci], ...data};
         }
         updateSpStatus('online','● SharePoint');
-        console.warn('spUpdate: actualizado con campos mínimos:', listKey);
+        console.warn('spUpdate: actualizado con campos mínimos:', listKey, '— error original:', e.message);
         return true;
       }catch(e2){
         updateSpStatus('error','⚠ Error al actualizar');
@@ -753,7 +753,8 @@ async function spAsegurarColumnas(logCol){
 
   for(const [listName, cols] of Object.entries(colsDef)){
     logCol(`Configurando ${listName}...`);
-    const listId = await spGetListId(Object.keys(SP_CONFIG.lists).find(k=>SP_CONFIG.lists[k]===listName)||listName);
+    // Use the full SP list name (e.g. 'CRM_Cotizaciones') directly — NOT the short key name
+    const listId = await spGetListId(listName);
     if(!listId){ logCol(`⚠ No se encontró ${listName}`); continue; }
     let ok=0, skip=0;
     for(const col of cols){
@@ -853,7 +854,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(!colsDone || (colsDone !== '3' && colsDone !== '4' && colsDone !== '5')){
+      if(!colsDone || !['3','4','5','6'].includes(colsDone)){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -875,7 +876,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','5');
+        localStorage.setItem('sp_cols_done','6');
         if(setupEl) setupEl.style.display='none';
       }
     }
