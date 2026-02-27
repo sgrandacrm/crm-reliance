@@ -249,6 +249,13 @@
       <div class="card">
         <div class="card-header"><div class="card-title">Datos del Cliente</div></div>
         <div class="card-body">
+          <!-- Buscador de cliente existente -->
+          <div style="margin-bottom:14px;position:relative">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:6px">🔍 Cargar cliente existente</div>
+            <input class="form-input" id="cot-buscar-cliente" placeholder="Buscar por nombre, CI o placa…" oninput="buscarClienteCotizador(this.value)" autocomplete="off" style="padding-right:36px">
+            <button onclick="limpiarCotizador()" title="Limpiar formulario" style="position:absolute;right:8px;top:32px;background:none;border:none;cursor:pointer;font-size:16px;color:var(--muted);line-height:1">✕</button>
+            <div id="cot-sugerencias" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.13);z-index:300;max-height:220px;overflow-y:auto"></div>
+          </div>
           <div class="form-grid form-grid-2" style="gap:12px">
             <div class="form-group"><label class="form-label">Nombre Completo</label><input class="form-input" id="cot-nombre" placeholder="Apellidos y nombres"></div>
             <div class="form-group"><label class="form-label">Cédula / RUC</label><input class="form-input" id="cot-ci" placeholder="1234567890"></div>

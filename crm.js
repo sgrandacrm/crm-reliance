@@ -353,11 +353,12 @@ function renderClientes(){
   filterClientes();
 }
 function filterClientes(){
-  const q=(document.getElementById('search-clientes').value||'').toLowerCase();
-  const tipo=document.getElementById('filter-tipo').value;
-  const aseg=document.getElementById('filter-aseg').value;
-  const region=document.getElementById('filter-region').value;
-  const estado=document.getElementById('filter-estado').value;
+  const _sc=document.getElementById('search-clientes'); if(!_sc) return;
+  const q=(_sc.value||'').toLowerCase();
+  const tipoEl=document.getElementById('filter-tipo');   const tipo=tipoEl?tipoEl.value:'';
+  const asegEl=document.getElementById('filter-aseg');   const aseg=asegEl?asegEl.value:'';
+  const regionEl=document.getElementById('filter-region');const region=regionEl?regionEl.value:'';
+  const estadoEl=document.getElementById('filter-estado');const estado=estadoEl?estadoEl.value:'';
   clientesFiltrados = myClientes().filter(c=>{
     const mq=!q||(c.nombre||'').toLowerCase().includes(q)||(c.ci||'').includes(q)||(c.placa||'').toLowerCase().includes(q)||(c.aseguradora||'').toLowerCase().includes(q);
     const mt=!tipo||c.tipo===tipo;
@@ -386,6 +387,7 @@ function filterClientes(){
         <button class="btn btn-ghost btn-xs" onclick="showClienteModal('${c.id}')">👁</button>
         <button class="btn btn-ghost btn-xs" onclick="openEditar('${c.id}')">✏</button>
         <button class="btn btn-ghost btn-xs" onclick="openSeguimiento('${c.id}')">📞</button>
+        <button class="btn btn-ghost btn-xs" onclick="prefillCotizador_show('${c.id}')" title="Cotizar">🧮</button>
         <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')" title="WhatsApp">💬</button>
         <button class="btn btn-xs" style="background:#0078d4;color:#fff" onclick="openEmail('${c.id}','vencimiento')" title="Email">✉️</button>
         <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')" title="Nueva tarea">📌</button>
@@ -687,7 +689,8 @@ function filterSegVenc(f){
 }
 
 function filterSeguimiento(){
-  const q=(document.getElementById('search-seg').value||'').toLowerCase();
+  const _ss=document.getElementById('search-seg'); if(!_ss) return;
+  const q=(_ss.value||'').toLowerCase();
   let data=myClientes().filter(c=>{
     const mq=!q||(c.nombre||'').toLowerCase().includes(q);
     const me=!segFilterEstado||(c.estado||'PENDIENTE')===segFilterEstado;
@@ -713,6 +716,7 @@ function filterSeguimiento(){
       <td><span class="mono" style="font-size:11px">${c.ultimoContacto||'—'}</span></td>
       <td><div style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="btn btn-blue btn-xs" onclick="openSeguimiento('${c.id}')">📞 Actualizar</button>
+        <button class="btn btn-ghost btn-xs" onclick="prefillCotizador_show('${c.id}')" title="Ir al cotizador con datos de este cliente">🧮 Cotizar</button>
         <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')">💬 WA</button>
         <button class="btn btn-xs" style="background:#0078d4;color:#fff" onclick="openEmail('${c.id}','vencimiento')">✉️ Mail</button>
         <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')" title="Nueva tarea">📌</button>
@@ -1011,26 +1015,95 @@ function calcCuotasDeb(total, nCuotas){
 }
 
 function prefillCotizador(c){
+  // — Datos del cliente —
   document.getElementById('cot-nombre').value=c.nombre||'';
   document.getElementById('cot-ci').value=c.ci||'';
   document.getElementById('cot-cel').value=c.celular||'';
   document.getElementById('cot-email').value=c.correo||'';
-  document.getElementById('cot-va').value=c.va||20000;
-  document.getElementById('cot-marca').value=c.marca||'KIA';
+  // Ciudad / Región
+  const ciudadEl=document.getElementById('cot-ciudad');
+  if(ciudadEl && c.ciudad){
+    const opt=[...ciudadEl.options].find(o=>o.value.toUpperCase()===c.ciudad.toUpperCase());
+    if(opt) ciudadEl.value=opt.value;
+  }
+  const regionEl=document.getElementById('cot-region');
+  if(regionEl && c.region){
+    const opt=[...regionEl.options].find(o=>o.value.toUpperCase()===c.region.toUpperCase());
+    if(opt) regionEl.value=opt.value;
+  }
+  // Tipo de póliza: si el cliente tiene póliza anterior → RENOVACION, si no → NUEVO
+  const tipoEl=document.getElementById('cot-tipo');
+  if(tipoEl) tipoEl.value=(c.polizaNueva||c.poliza||c.polizaAnterior)?'RENOVACION':'NUEVO';
+
+  // — Datos del vehículo —
+  const marcaEl=document.getElementById('cot-marca');
+  if(marcaEl && c.marca){
+    const opt=[...marcaEl.options].find(o=>o.value.toUpperCase()===c.marca.toUpperCase());
+    marcaEl.value = opt ? opt.value : 'OTRO';
+  }
+  document.getElementById('cot-anio').value=c.anio||(new Date().getFullYear());
   document.getElementById('cot-modelo').value=c.modelo||'';
-  document.getElementById('cot-anio').value=c.anio||2024;
   document.getElementById('cot-placa').value=c.placa||'';
-  // Datos vehículo adicionales
-  if(document.getElementById('cot-motor')) document.getElementById('cot-motor').value=c.motor||'';
+  document.getElementById('cot-va').value=c.va||20000;
+  if(document.getElementById('cot-color'))  document.getElementById('cot-color').value=c.color||'';
+  if(document.getElementById('cot-motor'))  document.getElementById('cot-motor').value=c.motor||'';
   if(document.getElementById('cot-chasis')) document.getElementById('cot-chasis').value=c.chasis||'';
-  if(document.getElementById('cot-color')) document.getElementById('cot-color').value=c.color||'';
-  // Póliza anterior
-  if(document.getElementById('cot-poliza-anterior')) document.getElementById('cot-poliza-anterior').value=c.polizaAnterior||c.poliza||'';
-  if(document.getElementById('cot-aseg-anterior')) document.getElementById('cot-aseg-anterior').value=c.aseguradoraAnterior||c.aseguradora||'';
+
+  // — Póliza anterior (para renovación) —
+  if(document.getElementById('cot-poliza-anterior')) document.getElementById('cot-poliza-anterior').value=c.polizaAnterior||c.polizaNueva||c.poliza||'';
+  if(document.getElementById('cot-aseg-anterior'))   document.getElementById('cot-aseg-anterior').value=c.aseguradoraAnterior||c.aseguradora||'';
 }
 function prefillCotizador_show(id){
   const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
-  prefillCotizador(c); showPage('cotizador'); setTimeout(calcCotizacion,200);
+  prefillCotizador(c);
+  // Mostrar nombre en el buscador para feedback visual
+  const buscarEl=document.getElementById('cot-buscar-cliente');
+  if(buscarEl) buscarEl.value=c.nombre;
+  showPage('cotizador'); setTimeout(calcCotizacion,200);
+}
+
+// ─── Búsqueda de cliente dentro del cotizador ────────────────────────────────
+function buscarClienteCotizador(q){
+  const box=document.getElementById('cot-sugerencias'); if(!box) return;
+  if(!q||q.length<2){ box.style.display='none'; return; }
+  const ql=q.toLowerCase();
+  const matches=myClientes().filter(c=>
+    (c.nombre||'').toLowerCase().includes(ql)||
+    String(c.ci||'').includes(ql)||
+    (c.placa||'').toLowerCase().includes(ql)
+  ).slice(0,8);
+  if(!matches.length){ box.style.display='none'; return; }
+  box.innerHTML=matches.map(c=>`
+    <div onclick="seleccionarClienteCotizador('${c.id}')"
+      style="padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+      onmouseover="this.style.background='var(--warm)'"
+      onmouseout="this.style.background=''">
+      <div style="font-weight:600">${c.nombre}</div>
+      <div style="font-size:11px;color:var(--muted)">${c.ci||'—'} &nbsp;·&nbsp; ${c.marca||''} ${c.modelo||''} &nbsp;·&nbsp; ${c.placa||'—'}</div>
+    </div>`).join('');
+  box.style.display='block';
+}
+
+function seleccionarClienteCotizador(id){
+  const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
+  prefillCotizador(c);
+  const buscarEl=document.getElementById('cot-buscar-cliente');
+  if(buscarEl) buscarEl.value=c.nombre;
+  const box=document.getElementById('cot-sugerencias');
+  if(box) box.style.display='none';
+  setTimeout(calcCotizacion,200);
+  showToast(`✓ ${c.nombre.split(' ')[0]} cargado — datos de vehículo pre-llenados`,'success');
+}
+
+function limpiarCotizador(){
+  ['cot-nombre','cot-ci','cot-cel','cot-email','cot-modelo','cot-placa',
+   'cot-color','cot-motor','cot-chasis','cot-poliza-anterior','cot-aseg-anterior'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  const va=document.getElementById('cot-va'); if(va) va.value=20000;
+  const anio=document.getElementById('cot-anio'); if(anio) anio.value=new Date().getFullYear();
+  const buscarEl=document.getElementById('cot-buscar-cliente'); if(buscarEl) buscarEl.value='';
+  const box=document.getElementById('cot-sugerencias'); if(box) box.style.display='none';
 }
 
 function calcCotizacion(){
@@ -4480,4 +4553,12 @@ async function initApp(){
   startAutoSync(); // Iniciar sync bidireccional automático
   // Notificaciones del navegador (leve delay para que cargue todo)
   setTimeout(initNotificaciones, 3000);
+  // Cerrar dropdown de sugerencias del cotizador al hacer click fuera
+  document.addEventListener('click', e=>{
+    const box=document.getElementById('cot-sugerencias');
+    const inp=document.getElementById('cot-buscar-cliente');
+    if(box && inp && !inp.contains(e.target) && !box.contains(e.target)){
+      box.style.display='none';
+    }
+  });
 }
