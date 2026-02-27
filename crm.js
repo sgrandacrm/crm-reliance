@@ -825,13 +825,15 @@ function guardarSeguimiento(){
 function guardarSeguimientoYCierre(){
   const c=DB.find(x=>String(x.id)===String(currentSegIdx)); if(!c) return;
   const notaYC = document.getElementById('seg-nota').value.trim();
-  // Solo guarda la nota en bitácora; el estado RENOVADO lo fija guardarCierreVenta al completar el cierre
-  if(notaYC){
-    _bitacoraAdd(c, notaYC, 'cierre');
-    saveDB();
-  }
+  // Persistir el estado actual (EMITIDO) en DB antes de abrir el cierre
+  // para que la bitácora refleje la transición real EMISIÓN → EMITIDO → RENOVADO
+  const estadoAnterior = c.estado;
+  c.estado = currentSegEstado;
+  c.ultimoContacto = new Date().toISOString().split('T')[0];
+  const notaFinal = notaYC || (estadoAnterior !== currentSegEstado ? `Estado: ${estadoAnterior} → ${currentSegEstado}` : '');
+  if(notaFinal) _bitacoraAdd(c, notaFinal, notaYC ? 'cierre' : 'sistema');
+  saveDB();
   closeModal('modal-seguimiento');
-  // Abrir modal de cierre saltando la validación de estado (aún no es RENOVADO en DB)
   abrirCierreDesdeCliente(c.id, true);
 }
 
@@ -1555,6 +1557,8 @@ function guardarCierreVenta(){
     formaPago:pago, observacion:obs,
     axavd, cuenta:document.getElementById('cv-cuenta')?.value||'',
     ejecutivo:currentUser?currentUser.id:'',
+    clienteId: c ? String(c.id) : '',
+    cotizacionId: cierreVentaData.fromCotizacion||'',
     _clienteId: c ? String(c.id) : '',
     _placa: c?.placa||'',
   };
@@ -1598,17 +1602,17 @@ function guardarCierreVenta(){
     allCierres.push(cierre);
     _saveCierres(allCierres);
     showToast(`✓ Venta cerrada — ${aseg} — Póliza ${poliza}`,'success');
-  }
 
-  // Actualizar cliente en DB
-  if(c){
-    c.polizaNueva=poliza; c.factura=factura; c.aseguradora=aseg;
-    c.desde=desde; c.hasta=hasta; c.formaPago=pago;
-    c.primaTotal=total; c.axavd=axavd;
-    c.estado='RENOVADO'; _bitacoraAdd(c, `Cierre registrado${obs?' — '+obs:''}. Aseg: ${cierre?.aseguradora||''}`, 'cierre');
-    c.ultimoContacto=new Date().toISOString().split('T')[0];
-    saveDB();
-    sincronizarCotizPorCliente(c.id, c.nombre, c.ci, 'RENOVADO');
+    // Actualizar cliente en DB solo al registrar un cierre nuevo (no al editar)
+    if(c){
+      c.polizaNueva=poliza; c.factura=factura; c.aseguradora=aseg;
+      c.desde=desde; c.hasta=hasta; c.formaPago=pago;
+      c.primaTotal=total; c.axavd=axavd;
+      c.estado='RENOVADO'; _bitacoraAdd(c, `Cierre registrado${obs?' — '+obs:''}. Aseg: ${cierre?.aseguradora||''}`, 'cierre');
+      c.ultimoContacto=new Date().toISOString().split('T')[0];
+      saveDB();
+      sincronizarCotizPorCliente(c.id, c.nombre, c.ci, 'RENOVADO');
+    }
   }
 
   // Reset modo edición y botón

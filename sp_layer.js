@@ -376,12 +376,12 @@ function spToFields(listKey, data){
   const validos = {
     clientes:     new Set(['Title','ci','tipo','region','ciudad','aseguradora','ejecutivo','estado','placa','marca','modelo','anio','va','pn','primaTotal','desde','hasta','celular','correo','nota','ultimoContacto','factura','poliza','obs','color','motor','chasis','dep','tasa','axavd','formaPago','crm_id','polizaNueva','aseguradoraAnterior','historialWa','bitacora']),
     tareas: new Set(['Title','titulo','descripcion','clienteId','clienteNombre','fechaVence','horaVence','tipo','prioridad','estado','ejecutivo','fechaCreacion','crm_id']),
-    cotizaciones: new Set(['Title','codigo','version','fecha','ejecutivo','clienteNombre','clienteCI','clienteId','celular','correo','ciudad','region','tipo','vehiculo','marca','modelo','anio','placa','color','motor','chasis','va','desde','hasta','asegAnterior','polizaAnterior','estado','asegElegida','resultados','aseguradoras','obsAcept','fechaAcept','reemplazadaPor','crm_id']),
-    cierres:      new Set(['Title','clienteNombre','aseguradora','primaTotal','primaNeta','vigDesde','vigHasta','formaPago','facturaAseg','ejecutivo','fechaRegistro','observacion','axavd','crm_id','polizaNueva']),
+    cotizaciones: new Set(['Title','codigo','version','fecha','ejecutivo','clienteNombre','clienteCI','clienteId','celular','correo','ciudad','region','tipo','vehiculo','marca','modelo','anio','placa','color','motor','chasis','va','desde','hasta','asegAnterior','polizaAnterior','estado','asegElegida','resultados','aseguradoras','obsAcept','fechaAcept','reemplazadaPor','crm_id','cuotasTc','cuotasDeb','autoSust']),
+    cierres:      new Set(['Title','clienteNombre','aseguradora','primaTotal','primaNeta','vigDesde','vigHasta','formaPago','facturaAseg','ejecutivo','fechaRegistro','observacion','axavd','crm_id','polizaNueva','cuenta','clienteId','cotizacionId']),
     usuarios:     new Set(['Title','userId','rol','email','activo','color','initials','crm_id']),
   };
   const permitidos = validos[listKey] || new Set();
-  const camposNum  = new Set(['anio','va','pn','primaTotal','dep','tasa','version','primaNeta']);
+  const camposNum  = new Set(['anio','va','pn','primaTotal','dep','tasa','version','primaNeta','cuotasTc','cuotasDeb']);
   const ignorar    = new Set(['id','nombre','name','pass','password','_spId','_dirty','_spEtag']);
 
   const fields = {};
@@ -730,6 +730,7 @@ async function spAsegurarColumnas(logCol){
       {name:'obsAcept',text:{allowMultipleLines:true}},
       {name:'fechaAcept',text:{}},{name:'reemplazadaPor',text:{}},
       {name:'crm_id',text:{}},
+      {name:'cuotasTc',number:{}},{name:'cuotasDeb',number:{}},{name:'autoSust',text:{}},
     ],
     CRM_Cierres: [
       {name:'clienteNombre',text:{}},{name:'aseguradora',text:{}},
@@ -740,6 +741,7 @@ async function spAsegurarColumnas(logCol){
       {name:'observacion',text:{allowMultipleLines:true}},
       {name:'axavd',text:{}},{name:'polizaNueva',text:{}},
       {name:'crm_id',text:{}},
+      {name:'cuenta',text:{}},{name:'clienteId',text:{}},{name:'cotizacionId',text:{}},
     ],
     CRM_Usuarios: [
       {name:'userId',text:{}},{name:'rol',text:{}},
@@ -851,7 +853,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(!colsDone || (colsDone !== '3' && colsDone !== '4')){
+      if(!colsDone || (colsDone !== '3' && colsDone !== '4' && colsDone !== '5')){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -873,7 +875,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','4');
+        localStorage.setItem('sp_cols_done','5');
         if(setupEl) setupEl.style.display='none';
       }
     }
