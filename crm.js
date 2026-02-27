@@ -531,6 +531,7 @@ function openEditar(id){
     c.comentario=document.getElementById('ed-comentario').value;
     if(document.getElementById('ed-ejecutivo')) c.ejecutivo=document.getElementById('ed-ejecutivo').value;
     await sincronizarCotizPorCliente(c.id, c.nombre, c.ci, c.estado);
+    c._dirty = true;
     saveDB(); closeModal('modal-editar'); renderClientes(); renderDashboard(); showToast('Cliente actualizado');
   };
   openModal('modal-editar');
@@ -808,6 +809,7 @@ function guardarSeguimiento(){
   const c=DB.find(x=>String(x.id)===String(currentSegIdx)); if(!c) return;
   const nota = document.getElementById('seg-nota').value.trim();
   const estadoAnterior = c.estado;
+  c._dirty = true;
   c.estado = currentSegEstado;
   c.ultimoContacto = new Date().toISOString().split('T')[0];
   // Agregar entrada a bitácora
@@ -828,6 +830,7 @@ function guardarSeguimientoYCierre(){
   // Persistir el estado actual (EMITIDO) en DB antes de abrir el cierre
   // para que la bitácora refleje la transición real EMISIÓN → EMITIDO → RENOVADO
   const estadoAnterior = c.estado;
+  c._dirty = true;
   c.estado = currentSegEstado;
   c.ultimoContacto = new Date().toISOString().split('T')[0];
   const notaFinal = notaYC || (estadoAnterior !== currentSegEstado ? `Estado: ${estadoAnterior} → ${currentSegEstado}` : '');
@@ -1605,6 +1608,7 @@ function guardarCierreVenta(){
 
     // Actualizar cliente en DB solo al registrar un cierre nuevo (no al editar)
     if(c){
+      c._dirty = true;
       c.polizaNueva=poliza; c.factura=factura; c.aseguradora=aseg;
       c.desde=desde; c.hasta=hasta; c.formaPago=pago;
       c.primaTotal=total; c.axavd=axavd;
@@ -2499,6 +2503,7 @@ function confirmarAceptacion(){
   if(!clienteDB)
     clienteDB = DB.find(x=>x.nombre.trim().toUpperCase()===cotiz.clienteNombre.trim().toUpperCase());
   if(clienteDB){
+    clienteDB._dirty         = true;
     clienteDB.estado         = 'EMISIÓN';
     clienteDB.aseguradora    = cotizAsegSeleccionada.includes('SEGUROS') ? cotizAsegSeleccionada : cotizAsegSeleccionada + ' SEGUROS';
     clienteDB.ultimoContacto = hoy;
@@ -3476,6 +3481,7 @@ function enviarWhatsApp(){
   // Registrar en historial del cliente
   const c = DB.find(x=>String(x.id)===String(waClienteId));
   if(c){
+    c._dirty = true;
     if(!c.historialWa) c.historialWa=[];
     c.historialWa.push({ fecha: new Date().toISOString().split('T')[0], tipo: 'WhatsApp', resumen: msg.substring(0,80)+'…', ejecutivo: currentUser?.id||'' });
     c.ultimoContacto = new Date().toISOString().split('T')[0];
@@ -3625,6 +3631,7 @@ function enviarEmail(){
   // Registrar en bitácora
   const c = DB.find(x=>String(x.id)===String(emailClienteId));
   if(c){
+    c._dirty = true;
     _bitacoraAdd(c, `Email enviado: ${asunto||'(sin asunto)'}`, 'manual');
     c.ultimoContacto = new Date().toISOString().split('T')[0];
     saveDB();
