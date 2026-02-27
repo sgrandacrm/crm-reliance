@@ -1153,9 +1153,26 @@ function calcCotizacion(){
 
 // ── CIERRE DE VENTA ──────────────────────────────────
 let cierreVentaData={};
-function abrirCierreDesdeCliente(id, skipEstadoCheck=false){
+let _pendingCierreClienteId=null;
+
+// Busca la cotización más reciente activa (no REEMPLAZADA, no EMITIDA) para un cliente
+function _cotizParaCierre(clienteId, ci, nombre){
+  const all=_getCotizaciones();
+  const activas=all.filter(cot=>{
+    if(['REEMPLAZADA','EMITIDA'].includes(cot.estado)) return false;
+    return (clienteId && String(cot.clienteId)===String(clienteId)) ||
+           (ci && ci.length>3 && cot.clienteCI===ci) ||
+           (cot.clienteNombre||'').trim().toUpperCase()===(nombre||'').trim().toUpperCase();
+  }).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+  if(!activas.length) return {cotiz:null, vencida:false};
+  const cotiz=activas[0];
+  const dias=Math.floor((Date.now()-new Date(cotiz.fecha||''))/(86400000));
+  return {cotiz, vencida:dias>30};
+}
+
+// Pre-rellena y abre el formulario de cierre usando datos del cliente (sin cotización)
+function _abrirCierreDirecto(id){
   const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
-  if(!skipEstadoCheck && !['RENOVADO','EMITIDO'].includes(c.estado)){showToast('El estado debe ser RENOVADO o EMITIDO para registrar un cierre','error');return;}
   currentSegIdx=id;
   const aseg=c.aseguradora||'';
   const va=c.va||0;
@@ -1181,10 +1198,56 @@ function abrirCierreDesdeCliente(id, skipEstadoCheck=false){
   document.getElementById('cv-total-val').value=total>0?total.toFixed(2):'';
   if(document.getElementById('cv-cuenta')) document.getElementById('cv-cuenta').value=c.cuenta||'';
   if(document.getElementById('cv-axavd')) document.getElementById('cv-axavd').value=c.obs&&c.obs.includes('AXA')&&c.obs.includes('VD')?'AXA+VD':c.obs&&c.obs.includes('AXA')?'AXA':c.obs&&c.obs.includes('VD')?'VD':'';
-  ['cv-factura','cv-poliza','cv-observacion'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['cv-factura','cv-poliza','cv-observacion'].forEach(fid=>{ const el=document.getElementById(fid); if(el) el.value=''; });
   document.getElementById('cv-forma-pago').value='DEBITO_BANCARIO';
   renderCvFormaPago();
   openModal('modal-cierre-venta');
+}
+
+// Callback del botón "Continuar de todos modos" en el modal de confirmación
+function _continuarCierreSinCotiz(){
+  closeModal('modal-confirm-cotiz');
+  if(_pendingCierreClienteId) _abrirCierreDirecto(_pendingCierreClienteId);
+  _pendingCierreClienteId=null;
+}
+
+// Valida cotización activa antes de abrir el cierre; enruta según el caso
+function abrirCierreDesdeCliente(id, skipEstadoCheck=false){
+  const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
+  if(!skipEstadoCheck && !['RENOVADO','EMITIDO'].includes(c.estado)){showToast('El estado debe ser RENOVADO o EMITIDO para registrar un cierre','error');return;}
+  currentSegIdx=id;
+
+  const {cotiz, vencida}=_cotizParaCierre(c.id, c.ci, c.nombre);
+
+  // Caso 1 — cotización activa con asegElegida y vigente → flujo ideal desde cotización
+  if(cotiz && cotiz.asegElegida && !vencida){
+    irAEmision(cotiz.id);
+    return;
+  }
+  // Caso 2 — cotización activa pero sin aseguradora elegida → redirigir a Cotizaciones
+  if(cotiz && !cotiz.asegElegida){
+    showToast(`${c.nombre} tiene la cotización ${cotiz.codigo||''} activa. Selecciona la aseguradora en Cotizaciones para continuar.`,'info');
+    showPage('cotizaciones');
+    return;
+  }
+  // Caso 3 — cotización con asegElegida pero vencida (>30 días)
+  if(cotiz && cotiz.asegElegida && vencida){
+    const dias=Math.floor((Date.now()-new Date(cotiz.fecha||''))/(86400000));
+    _pendingCierreClienteId=id;
+    document.getElementById('confirm-cotiz-titulo').textContent='⚠️ Cotización vencida';
+    document.getElementById('confirm-cotiz-msg').innerHTML=
+      `La cotización <b>${cotiz.codigo||''}</b> tiene <b>${dias} días</b> (válida por 30 días).<br>
+       Los precios de prima podrían haber cambiado. Se recomienda generar una nueva cotización.`;
+    openModal('modal-confirm-cotiz');
+    return;
+  }
+  // Caso 4 — sin cotización registrada
+  _pendingCierreClienteId=id;
+  document.getElementById('confirm-cotiz-titulo').textContent='⚠️ Sin cotización registrada';
+  document.getElementById('confirm-cotiz-msg').innerHTML=
+    `<b>${c.nombre}</b> no tiene cotización registrada.<br>
+     Los montos de prima deberán ingresarse manualmente sin respaldo comercial.`;
+  openModal('modal-confirm-cotiz');
 }
 
 function abrirCierreVenta(asegNombre, total, pn, cuotaTc, cuotaDeb, nTc, nDeb){

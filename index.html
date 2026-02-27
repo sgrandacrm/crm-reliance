@@ -1136,6 +1136,23 @@
 <!-- MODAL TAREA -->
 
 
+<!-- MODAL CONFIRMACIÓN CIERRE SIN COTIZACIÓN -->
+<div class="modal-overlay" id="modal-confirm-cotiz">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <div class="modal-title" id="confirm-cotiz-titulo">⚠️ Sin cotización activa</div>
+      <button class="modal-close" onclick="closeModal('modal-confirm-cotiz')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirm-cotiz-msg" style="font-size:13px;line-height:1.6;margin:0 0 20px"></p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+        <button class="btn btn-ghost" onclick="showPage('cotizador');closeModal('modal-confirm-cotiz')">📋 Ir a Cotizador</button>
+        <button class="btn btn-primary" onclick="_continuarCierreSinCotiz()">✓ Continuar de todos modos</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- PRINT AREA (hidden, shown on print) -->
 <div id="print-area" style="display:none;padding:30px;font-family:'DM Sans',sans-serif;max-width:900px;margin:0 auto">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #0f0e0c">
