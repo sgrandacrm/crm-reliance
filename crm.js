@@ -389,7 +389,7 @@ function filterClientes(){
         <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')" title="WhatsApp">💬</button>
         <button class="btn btn-xs" style="background:#0078d4;color:#fff" onclick="openEmail('${c.id}','vencimiento')" title="Email">✉️</button>
         <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')" title="Nueva tarea">📌</button>
-        ${(['RENOVADO','EMITIDO'].includes(c.estado)&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')" title="Registrar cierre de venta">📋</button>`:''}
+        ${(c.estado==='EMITIDO'&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')" title="Registrar cierre de venta">📋</button>`:''}
         ${c.factura?`<span title="Cierre registrado: ${c.factura}" style="font-size:14px;cursor:default">✅</span>`:''}
       </div></td>
     </tr>`;
@@ -715,7 +715,7 @@ function filterSeguimiento(){
         <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')">💬 WA</button>
         <button class="btn btn-xs" style="background:#0078d4;color:#fff" onclick="openEmail('${c.id}','vencimiento')">✉️ Mail</button>
         <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')" title="Nueva tarea">📌</button>
-        ${(c.estado==='RENOVADO'&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')">📋 Cierre</button>`:''}
+        ${(c.estado==='EMITIDO'&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')">📋 Cierre</button>`:''}
         ${c.factura?`<span class="badge badge-green" style="font-size:10px">✅ Cerrado</span>`:''}
       </div></td>
     </tr>`;
@@ -733,9 +733,9 @@ function openSeguimiento(id){
   document.getElementById('modal-seg-nombre').textContent=c.nombre;
   document.getElementById('seg-nota').value=''; // limpiar para nueva entrada
   document.querySelectorAll('.estado-btn').forEach(b=>{ b.classList.remove('active'); if(b.classList.contains(currentSegEstado)) b.classList.add('active'); });
-  // Mostrar banner cierre si ya está RENOVADO
+  // Mostrar banner cierre si ya está EMITIDO
   const banner=document.getElementById('seg-cierre-banner');
-  if(banner) banner.style.display=['RENOVADO','EMITIDO','PÓLIZA VIGENTE'].includes(currentSegEstado)?'block':'none';
+  if(banner) banner.style.display=(currentSegEstado==='EMITIDO')?'block':'none';
   // Renderizar bitácora existente
   renderBitacora(c.bitacora||[]);
   openModal('modal-seguimiento');
@@ -746,9 +746,9 @@ function setEstado(e){
     b.classList.remove('active');
     if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+e+"'")) b.classList.add('active');
   });
-  // Mostrar banner "Registrar Cierre" solo al seleccionar RENOVADO
+  // Mostrar banner "Registrar Cierre" al seleccionar EMITIDO
   const banner=document.getElementById('seg-cierre-banner');
-  if(banner) banner.style.display=(e==='RENOVADO')?'block':'none';
+  if(banner) banner.style.display=(e==='EMITIDO')?'block':'none';
   // Solo actualiza la UI — el estado se persiste al presionar "Guardar" o "Guardar y Cierre"
 }
 
@@ -1214,7 +1214,7 @@ function _continuarCierreSinCotiz(){
 // Valida cotización activa antes de abrir el cierre; enruta según el caso
 function abrirCierreDesdeCliente(id, skipEstadoCheck=false){
   const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
-  if(!skipEstadoCheck && !['RENOVADO','EMITIDO'].includes(c.estado)){showToast('El estado debe ser RENOVADO o EMITIDO para registrar un cierre','error');return;}
+  if(!skipEstadoCheck && c.estado!=='EMITIDO'){showToast('El estado debe ser EMITIDO para registrar un cierre','error');return;}
   currentSegIdx=id;
 
   const {cotiz, vencida}=_cotizParaCierre(c.id, c.ci, c.nombre);
@@ -2373,7 +2373,7 @@ function sincronizarCotizPorCliente(clienteId, clienteNombre, clienteCI, nuevoEs
       if(!vinculada) return;
 
       // Mapeo estado cliente → estado cotización
-      if(['RENOVADO','EMITIDO','PÓLIZA VIGENTE'].includes(nuevoEstadoCliente)){
+      if(['RENOVADO','PÓLIZA VIGENTE'].includes(nuevoEstadoCliente)){
         cot.estado = 'EMITIDA';
         cot.fechaAcept = cot.fechaAcept || new Date().toISOString().split('T')[0];
         changed = true;

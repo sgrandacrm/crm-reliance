@@ -796,7 +796,7 @@
           <button class="estado-btn E2" onclick="setEstado('INSPECCIÓN')" title="Vehículo pendiente de inspección requerida por aseguradora." style="font-size:11px;padding:5px 10px">🔍 Inspección</button>
           <button class="estado-btn E3" onclick="setEstado('EMISIÓN')" title="Póliza en trámite de emisión. Aún no activa." style="font-size:11px;padding:5px 10px">📝 Emisión</button>
           <button class="estado-btn E4" onclick="setEstado('EMITIDO')" title="Póliza emitida formalmente y activa." style="font-size:11px;padding:5px 10px">📄 Emitido</button></div></div>
-        <div style="margin-bottom:10px"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:6px">✅ Positivos</div><div style="display:flex;flex-wrap:wrap;gap:6px"><button class="estado-btn E5" onclick="setEstado('RENOVADO')" title="Renovación completada exitosamente." style="font-size:11px;padding:5px 10px">✅ Renovado</button>
+        <div style="margin-bottom:10px"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:6px">✅ Positivos</div><div style="display:flex;flex-wrap:wrap;gap:6px">
           <button class="estado-btn E6" onclick="setEstado('PÓLIZA VIGENTE')" title="Póliza activa dentro del período de cobertura." style="font-size:11px;padding:5px 10px">🛡 Póliza Vigente</button></div></div>
         <div style="margin-bottom:10px"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:6px">⚠️ Riesgo</div><div style="display:flex;flex-wrap:wrap;gap:6px"><button class="estado-btn E7" onclick="setEstado('CRÉDITO VENCIDO')" title="Cliente mantiene cuotas vencidas con el banco que financia el vehículo." style="font-size:11px;padding:5px 10px">⏰ Crédito Vencido</button>
           <button class="estado-btn E8" onclick="setEstado('CRÉDITO CANCELADO')" title="Cliente canceló totalmente su crédito con el banco." style="font-size:11px;padding:5px 10px">💳 Crédito Cancelado</button>
@@ -829,7 +829,7 @@
       </div>
     </div>
     <div id="seg-cierre-banner" style="display:none;margin:0 24px 4px;padding:12px 16px;background:#d4edda;border:1px solid #2d6a4f;border-radius:8px">
-      <div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:6px">✓ Estado: RENOVADO — ¿Registrar cierre de venta?</div>
+      <div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:6px">✓ Póliza emitida — ¿Registrar cierre de venta?</div>
       <div style="font-size:11px;color:#2d5a3f;margin-bottom:8px">Guarda el estado y abre el formulario de cierre (factura, póliza, forma de pago).</div>
       <button class="btn btn-green btn-sm w-full" onclick="guardarSeguimientoYCierre()">📋 Guardar y Registrar Cierre</button>
     </div>
