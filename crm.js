@@ -910,166 +910,217 @@ const ESTADOS_RELIANCE = {"PENDIENTE": {"cod": 1, "label": "Pendiente", "color":
 const GRUPOS_ESTADOS = {"gestion": {"titulo": "📋 En Gestión", "estados": ["PENDIENTE", "INSPECCIÓN", "EMISIÓN", "EMITIDO"]}, "positivo": {"titulo": "✅ Positivos", "estados": ["RENOVADO", "PÓLIZA VIGENTE"]}, "riesgo": {"titulo": "⚠️ Riesgo", "estados": ["CRÉDITO VENCIDO", "CRÉDITO CANCELADO", "SINIESTRO", "PÉRDIDA TOTAL"]}, "cierre": {"titulo": "🔒 Cierre/Baja", "estados": ["PÓLIZA ANULADA", "ENDOSO", "NO RENOVADO", "INUBICABLE", "NO ASEGURABLE", "AUTO VENDIDO", "CLIENTE FALLECIDO"]}};
 
 const ASEGURADORAS={
+  // ── Las 7 aseguradoras del cotizador Excel (PRODUCTOS PRODUBANCO) ──────────
   ZURICH:{
-    color:'#4a4a4a',pnMin:500,tcMax:12,debMax:10,
-    tasa:va=>va<=29999?0.045:va<=39999?0.025:0.022,
-    resp_civil:30000,muerte_ocupante:10000,muerte_titular:10000,gastos_medicos:2000,
-    amparo:'Incluye completo',
+    color:'#4a4a4a', pnMin:550, tcMax:12, debMax:10,
+    tasa:0.043,                           // 4.3% fijo (fila 9, col B)
+    axaDisponible:false, vidaDefault:0,
+    pisoTC:0, pisoDeb:0,                  // sin piso de cuota mínima
+    extraFijo:0,
+    resp_civil:30000, muerte_ocupante:10000, muerte_titular:10000, gastos_medicos:2000,
+    amparo:'COMPLETO',
     auto_sust:'10 días · siniestro >$1,000',
-    legal:'SÍ',exequial:'SÍ',
-    vida:'N/A',enf_graves:'N/A',renta_hosp:'N/A',sepelio:'N/A',
-    telemedicina:'N/A',dental:'N/A',medico_dom:'N/A',
+    legal:'SÍ', exequial:'SÍ',
+    vida:'N/A', enf_graves:'N/A', renta_hosp:'N/A', sepelio:'N/A',
+    telemedicina:'N/A', dental:'N/A', medico_dom:'N/A',
     ded_parcial:'10%VS / 1%VA / mín.$350',
-    ded_daño:'15%VA',ded_robo_sin:'30%VA',ded_robo_con:'20%VA',
+    ded_daño:'15%VA', ded_robo_sin:'30%VA', ded_robo_con:'20%VA',
   },
   LATINA:{
-    color:'#6b5b95',pnMin:350,tcMax:12,debMax:10,
-    tasa:va=>va<=19999?0.039:va<=29999?0.028:0.025,
-    resp_civil:30000,muerte_ocupante:10000,muerte_titular:10000,gastos_medicos:2500,
-    amparo:'Incluye completo',
+    color:'#6b5b95', pnMin:350, tcMax:12, debMax:10,
+    tasa:0.038,                           // 3.8% fijo (fila 9, col C)
+    axaDisponible:false, vidaDefault:50,  // prima vida $50 (G8 Excel)
+    pisoTC:0, pisoDeb:0,
+    extraFijo:0,
+    resp_civil:30000, muerte_ocupante:10000, muerte_titular:10000, gastos_medicos:2500,
+    amparo:'COMPLETO',
     auto_sust:'10 días · siniestro >$1,150',
-    legal:'SÍ',exequial:'SÍ',
-    vida:'$20,000',enf_graves:'N/A',
-    renta_hosp:'$50/día · máx.10 días',
-    sepelio:'N/A',
-    telemedicina:'E-DOCTOR (medicina, psicología, nutrición)',
-    dental:'Prevención y cirugía 70–100%',medico_dom:'N/A',
-    ded_parcial:'10%VS / 1%VA / mín.$250',
-    ded_daño:'20%VA',ded_robo_sin:'20%VA',ded_robo_con:'20%VA',
+    legal:'SÍ', exequial:'SÍ',
+    vida:'$10,000–$20,000 (plan)', enf_graves:'N/A',
+    renta_hosp:'$50/día · máx.10 días', sepelio:'N/A',
+    telemedicina:'E-DOCTOR (med.general, psicología, nutrición)',
+    dental:'Prevención y cirugía 70–100%', medico_dom:'N/A',
+    ded_parcial:'10%VS / 1%VA / mín.$350 (VA>$15k) · $250 (VA≤$15k)',
+    ded_daño:'25%VA (VA≤$15k) / 20%VA (VA>$15k)',
+    ded_robo_sin:'20%VA', ded_robo_con:'20%VA',
   },
   GENERALI:{
-    color:'#c84b1a',pnMin:0,tcMax:12,debMax:10,
-    tasa:va=>va<=30000?0.0475:0.039,
-    resp_civil:35000,muerte_ocupante:8000,muerte_titular:8000,gastos_medicos:3000,
-    amparo:'Con costo adicional',
+    color:'#c84b1a', pnMin:400, tcMax:12, debMax:10,
+    tasa:0.035,                           // 3.5% fijo (fila 9, col D)
+    axaDisponible:false, vidaDefault:0,
+    pisoTC:35, pisoDeb:35,                // cuota mínima $35
+    extraFijo:0,
+    resp_civil:35000, muerte_ocupante:8000, muerte_titular:8000, gastos_medicos:3000,
+    amparo:'CON COSTO adicional',
     auto_sust:'10 días · siniestro >$1,600+IVA',
-    legal:'SÍ',exequial:'SÍ',
-    vida:'N/A',enf_graves:'N/A',renta_hosp:'N/A',sepelio:'N/A',
-    telemedicina:'N/A',dental:'N/A',medico_dom:'N/A',
-    ded_parcial:'Espec: 15%VS/2%VA/mín.$500 · Otros: 10%VS/1%VA/mín.$250',
-    ded_daño:'25%VA',ded_robo_sin:'25%VA',ded_robo_con:'25%VA',
+    legal:'SÍ', exequial:'SÍ',
+    vida:'N/A', enf_graves:'N/A', renta_hosp:'N/A', sepelio:'N/A',
+    telemedicina:'N/A', dental:'N/A', medico_dom:'N/A',
+    ded_parcial:'AVEO/SPARK/KIA: 15%VS/2%VA/mín.$500 · Otros: 10%VS/1%VA/mín.$250',
+    ded_daño:'por tabla de modelo', ded_robo_sin:'por tabla de modelo', ded_robo_con:'por tabla de modelo',
   },
-  'ASEG. DEL SUR':{
-    color:'#e63946',pnMin:350,tcMax:12,debMax:8,
-    tasa:va=>va<=20000?0.034:va<=30000?0.027:0.024,
-    resp_civil:30000,muerte_ocupante:10000,muerte_titular:10000,gastos_medicos:3000,
-    amparo:'Incluye completo',
+  ADS:{
+    color:'#e63946', pnMin:350, tcMax:12, debMax:10,
+    tasa:0.045,                           // 4.5% fijo (fila 9, col E)
+    axaDisponible:false, vidaDefault:0,
+    pisoTC:0, pisoDeb:0,
+    extraFijo:80,                         // +$80 fijo ADS (fila 20, col E)
+    resp_civil:30000, muerte_ocupante:10000, muerte_titular:10000, gastos_medicos:3000,
+    amparo:'COMPLETO',
     auto_sust:'15 días · siniestro >$1,500',
-    legal:'SÍ',exequial:'NO',
-    vida:'N/A',enf_graves:'N/A',renta_hosp:'N/A',sepelio:'SÍ',
-    telemedicina:'N/A',dental:'N/A',medico_dom:'N/A',
+    legal:'SÍ', exequial:'NO',
+    vida:'N/A', enf_graves:'N/A', renta_hosp:'N/A', sepelio:'N/A',
+    telemedicina:'N/A', dental:'N/A', medico_dom:'N/A',
     ded_parcial:'10%VS / 1%VA / mín.$250',
-    ded_daño:'15%VA',ded_robo_sin:'20%VA',ded_robo_con:'20%VA',
+    ded_daño:'15%VA', ded_robo_sin:'20%VA', ded_robo_con:'20%VA',
   },
   SWEADEN:{
-    color:'#1a4c84',pnMin:350,tcMax:9,debMax:10,
-    tasa:va=>va<=20000?0.035:va<=30000?0.028:0.025,
-    resp_civil:30000,muerte_ocupante:5000,muerte_titular:10000,gastos_medicos:2000,
-    amparo:'Incluye completo',
-    auto_sust:'30 días · siniestro >$1,200',
-    legal:'SÍ',exequial:'NO',
-    vida:'$5,000',enf_graves:'$2,500',
-    renta_hosp:'$25/día · máx.30 días',
-    sepelio:'$100',
-    telemedicina:'6 consultas',
-    dental:'N/A',medico_dom:'Copago $10/evento',
-    ded_parcial:'10%VS / 1%VA / mín.$250',
-    ded_daño:'20%VA',ded_robo_sin:'20%VA',ded_robo_con:'20%VA',
+    color:'#1a4c84', pnMin:350, tcMax:9, debMax:10,
+    tasa:0.035,                           // 3.5% fijo (fila 9, col F)
+    axaDisponible:true,  vidaDefault:59.99, // AXA disponible; prima vida $59.99 (F8)
+    pisoTC:50, pisoDeb:50,                // cuota mínima $50
+    extraFijo:0,
+    resp_civil:30000, muerte_ocupante:5000, muerte_titular:10000, gastos_medicos:2000,
+    amparo:'COMPLETO',
+    auto_sust:'c/AXA: 30 días sin mínimo · s/AXA: >$1,500 (VA>$20k) 7 días',
+    legal:'SÍ', exequial:'NO',
+    vida:'$5,000', enf_graves:'$2,500',
+    renta_hosp:'$25/día · máx.30 días', sepelio:'$500',
+    telemedicina:'6 consultas', dental:'N/A', medico_dom:'Copago $10/evento',
+    ded_parcial:'10%VS / 1%VA / mín.$250 (por tabla)',
+    ded_daño:'20%VA', ded_robo_sin:'20%VA', ded_robo_con:'20%VA',
   },
   MAPFRE:{
-    color:'#b8860b',pnMin:400,tcMax:9,debMax:10,
-    tasa:va=>va<=20000?0.035:va<=30000?0.028:0.025,
-    resp_civil:30000,muerte_ocupante:6000,muerte_titular:null,gastos_medicos:2000,
-    amparo:'Incluye completo',
+    color:'#b8860b', pnMin:400, tcMax:9, debMax:10,
+    tasa:0.037,                           // 3.7% fijo (fila 9, col G)
+    axaDisponible:false, vidaDefault:63.19, // prima vida $63.19 (G6)
+    pisoTC:0, pisoDeb:0,
+    extraFijo:0,
+    resp_civil:30000, muerte_ocupante:6000, muerte_titular:null, gastos_medicos:3000,
+    amparo:'COMPLETO',
     auto_sust:'10 días · siniestro >$1,250',
-    legal:'SÍ',exequial:'NO',
-    vida:'$5,000',enf_graves:'$2,500',
-    renta_hosp:'$20/día accidente · máx.30 días',
-    sepelio:'$100',
-    telemedicina:'SÍ',
-    dental:'N/A',medico_dom:'SÍ',
+    legal:'SÍ', exequial:'NO',
+    vida:'$5,000', enf_graves:'Anticipo 50% cob. principal',
+    renta_hosp:'$20/día acc. · máx.30 días · hasta $600', sepelio:'$500',
+    telemedicina:'SÍ', dental:'N/A', medico_dom:'SÍ',
     ded_parcial:'10%VS / 1.5%VA / mín.$350',
-    ded_daño:'15%VA',ded_robo_sin:'30%VA',ded_robo_con:'15%VA',
+    ded_daño:'15%VA', ded_robo_sin:'30%VA', ded_robo_con:'15%VA',
   },
   ALIANZA:{
-    color:'#2d6a4f',pnMin:350,tcMax:9,debMax:10,
-    tasa:va=>va<=20000?0.030:va<=30000?0.025:0.022,
-    resp_civil:30000,muerte_ocupante:5000,muerte_titular:null,gastos_medicos:2100,
-    amparo:'Incluye completo',
-    auto_sust:'Sedan/SP: >$500 · SUV≤$40k: >$40,001 · SUV>$60k: >$60,001',
-    legal:'SÍ',exequial:'SÍ',
-    vida:'$5,000',enf_graves:'$2,500',
-    renta_hosp:'$20/día · máx.25 días · hasta $500',
-    sepelio:'$100',
-    telemedicina:'SÍ',
-    dental:'N/A',medico_dom:'Copago $10 · Titular y Cónyuge',
-    ded_parcial:'10%VS / 1%VA / mín.$250 (>40,000 km: 1.5%VA)',
-    ded_daño:'15%VA',ded_robo_sin:'15%VA',ded_robo_con:'15%VA',
+    color:'#2d6a4f', pnMin:350, tcMax:9, debMax:10,
+    tasa:0.032,                           // 3.2% fijo (fila 9, col H)
+    axaDisponible:false, vidaDefault:55.74, // prima vida $55.74 (H8)
+    pisoTC:0, pisoDeb:50,                 // débito: cuota mínima $50
+    extraFijo:0,
+    resp_civil:30000, muerte_ocupante:5000, muerte_titular:null, gastos_medicos:2500,
+    amparo:'COMPLETO',
+    auto_sust:'Sedán/SP: >$500 · SUV ≤$40k: >$1,000 · SUV >$60k: >$60,001',
+    legal:'SÍ', exequial:'SÍ',
+    vida:'$5,000', enf_graves:'$2,500',
+    renta_hosp:'$20/día · máx.25 días · hasta $500', sepelio:'$500',
+    telemedicina:'Orientación médica telefónica sin límite',
+    dental:'N/A', medico_dom:'Copago $10 · titular y cónyuge',
+    ded_parcial:'10%VS / 1%VA / mín.$250',
+    ded_daño:'15%VA', ded_robo_sin:'15%VA', ded_robo_con:'15%VA',
+  },
+  // ── Aseguradoras adicionales en cartera (sin datos Excel detallados) ─────────
+  'ASEG. DEL SUR':{
+    color:'#e63946', pnMin:350, tcMax:12, debMax:10,
+    tasa:0.034, axaDisponible:false, vidaDefault:0,
+    pisoTC:0, pisoDeb:0, extraFijo:0,
+    resp_civil:30000, muerte_ocupante:10000, muerte_titular:10000, gastos_medicos:3000,
+    amparo:'COMPLETO', auto_sust:'15 días · siniestro >$1,500',
+    legal:'SÍ', exequial:'NO',
+    vida:'N/A', enf_graves:'N/A', renta_hosp:'N/A', sepelio:'N/A',
+    telemedicina:'N/A', dental:'N/A', medico_dom:'N/A',
+    ded_parcial:'10%VS / 1%VA / mín.$250',
+    ded_daño:'15%VA', ded_robo_sin:'20%VA', ded_robo_con:'20%VA',
   },
   EQUINOCCIAL:{
-    color:'#0077b6',pnMin:350,tcMax:12,debMax:10,
-    tasa:va=>va<=20000?0.034:va<=30000?0.027:0.024,
-    resp_civil:30000,muerte_ocupante:8000,muerte_titular:8000,gastos_medicos:2500,
-    amparo:'Incluye completo',
-    auto_sust:'10 días · siniestro >$1,000',
-    legal:'SÍ',exequial:'SÍ',
-    vida:'N/A',enf_graves:'N/A',renta_hosp:'N/A',sepelio:'N/A',
-    telemedicina:'N/A',dental:'N/A',medico_dom:'N/A',
+    color:'#0077b6', pnMin:350, tcMax:12, debMax:10,
+    tasa:0.034, axaDisponible:false, vidaDefault:0,
+    pisoTC:0, pisoDeb:0, extraFijo:0,
+    resp_civil:30000, muerte_ocupante:8000, muerte_titular:8000, gastos_medicos:2500,
+    amparo:'COMPLETO', auto_sust:'10 días · siniestro >$1,000',
+    legal:'SÍ', exequial:'SÍ',
+    vida:'N/A', enf_graves:'N/A', renta_hosp:'N/A', sepelio:'N/A',
+    telemedicina:'N/A', dental:'N/A', medico_dom:'N/A',
     ded_parcial:'10%VS / 1%VA / mín.$250',
-    ded_daño:'20%VA',ded_robo_sin:'20%VA',ded_robo_con:'20%VA',
+    ded_daño:'20%VA', ded_robo_sin:'20%VA', ded_robo_con:'20%VA',
   },
   ATLANTIDA:{
-    color:'#457b9d',pnMin:350,tcMax:12,debMax:10,
-    tasa:va=>va<=20000?0.036:va<=30000?0.029:0.025,
-    resp_civil:30000,muerte_ocupante:5000,muerte_titular:5000,gastos_medicos:2000,
-    amparo:'Incluye completo',
-    auto_sust:'10 días · siniestro >$1,200',
-    legal:'SÍ',exequial:'NO',
-    vida:'N/A',enf_graves:'N/A',renta_hosp:'N/A',sepelio:'N/A',
-    telemedicina:'N/A',dental:'N/A',medico_dom:'N/A',
+    color:'#457b9d', pnMin:350, tcMax:12, debMax:10,
+    tasa:0.036, axaDisponible:false, vidaDefault:0,
+    pisoTC:0, pisoDeb:0, extraFijo:0,
+    resp_civil:30000, muerte_ocupante:5000, muerte_titular:5000, gastos_medicos:2000,
+    amparo:'COMPLETO', auto_sust:'10 días · siniestro >$1,200',
+    legal:'SÍ', exequial:'NO',
+    vida:'N/A', enf_graves:'N/A', renta_hosp:'N/A', sepelio:'N/A',
+    telemedicina:'N/A', dental:'N/A', medico_dom:'N/A',
     ded_parcial:'10%VS / 1%VA / mín.$250',
-    ded_daño:'20%VA',ded_robo_sin:'20%VA',ded_robo_con:'20%VA',
+    ded_daño:'20%VA', ded_robo_sin:'20%VA', ded_robo_con:'20%VA',
   },
   AIG:{
-    color:'#2a9d8f',pnMin:400,tcMax:12,debMax:10,
-    tasa:va=>va<=20000?0.038:va<=30000?0.030:0.026,
-    resp_civil:40000,muerte_ocupante:10000,muerte_titular:10000,gastos_medicos:5000,
-    amparo:'Incluye completo',
-    auto_sust:'15 días · siniestro >$800',
-    legal:'SÍ',exequial:'SÍ',
-    vida:'N/A',enf_graves:'N/A',renta_hosp:'N/A',sepelio:'N/A',
-    telemedicina:'N/A',dental:'N/A',medico_dom:'N/A',
+    color:'#2a9d8f', pnMin:400, tcMax:12, debMax:10,
+    tasa:0.038, axaDisponible:false, vidaDefault:0,
+    pisoTC:0, pisoDeb:0, extraFijo:0,
+    resp_civil:40000, muerte_ocupante:10000, muerte_titular:10000, gastos_medicos:5000,
+    amparo:'COMPLETO', auto_sust:'15 días · siniestro >$800',
+    legal:'SÍ', exequial:'SÍ',
+    vida:'N/A', enf_graves:'N/A', renta_hosp:'N/A', sepelio:'N/A',
+    telemedicina:'N/A', dental:'N/A', medico_dom:'N/A',
     ded_parcial:'10%VS / 1%VA / mín.$250',
-    ded_daño:'15%VA',ded_robo_sin:'15%VA',ded_robo_con:'15%VA',
+    ded_daño:'15%VA', ded_robo_sin:'15%VA', ded_robo_con:'15%VA',
   },
 };
 
-// Prima mínima: si la prima calculada < pnMin se aplica pnMin directamente.
-// El VA del cliente NO se ajusta — siempre se muestra el valor real asegurado.
-function calcPrima(va, tasa, pnMin=0){
-  const pnCalc = va * tasa;
-  const pnAplicada = (pnMin > 0 && pnCalc < pnMin) ? pnMin : pnCalc;
-  const aplicaMin  = pnMin > 0 && pnCalc < pnMin;
-  const pn=pnAplicada, der=3, camp=pn*0.005, sb=pn*0.035;
-  const sub=pn+der+camp+sb, iva=sub*0.15, total=sub+iva;
-  // vaEfectivo = va siempre (no se altera el valor asegurado)
-  return{pn,der,camp,sb,sub,iva,total,vaEfectivo:va,vaOriginal:va,ajustado:aplicaMin,pnCalc};
+// ── Helpers de cálculo (equivalentes exactos del Excel PRODUCTOS PRODUBANCO) ──
+
+// Derechos de Emisión — escala tiered (fila 15 del Excel)
+function _calcDerechosEmision(pn){
+  if(pn > 4000) return 9;
+  if(pn > 2000) return 7;
+  if(pn > 1000) return 5;
+  if(pn > 500)  return 3;
+  if(pn > 250)  return 1;
+  return 0.50;
 }
 
-// Cuotas TC: respeta máximo por aseguradora, y cuota mínima $50
-function calcCuotasTc(total, tcMax, nCuotas){
-  // No puede superar el máximo de la aseguradora
+// Cálculo completo de prima para una aseguradora
+// Incluye derechos, campesino, SuperBancos, AXA, IVA y vida (post-IVA)
+function calcPrima(va, tasa, pnMin=0, axaIncluido=false, vidaPrima=0, extraFijo=0){
+  const pnCalc   = va * tasa;
+  const pn       = Math.max(pnCalc, pnMin>0 ? pnMin : 0);
+  const aplicaMin= pnMin > 0 && pnCalc < pnMin;
+
+  const der  = _calcDerechosEmision(pn);
+  const camp = Math.round(pn * 0.005 * 100) / 100;
+  const sb   = Math.round(pn * 0.035 * 100) / 100;
+  const axa  = axaIncluido ? Math.round((60/1.15) * 100) / 100 : 0; // $52.17 neto
+
+  // Subtotal pre-IVA: pn + cargos + AXA + extra fijo (ADS: +$80)
+  const sub = Math.round((pn + der + camp + sb + axa + extraFijo) * 100) / 100;
+  const iva = Math.round(sub * 0.15 * 100) / 100;
+
+  // Vida se agrega DESPUÉS del IVA — no tributa (fila 22 del Excel)
+  const total = Math.round((sub + iva + vidaPrima) * 100) / 100;
+
+  return { pn, der, camp, sb, axa, extraFijo, sub, iva, vida:vidaPrima, total,
+           vaEfectivo:va, vaOriginal:va, ajustado:aplicaMin, pnCalc, tasa };
+}
+
+// Cuotas TC — respeta tcMax y cuota mínima por aseguradora
+function calcCuotasTc(total, tcMax, nCuotas, piso=0){
   let n = Math.min(nCuotas, tcMax);
-  // Cuota no puede ser < $50 → reducir número de cuotas hasta que cuota >= 50
-  while(n > 1 && total/n < 50) n--;
-  return {n, cuota: total/n};
+  if(piso > 0){ while(n > 1 && (total/n) < piso) n--; }
+  return { n, cuota: Math.round(total/n*100)/100 };
 }
 
-// Cuotas débito: cuota mínima $50
-function calcCuotasDeb(total, nCuotas){
+// Cuotas débito — respeta cuota mínima por aseguradora
+function calcCuotasDeb(total, nCuotas, piso=0){
   let n = nCuotas;
-  while(n > 1 && total/n < 50) n--;
-  return {n, cuota: total/n};
+  if(piso > 0){ while(n > 1 && (total/n) < piso) n--; }
+  return { n, cuota: Math.round(total/n*100)/100 };
 }
 
 function prefillCotizador(c){
@@ -1165,125 +1216,122 @@ function limpiarCotizador(){
 }
 
 function calcCotizacion(){
-  const va=parseFloat(document.getElementById('cot-va').value)||0;
-  const extras=parseFloat(document.getElementById('cot-extras').value)||0;
-  const vaT=va+extras;
-  if(vaT<1000){showToast('Ingrese un valor asegurado válido','error');return;}
-  const cuotasTcReq=parseInt(document.getElementById('cot-cuotas-tc').value)||12;
-  const cuotasDebReq=parseInt(document.getElementById('cot-cuotas-deb').value)||10;
+  const va  = parseFloat(document.getElementById('cot-va')?.value)||0;
+  const ext = parseFloat(document.getElementById('cot-extras')?.value)||0;
+  const vaT = va + ext;
+  if(vaT < 500){ showToast('Ingrese un valor asegurado válido','error'); return; }
 
-  // ── Auto Sustituto SWEADEN ──
-  const AUTOSUST_COSTO = 60;
-  const autoSustActivo = document.getElementById('sweaden-autosust')?.checked || false;
+  const cuotasTcReq  = parseInt(document.getElementById('cot-cuotas-tc')?.value)||12;
+  const cuotasDebReq = parseInt(document.getElementById('cot-cuotas-deb')?.value)||10;
 
-  // Filtrar por aseguradoras seleccionadas
-  const selectedAseg=getSelectedAseg();
-  if(selectedAseg.length===0){showToast('Selecciona al menos una aseguradora','error');return;}
+  // Leer toggle AXA (SWEADEN)
+  const axaActivo = document.getElementById('cot-axa')?.checked || false;
 
-  const results=Object.entries(ASEGURADORAS)
-    .filter(([name])=>selectedAseg.includes(name))
-    .map(([name,cfg])=>{
-      const tasa=cfg.tasa(vaT);
-      const p=calcPrima(vaT,tasa,cfg.pnMin);
-      const esSweaden = name==='SWEADEN';
-      const extraAutoSust = (esSweaden && autoSustActivo) ? AUTOSUST_COSTO : 0;
-      const totalConExtra = p.total + extraAutoSust;
-      const tc=calcCuotasTc(totalConExtra,cfg.tcMax,cuotasTcReq);
-      const debN=Math.min(cuotasDebReq,cfg.debMax||cuotasDebReq);
-      const deb=calcCuotasDeb(totalConExtra,debN);
-      return{name,cfg,tasa,...p,total:totalConExtra,extraAutoSust,tc,deb};
+  // Leer primas de vida por aseguradora
+  const vidaInputs = {
+    LATINA:  parseFloat(document.getElementById('cot-vida-latina')?.value)||0,
+    SWEADEN: parseFloat(document.getElementById('cot-vida-sweaden')?.value)||0,
+    MAPFRE:  parseFloat(document.getElementById('cot-vida-mapfre')?.value)||0,
+    ALIANZA: parseFloat(document.getElementById('cot-vida-alianza')?.value)||0,
+  };
+
+  const selectedAseg = getSelectedAseg();
+  if(selectedAseg.length === 0){ showToast('Selecciona al menos una aseguradora','error'); return; }
+
+  const results = Object.entries(ASEGURADORAS)
+    .filter(([name]) => selectedAseg.includes(name))
+    .map(([name, cfg]) => {
+      // Tasa: puede ser número fijo (nuevas) o función legacy (antiguas)
+      const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : cfg.tasa;
+      const axaInc   = name === 'SWEADEN' ? axaActivo : false;
+      const vida     = vidaInputs[name] !== undefined ? vidaInputs[name] : 0;
+      const p = calcPrima(vaT, tasa, cfg.pnMin, axaInc, vida, cfg.extraFijo||0);
+      const tc  = calcCuotasTc(p.total, cfg.tcMax, cuotasTcReq,  cfg.pisoTC||0);
+      const deb = calcCuotasDeb(p.total, Math.min(cuotasDebReq, cfg.debMax||cuotasDebReq), cfg.pisoDeb||0);
+      return { name, cfg, ...p, tc, deb };
     });
 
-  // Toggle auto sustituto solo visible si SWEADEN está seleccionada
-  const wrapEl=document.getElementById('sweaden-autosust-wrap');
-  if(wrapEl) wrapEl.style.display=selectedAseg.includes('SWEADEN')?'flex':'none';
+  const minTotal = Math.min(...results.map(r=>r.total));
 
-  const minTotal=Math.min(...results.map(r=>r.total));
+  document.getElementById('aseg-cards-result').innerHTML = results.map(r => {
+    const warnings = [];
+    if(r.ajustado) warnings.push(`⚠ Prima mínima aplicada: $${r.pn.toFixed(2)}`);
+    if(r.tc.n < Math.min(cuotasTcReq, r.cfg.tcMax)) warnings.push(`⚠ TC ajustado a ${r.tc.n} cuotas`);
+    if(r.tc.n < cuotasTcReq && r.cfg.tcMax < cuotasTcReq) warnings.push(`⚠ TC máx. permitido: ${r.cfg.tcMax} cuotas`);
+    if(r.deb.n < cuotasDebReq) warnings.push(`⚠ Débito ajustado a ${r.deb.n} cuotas`);
 
-  document.getElementById('aseg-cards-result').innerHTML=results.map(r=>{
-    const warnings=[];
-    if(r.ajustado) warnings.push(`⚠ Prima mínima aplicada: $${r.pn.toFixed(2)} — VA $${fmt(r.vaEfectivo)} no alcanza prima mínima de ${fmt(r.cfg.pnMin)}`);
-    if(r.tc.n < Math.min(cuotasTcReq,r.cfg.tcMax)) warnings.push(`⚠ TC ajustado a ${r.tc.n} cuotas (cuota mín. $50)`);
-    if(r.tc.n < cuotasTcReq && r.cfg.tcMax < cuotasTcReq) warnings.push(`⚠ TC máximo permitido: ${r.cfg.tcMax} cuotas`);
-    if(r.deb.n < cuotasDebReq) warnings.push(`⚠ Débito ajustado a ${r.deb.n} cuotas (cuota mín. $50)`);
-
-    // Badge especial en tarjeta SWEADEN cuando auto sustituto está activo
-    const autoSustBadge = (r.name==='SWEADEN' && r.extraAutoSust>0)
-      ? `<div style="background:#e8f0fb;border:1px solid #1a4c84;border-radius:6px;padding:5px 8px;margin-bottom:8px;font-size:11px;color:#1a4c84;display:flex;justify-content:space-between;align-items:center">
-           <span>🚗 Auto Sustituto incluido</span>
-           <span style="font-weight:700;font-family:'DM Mono',monospace">+${fmt(r.extraAutoSust)}</span>
-         </div>`
-      : '';
-
-    // Fila de desglose auto sustituto en el detalle de prima
-    const autoSustRow = (r.name==='SWEADEN' && r.extraAutoSust>0)
-      ? `<div class="aseg-row" style="color:#1a4c84;font-weight:500">
-           <span class="aseg-key">🚗 Auto Sustituto</span>
-           <span class="aseg-val">${fmt(r.extraAutoSust)}</span>
-         </div>`
-      : '';
+    const axaBadge = r.axa > 0
+      ? `<div style="background:#e8f0fb;border:1px solid #1a4c84;border-radius:6px;padding:4px 8px;margin-bottom:6px;font-size:11px;color:#1a4c84;display:flex;justify-content:space-between">
+           <span>🚗 AXA Asistencia (neto)</span><span style="font-weight:700;font-family:'DM Mono',monospace">${fmt(r.axa)}</span></div>` : '';
+    const vidaBadge = r.vida > 0
+      ? `<div style="background:#e8f5e9;border:1px solid #2d6a4f;border-radius:6px;padding:4px 8px;margin-bottom:6px;font-size:11px;color:#2d6a4f;display:flex;justify-content:space-between">
+           <span>❤ Vida / Asistencia Médica</span><span style="font-weight:700;font-family:'DM Mono',monospace">${fmt(r.vida)}</span></div>` : '';
+    const extraBadge = r.extraFijo > 0
+      ? `<div class="aseg-row" style="color:#e63946"><span class="aseg-key">Cargo adicional</span><span class="aseg-val">${fmt(r.extraFijo)}</span></div>` : '';
 
     return `<div class="aseg-card${r.total===minTotal?' mejor':''}">
       <div class="aseg-name" style="color:${r.cfg.color}">${r.name}</div>
-      ${warnings.length?`<div style="background:#fff8e1;border:1px solid #f0c040;border-radius:6px;padding:6px 8px;margin-bottom:8px;font-size:10px;color:#7a5c00;line-height:1.6">${warnings.join('<br>')}</div>`:''}
-      ${autoSustBadge}
+      ${warnings.length?`<div style="background:#fff8e1;border:1px solid #f0c040;border-radius:6px;padding:5px 8px;margin-bottom:8px;font-size:10px;color:#7a5c00;line-height:1.6">${warnings.join('<br>')}</div>`:''}
+      ${axaBadge}${vidaBadge}
       <div class="aseg-row"><span class="aseg-key">Tasa</span><span class="aseg-val">${(r.tasa*100).toFixed(2)}%</span></div>
       <div class="aseg-row"><span class="aseg-key">Prima Neta</span><span class="aseg-val">${fmt(r.pn)}</span></div>
       <div class="aseg-row"><span class="aseg-key">Der. Emisión</span><span class="aseg-val">${fmt(r.der)}</span></div>
       <div class="aseg-row"><span class="aseg-key">Seg. Campesino</span><span class="aseg-val">${fmt(r.camp)}</span></div>
       <div class="aseg-row"><span class="aseg-key">Super Bancos</span><span class="aseg-val">${fmt(r.sb)}</span></div>
+      ${extraBadge}
+      <div class="aseg-row"><span class="aseg-key">Subtotal</span><span class="aseg-val">${fmt(r.sub)}</span></div>
       <div class="aseg-row"><span class="aseg-key">IVA 15%</span><span class="aseg-val">${fmt(r.iva)}</span></div>
-      ${autoSustRow}
-      <div class="aseg-total"><span class="aseg-total-key">Total${r.extraAutoSust>0?' c/Auto Sust.':''}</span><span class="aseg-total-val">${fmt(r.total)}</span></div>
+      ${r.vida>0?`<div class="aseg-row" style="color:#2d6a4f"><span class="aseg-key">Vida (post-IVA)</span><span class="aseg-val">${fmt(r.vida)}</span></div>`:''}
+      <div class="aseg-total"><span class="aseg-total-key">COSTO TOTAL</span><span class="aseg-total-val">${fmt(r.total)}</span></div>
       <div class="aseg-cuota">💳 TC ${r.tc.n} cuotas: <b>${fmt(r.tc.cuota)}/mes</b></div>
       <div class="aseg-cuota">🏦 Débito ${r.deb.n} cuotas: <b>${fmt(r.deb.cuota)}/mes</b></div>
       <div style="margin-top:10px;display:flex;gap:4px">
-        <button class="btn btn-ghost btn-xs w-full" onclick="printOneAseg('${r.name}',${r.total.toFixed(2)},${r.pn.toFixed(2)},${r.tc.cuota.toFixed(2)},${r.deb.cuota.toFixed(2)},${r.tc.n},${r.deb.n})">🖨 Imprimir / PDF</button>
+        <button class="btn btn-ghost btn-xs w-full" onclick="printOneAseg('${r.name}',${r.total.toFixed(2)},${r.pn.toFixed(2)},${r.tc.cuota.toFixed(2)},${r.deb.cuota.toFixed(2)},${r.tc.n},${r.deb.n})">🖨 PDF</button>
+        <button class="btn btn-blue btn-xs" onclick="enviarWhatsAppCotiz('${r.name}',${r.total.toFixed(2)},${r.tc.cuota.toFixed(2)},${r.tc.n})">📱 WA</button>
       </div>
     </div>`;
   }).join('');
 
-  // Coberturas
+  // Tabla coberturas comparadas
   document.getElementById('coberturas-table-wrap').innerHTML=`<table class="comp-table">
-    <thead><tr><th class="col-cob" style="text-align:left">Cobertura</th>${results.map(r=>`<th style="color:${r.cfg.color}">${r.name}</th>`).join('')}</tr></thead>
+    <thead><tr><th class="col-cob" style="text-align:left">Cobertura / Deducible</th>${results.map(r=>`<th style="color:${r.cfg.color}">${r.name}</th>`).join('')}</tr></thead>
     <tbody>
       <tr class="section-row"><td colspan="${results.length+1}">Coberturas Básicas</td></tr>
       <tr><td class="col-cob">Todo Riesgo</td>${results.map(()=>`<td class="col-val yes">SÍ</td>`).join('')}</tr>
       <tr><td class="col-cob">Pérdida parcial</td>${results.map(()=>`<td class="col-val yes">SÍ</td>`).join('')}</tr>
-      <tr><td class="col-cob">Pérdida total</td>${results.map(()=>`<td class="col-val yes">SÍ</td>`).join('')}</tr>
+      <tr><td class="col-cob">Pérdida total robo/daño</td>${results.map(()=>`<td class="col-val yes">SÍ</td>`).join('')}</tr>
+      <tr><td class="col-cob">Cobertura Airbags</td>${results.map(()=>`<td class="col-val yes">SÍ</td>`).join('')}</tr>
+      <tr><td class="col-cob">Extraterritorial</td>${results.map(()=>`<td class="col-val yes">SÍ</td>`).join('')}</tr>
+      <tr><td class="col-cob">Gastos Wincha</td>${results.map(()=>`<td class="col-val yes">SÍ</td>`).join('')}</tr>
       <tr class="section-row"><td colspan="${results.length+1}">Amparos Adicionales</td></tr>
       <tr><td class="col-cob">Responsabilidad Civil</td>${results.map(r=>`<td class="col-val">${fmt(r.cfg.resp_civil)}</td>`).join('')}</tr>
-      <tr><td class="col-cob">Muerte acc./ocupante</td>${results.map(r=>`<td class="col-val">${fmt(r.cfg.muerte_ocupante)}</td>`).join('')}</tr>
-      <tr><td class="col-cob">Muerte acc./titular</td>${results.map(r=>`<td class="col-val">${r.cfg.muerte_titular?fmt(r.cfg.muerte_titular):'<span class="no">N/A</span>'}</td>`).join('')}</tr>
+      <tr><td class="col-cob">Muerte acc. ocupante</td>${results.map(r=>`<td class="col-val">${fmt(r.cfg.muerte_ocupante)}</td>`).join('')}</tr>
+      <tr><td class="col-cob">Muerte acc. titular</td>${results.map(r=>`<td class="col-val">${r.cfg.muerte_titular?fmt(r.cfg.muerte_titular):'<span class="no">N/A</span>'}</td>`).join('')}</tr>
       <tr><td class="col-cob">Gastos Médicos</td>${results.map(r=>`<td class="col-val">${fmt(r.cfg.gastos_medicos)}</td>`).join('')}</tr>
       <tr><td class="col-cob">Amparo Patrimonial</td>${results.map(r=>`<td class="col-val" style="font-size:10px">${r.cfg.amparo}</td>`).join('')}</tr>
-      <tr class="section-row"><td colspan="${results.length+1}">Beneficios</td></tr>
-      <tr><td class="col-cob">Auto sustituto</td>${results.map(r=>{
-        const incluyeExtra=r.name==='SWEADEN'&&autoSustActivo;
-        return `<td class="col-val" style="font-size:10px${incluyeExtra?';color:#1a4c84;font-weight:600':''}">
-          ${r.cfg.auto_sust}
-          ${incluyeExtra?'<br><span style="background:#1a4c84;color:#fff;font-size:9px;border-radius:3px;padding:1px 5px">✓ Sin mínimo de siniestro — incluido $60</span>':''}
-        </td>`;
-      }).join('')}</tr>
-      <tr><td class="col-cob">Asist. Legal en situ</td>${results.map(r=>`<td class="col-val ${(r.cfg.legal||'SÍ')==='SÍ'?'yes':'no'}">${r.cfg.legal||'SÍ'}</td>`).join('')}</tr>
+      <tr class="section-row"><td colspan="${results.length+1}">Beneficios y Servicios</td></tr>
+      <tr><td class="col-cob">Auto sustituto</td>${results.map(r=>`<td class="col-val" style="font-size:10px">${r.cfg.auto_sust}</td>`).join('')}</tr>
+      <tr><td class="col-cob">Asist. Legal en situ</td>${results.map(r=>`<td class="col-val ${r.cfg.legal==='SÍ'?'yes':'no'}">${r.cfg.legal}</td>`).join('')}</tr>
       <tr><td class="col-cob">Asistencia Exequial</td>${results.map(r=>`<td class="col-val ${r.cfg.exequial==='SÍ'?'yes':'no'}">${r.cfg.exequial}</td>`).join('')}</tr>
-      <tr><td class="col-cob">Vida/Muerte Accidental</td>${results.map(r=>`<td class="col-val" style="font-size:10px">${r.cfg.vida||'N/A'}</td>`).join('')}</tr>
+      <tr class="section-row"><td colspan="${results.length+1}">Plan de Vida / Asistencia Médica</td></tr>
+      <tr><td class="col-cob">Vida / Muerte Accidental</td>${results.map(r=>`<td class="col-val" style="font-size:10px">${r.cfg.vida||'N/A'}</td>`).join('')}</tr>
       <tr><td class="col-cob">Enfermedades Graves</td>${results.map(r=>`<td class="col-val" style="font-size:10px">${r.cfg.enf_graves||'N/A'}</td>`).join('')}</tr>
       <tr><td class="col-cob">Renta Hospitalización</td>${results.map(r=>`<td class="col-val" style="font-size:10px">${r.cfg.renta_hosp||'N/A'}</td>`).join('')}</tr>
       <tr><td class="col-cob">Gastos de Sepelio</td>${results.map(r=>`<td class="col-val" style="font-size:10px">${r.cfg.sepelio||'N/A'}</td>`).join('')}</tr>
       <tr><td class="col-cob">Telemedicina</td>${results.map(r=>`<td class="col-val" style="font-size:10px">${r.cfg.telemedicina||'N/A'}</td>`).join('')}</tr>
       <tr><td class="col-cob">Beneficio Dental</td>${results.map(r=>`<td class="col-val" style="font-size:10px">${r.cfg.dental||'N/A'}</td>`).join('')}</tr>
       <tr><td class="col-cob">Médico a Domicilio</td>${results.map(r=>`<td class="col-val" style="font-size:10px">${r.cfg.medico_dom||'N/A'}</td>`).join('')}</tr>
-      <tr class="section-row"><td colspan="${results.length+1}">Prima Mínima / Cuotas Máx.</td></tr>
-      <tr><td class="col-cob">Prima Neta Mínima</td>${results.map(r=>`<td class="col-val mono">${r.cfg.pnMin>0?fmt(r.cfg.pnMin):'—'}</td>`).join('')}</tr>
-      <tr><td class="col-cob">TC Máx. cuotas</td>${results.map(r=>`<td class="col-val mono">${r.cfg.tcMax} cuotas</td>`).join('')}</tr>
-      <tr><td class="col-cob">Débito Máx. cuotas</td>${results.map(r=>`<td class="col-val mono">${r.cfg.debMax||10} cuotas</td>`).join('')}</tr>
       <tr class="section-row"><td colspan="${results.length+1}">Deducibles</td></tr>
       <tr><td class="col-cob">Pérdida parcial</td>${results.map(r=>`<td class="col-val" style="font-size:10px">${r.cfg.ded_parcial}</td>`).join('')}</tr>
       <tr><td class="col-cob">Pérd. total daños</td>${results.map(r=>`<td class="col-val">${r.cfg.ded_daño}</td>`).join('')}</tr>
-      <tr><td class="col-cob">Pérd. total robo s/d</td>${results.map(r=>`<td class="col-val">${r.cfg.ded_robo_sin}</td>`).join('')}</tr>
-      <tr><td class="col-cob">Pérd. total robo c/d</td>${results.map(r=>`<td class="col-val">${r.cfg.ded_robo_con}</td>`).join('')}</tr>
+      <tr><td class="col-cob">Pérd. total robo s/disp.</td>${results.map(r=>`<td class="col-val">${r.cfg.ded_robo_sin}</td>`).join('')}</tr>
+      <tr><td class="col-cob">Pérd. total robo c/disp.</td>${results.map(r=>`<td class="col-val">${r.cfg.ded_robo_con}</td>`).join('')}</tr>
+      <tr class="section-row"><td colspan="${results.length+1}">Condiciones Comerciales</td></tr>
+      <tr><td class="col-cob">Prima Neta Mínima</td>${results.map(r=>`<td class="col-val mono">${r.cfg.pnMin>0?fmt(r.cfg.pnMin):'—'}</td>`).join('')}</tr>
+      <tr><td class="col-cob">TC — Máx. cuotas</td>${results.map(r=>`<td class="col-val mono">${r.cfg.tcMax} cuotas</td>`).join('')}</tr>
+      <tr><td class="col-cob">Débito — Máx. cuotas</td>${results.map(r=>`<td class="col-val mono">${r.cfg.debMax||10} cuotas</td>`).join('')}</tr>
     </tbody></table>`;
+
   document.getElementById('cotizacion-resultado').style.display='block';
 }
 
@@ -1753,6 +1801,24 @@ function guardarCierreVenta(){
   renderCierres();
   actualizarBadgeCotizaciones();
 }
+// ── WhatsApp directo desde resultado de cotización ──────────────────
+function enviarWhatsAppCotiz(aseg, total, cuota, nCuotas){
+  const nombre  = document.getElementById('cot-nombre')?.value || '';
+  const celular = (document.getElementById('cot-cel')?.value||'').replace(/\D/g,'');
+  const marca   = document.getElementById('cot-marca')?.value||'';
+  const modelo  = document.getElementById('cot-modelo')?.value||'';
+  const anio    = document.getElementById('cot-anio')?.value||'';
+  if(!celular){ showToast('Ingrese el celular del cliente primero','error'); return; }
+  const phone = celular.startsWith('593') ? celular : `593${celular.replace(/^0/,'')}`;
+  const msg = encodeURIComponent(
+    `Estimado/a ${nombre}, adjunto cotización para el seguro de su vehículo ${marca} ${modelo} ${anio}.\n\n` +
+    `✅ *${aseg}* — Total: *$${total.toFixed(2)}*\n` +
+    `💳 ${nCuotas} cuotas de $${cuota.toFixed(2)}/mes\n\n` +
+    `Cobertura total, asistencia 24/7. ¿Desea proceder?\n— Reliance Broker de Seguros`
+  );
+  window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${msg}`, '_blank');
+}
+
 function printOneAseg(name,total,pn,cuotaTc,cuotaDeb,nTc,nDeb){
   const cfg=ASEGURADORAS[name];
   const nombre=document.getElementById('cot-nombre').value||'—';
@@ -2023,10 +2089,15 @@ function guardarCotizacion(){
   const hasta   = desde ? (()=>{ const d=new Date(desde+'T00:00:00'); d.setFullYear(d.getFullYear()+1); d.setDate(d.getDate()-1); return d.toISOString().split('T')[0]; })() : '';
   const cuotasTcReq  = parseInt(document.getElementById('cot-cuotas-tc')?.value)||12;
   const cuotasDebReq = parseInt(document.getElementById('cot-cuotas-deb')?.value)||10;
-  const autoSustActivo = document.getElementById('sweaden-autosust')?.checked||false;
+  const axaIncluido = document.getElementById('cot-axa')?.checked||false;
+  const vidaLatina  = parseFloat(document.getElementById('cot-vida-latina')?.value)||0;
+  const vidaSweaden = parseFloat(document.getElementById('cot-vida-sweaden')?.value)||0;
+  const vidaMapfre  = parseFloat(document.getElementById('cot-vida-mapfre')?.value)||0;
+  const vidaAlianza = parseFloat(document.getElementById('cot-vida-alianza')?.value)||0;
+  const vidaInputsSave = { LATINA:vidaLatina, SWEADEN:vidaSweaden, MAPFRE:vidaMapfre, ALIANZA:vidaAlianza };
 
   if(!nombre){ showToast('Ingrese el nombre del cliente','error'); return; }
-  if(vaT<1000){ showToast('Ingrese un valor asegurado válido','error'); return; }
+  if(vaT<500){ showToast('Ingrese un valor asegurado válido','error'); return; }
 
   const selected = getSelectedAseg();
   if(!selected.length){ showToast('Selecciona al menos una aseguradora','error'); return; }
@@ -2034,14 +2105,14 @@ function guardarCotizacion(){
   // Calcular resultados de las aseguradoras seleccionadas
   const resultados = selected.map(name=>{
     const cfg = ASEGURADORAS[name];
-    const tasa = cfg.tasa(vaT);
-    const p = calcPrima(vaT, tasa, cfg.pnMin);
-    const extraAutoSust = (name==='SWEADEN' && autoSustActivo) ? 60 : 0;
-    const total = p.total + extraAutoSust;
+    const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : cfg.tasa;
+    const axaInc = name==='SWEADEN' ? axaIncluido : false;
+    const vida = vidaInputsSave[name]||0;
+    const p = calcPrima(vaT, tasa, cfg.pnMin, axaInc, vida, cfg.extraFijo||0);
     const debN = Math.min(cuotasDebReq, cfg.debMax||cuotasDebReq);
-    const tc  = calcCuotasTc(total, cfg.tcMax, cuotasTcReq);
-    const deb = calcCuotasDeb(total, debN);
-    return { name, tasa, pn:p.pn, total, extraAutoSust,
+    const tc  = calcCuotasTc(p.total, cfg.tcMax, cuotasTcReq, cfg.pisoTC||0);
+    const deb = calcCuotasDeb(p.total, debN, cfg.pisoDeb||0);
+    return { name, tasa, pn:p.pn, total:p.total, axa:p.axa, vida:p.vida, extraFijo:p.extraFijo,
              tcN:tc.n, tcCuota:tc.cuota, debN:deb.n, debCuota:deb.cuota };
   });
 
@@ -2072,7 +2143,9 @@ function guardarCotizacion(){
     tipo, va: vaT, desde, hasta,
     asegAnterior, polizaAnterior,
     cuotasTc: cuotasTcReq, cuotasDeb: cuotasDebReq,
-    autoSust: autoSustActivo,
+    extras: parseFloat(document.getElementById('cot-extras')?.value)||0,
+    axaIncluido: axaIncluido ? 'SI' : 'NO',
+    vidaLatina, vidaSweaden, vidaMapfre, vidaAlianza,
     aseguradoras: selected, resultados,
     estado: 'ENVIADA', asegElegida: null, obsAcept: '', fechaAcept: null,
   };
@@ -4555,13 +4628,40 @@ function validarFactura(valor){
 // ══════════════════════════════════════════════════════
 function initAsegSelector(){
   const wrap=document.getElementById('aseg-selector'); if(!wrap) return;
-  wrap.innerHTML=Object.entries(ASEGURADORAS).map(([name,cfg])=>`
-    <label style="display:flex;align-items:center;gap:6px;padding:5px 8px;border:1.5px solid ${cfg.color}33;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;color:${cfg.color};background:${cfg.color}0d;user-select:none;transition:background .15s" title="${name}">
-      <input type="checkbox" class="aseg-check" data-aseg="${name}" checked
+  // Solo mostrar las 7 del Excel primero, luego las adicionales
+  const orden=['ZURICH','LATINA','GENERALI','ADS','SWEADEN','MAPFRE','ALIANZA'];
+  const extras=Object.keys(ASEGURADORAS).filter(n=>!orden.includes(n));
+  const todas=[...orden,...extras];
+  wrap.innerHTML=todas.map(name=>{
+    const cfg=ASEGURADORAS[name];
+    const enOrden=orden.includes(name);
+    return `<label style="display:flex;align-items:center;gap:6px;padding:5px 8px;border:1.5px solid ${cfg.color}33;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;color:${cfg.color};background:${enOrden?cfg.color+'22':cfg.color+'0d'};user-select:none;transition:background .15s" title="${name}">
+      <input type="checkbox" class="aseg-check" data-aseg="${name}" ${enOrden?'checked':''}
         style="accent-color:${cfg.color};width:13px;height:13px;cursor:pointer"
-        onchange="this.closest('label').style.background=this.checked?'${cfg.color}22':'${cfg.color}08'">
+        onchange="this.closest('label').style.background=this.checked?'${cfg.color}22':'${cfg.color}08';_actualizarVidaInputs()">
       ${name}
-    </label>`).join('');
+    </label>`;
+  }).join('');
+  _actualizarVidaInputs();
+}
+
+// Mostrar/ocultar inputs de vida y AXA según aseguradoras seleccionadas
+function _actualizarVidaInputs(){
+  const sel=getSelectedAseg();
+  // AXA — solo SWEADEN
+  const axaWrap=document.getElementById('cot-axa-wrap');
+  if(axaWrap) axaWrap.style.display=sel.includes('SWEADEN')?'flex':'none';
+  // Vida por aseguradora
+  const vidaAseg=['LATINA','SWEADEN','MAPFRE','ALIANZA'];
+  let anyVida=false;
+  vidaAseg.forEach(n=>{
+    const row=document.getElementById(`cot-vida-${n.toLowerCase()}-row`);
+    const visible=sel.includes(n);
+    if(row) row.style.display=visible?'flex':'none';
+    if(visible) anyVida=true;
+  });
+  const noneEl=document.getElementById('cot-vida-none');
+  if(noneEl) noneEl.style.display=anyVida?'none':'block';
 }
 function toggleAllAseg(state){
   document.querySelectorAll('.aseg-check').forEach(cb=>{
