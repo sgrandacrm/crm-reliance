@@ -2810,7 +2810,7 @@ async function reconfigurarColumnasSP(){
   showToast('🔄 Reconfigurando columnas SP…', 'info');
   try{
     await spAsegurarColumnas(msg => console.log('[SP cols]', msg));
-    localStorage.setItem('sp_cols_done','6');
+    localStorage.setItem('sp_cols_done','8');
     showToast('✅ Columnas configuradas — recargando…', 'success');
     setTimeout(()=>location.reload(), 1500);
   }catch(e){

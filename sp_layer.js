@@ -374,14 +374,63 @@ const SP_SKIP = new Set(['id','ID','version','Version']);
 function spToFields(listKey, data){
   // Solo campos que realmente existen en cada lista SP
   const validos = {
-    clientes:     new Set(['Title','ci','tipo','region','ciudad','aseguradora','ejecutivo','estado','placa','marca','modelo','anio','va','pn','primaTotal','desde','hasta','celular','correo','nota','ultimoContacto','factura','poliza','obs','color','motor','chasis','dep','tasa','axavd','formaPago','crm_id','polizaNueva','aseguradoraAnterior','historialWa','bitacora']),
-    tareas: new Set(['Title','titulo','descripcion','clienteId','clienteNombre','fechaVence','horaVence','tipo','prioridad','estado','ejecutivo','fechaCreacion','crm_id']),
-    cotizaciones: new Set(['Title','codigo','version','fecha','ejecutivo','clienteNombre','clienteCI','clienteId','celular','correo','ciudad','region','tipo','vehiculo','marca','modelo','anio','placa','color','motor','chasis','va','desde','hasta','asegAnterior','polizaAnterior','estado','asegElegida','resultados','aseguradoras','obsAcept','fechaAcept','reemplazadaPor','crm_id','cuotasTc','cuotasDeb','autoSust']),
-    cierres:      new Set(['Title','clienteNombre','aseguradora','primaTotal','primaNeta','vigDesde','vigHasta','formaPago','facturaAseg','ejecutivo','fechaRegistro','observacion','axavd','crm_id','polizaNueva','cuenta','clienteId','cotizacionId','comision','comisionPct']),
-    usuarios:     new Set(['Title','userId','rol','email','activo','color','initials','crm_id']),
+    clientes: new Set([
+      'Title','ci','tipo','region','ciudad','aseguradora','ejecutivo','estado',
+      'placa','marca','modelo','anio','va','pn','primaTotal','desde','hasta',
+      'celular','correo','nota','ultimoContacto','factura','poliza','obs',
+      'color','motor','chasis','dep','tasa','axavd','formaPago','crm_id',
+      'polizaNueva','aseguradoraAnterior','historialWa','bitacora',
+      // Fase 2 — datos completos del cliente (Excel: PRODU VH)
+      'tipoCliente','celular2','telFijo','direccionDom',
+      'prestamo','saldo','fechaVtoCred','cuentaBanc',
+      'fechaNac','genero','estadoCivil','profesion',
+      'estadoGest','tasaAnterior',
+    ]),
+    tareas: new Set([
+      'Title','titulo','descripcion','clienteId','clienteNombre',
+      'fechaVence','horaVence','tipo','prioridad','estado',
+      'ejecutivo','fechaCreacion','crm_id',
+    ]),
+    cotizaciones: new Set([
+      'Title','codigo','version','fecha','ejecutivo',
+      'clienteNombre','clienteCI','clienteId','celular','correo',
+      'ciudad','region','tipo','vehiculo','marca','modelo','anio',
+      'placa','color','motor','chasis','va','desde','hasta',
+      'asegAnterior','polizaAnterior','estado','asegElegida',
+      'resultados','aseguradoras','obsAcept','fechaAcept',
+      'reemplazadaPor','crm_id','cuotasTc','cuotasDeb','autoSust',
+      // Fase 1 — cotizador real (del Excel PRODUCTOS PRODUBANCO)
+      'extras','axaIncluido',
+      'vidaLatina','vidaSweaden','vidaMapfre','vidaAlianza',
+    ]),
+    cierres: new Set([
+      'Title','clienteNombre','aseguradora','primaTotal','primaNeta',
+      'vigDesde','vigHasta','formaPago','facturaAseg','ejecutivo',
+      'fechaRegistro','observacion','axavd','crm_id','polizaNueva',
+      'cuenta','clienteId','cotizacionId','comision','comisionPct',
+      // Fase 1 — desglose real de cargos (del Excel)
+      'derechosEmision','segCampesino','supBancos','iva',
+      'vidaPrima','axaPrima',
+      'cuotaInicial','numCuotas','valorCuota','tipoPago',
+      'tasaAplicada','polizaAnterior','asegAnterior',
+    ]),
+    usuarios: new Set([
+      'Title','userId','rol','email','activo','color','initials','crm_id',
+    ]),
   };
   const permitidos = validos[listKey] || new Set();
-  const camposNum  = new Set(['anio','va','pn','primaTotal','dep','tasa','version','primaNeta','cuotasTc','cuotasDeb','comision','comisionPct']);
+  const camposNum  = new Set([
+    // Existentes
+    'anio','va','pn','primaTotal','dep','tasa','version','primaNeta',
+    'cuotasTc','cuotasDeb','comision','comisionPct',
+    // Fase 2 — clientes
+    'saldo','tasaAnterior',
+    // Fase 1 — cotizaciones
+    'extras','vidaLatina','vidaSweaden','vidaMapfre','vidaAlianza',
+    // Fase 1 — cierres desglose
+    'derechosEmision','segCampesino','supBancos','iva',
+    'vidaPrima','axaPrima','cuotaInicial','numCuotas','valorCuota','tasaAplicada',
+  ]);
   const ignorar    = new Set(['id','nombre','name','pass','password','_spId','_dirty','_spEtag']);
 
   const fields = {};
@@ -694,6 +743,7 @@ async function spAsegurarColumnas(logCol){
 
   const colsDef = {
     CRM_Clientes: [
+      // Campos existentes
       {name:'ci',text:{}},{name:'tipo',text:{}},{name:'region',text:{}},
       {name:'ciudad',text:{}},{name:'aseguradora',text:{}},{name:'ejecutivo',text:{}},
       {name:'estado',text:{}},{name:'placa',text:{}},{name:'marca',text:{}},
@@ -712,6 +762,21 @@ async function spAsegurarColumnas(logCol){
       {name:'historialWa',text:{allowMultipleLines:true}},
       {name:'bitacora',text:{allowMultipleLines:true}},
       {name:'crm_id',text:{}},
+      // Fase 2 — Datos completos del cliente (Excel: columnas B-BN de PRODU VH)
+      {name:'tipoCliente',text:{}},                       // PRODUBANCO / PARTICULAR / NUEVO
+      {name:'celular2',text:{}},                          // Celular 2 (BG)
+      {name:'telFijo',text:{}},                           // Teléfono fijo domicilio (BC)
+      {name:'direccionDom',text:{allowMultipleLines:true}},  // Dirección domicilio (BB)
+      {name:'prestamo',text:{}},                           // # Préstamo (AV)
+      {name:'saldo',number:{}},                           // Saldo crédito (AZ)
+      {name:'fechaVtoCred',text:{}},                      // Fecha vto crédito (BA)
+      {name:'cuentaBanc',text:{}},                        // Cuenta Produbanco (J)
+      {name:'fechaNac',text:{}},                          // Fecha nacimiento (BJ)
+      {name:'genero',text:{}},                            // M / F (BL)
+      {name:'estadoCivil',text:{}},                       // SOLTERO/CASADO/etc. (BM)
+      {name:'profesion',text:{}},                         // Profesión (BN)
+      {name:'estadoGest',text:{}},                        // Estado de gestión (K)
+      {name:'tasaAnterior',number:{}},                    // Tasa vigencia anterior (AM)
     ],
     CRM_Tareas: [
       {name:'titulo',text:{}},{name:'descripcion',text:{allowMultipleLines:true}},
@@ -722,6 +787,7 @@ async function spAsegurarColumnas(logCol){
       {name:'fechaCreacion',text:{}},{name:'crm_id',text:{}},
     ],
     CRM_Cotizaciones: [
+      // Campos existentes
       {name:'codigo',text:{}},{name:'version',number:{}},
       {name:'fecha',text:{}},{name:'ejecutivo',text:{}},
       {name:'clienteNombre',text:{}},{name:'clienteCI',text:{}},
@@ -742,8 +808,16 @@ async function spAsegurarColumnas(logCol){
       {name:'fechaAcept',text:{}},{name:'reemplazadaPor',text:{}},
       {name:'crm_id',text:{}},
       {name:'cuotasTc',number:{}},{name:'cuotasDeb',number:{}},{name:'autoSust',text:{}},
+      // Fase 1 — Cotizador real (Excel: PRODUCTOS PRODUBANCO)
+      {name:'extras',number:{}},          // Valor accesorios/extras asegurados (F5 Excel)
+      {name:'axaIncluido',text:{}},       // SI / NO — toggle AXA $60 (F7 Excel)
+      {name:'vidaLatina',number:{}},      // Prima vida LATINA (G8 Excel)
+      {name:'vidaSweaden',number:{}},     // Prima vida SWEADEN (F8 Excel)
+      {name:'vidaMapfre',number:{}},      // Prima vida MAPFRE (G6 Excel)
+      {name:'vidaAlianza',number:{}},     // Prima vida ALIANZA (H8 Excel)
     ],
     CRM_Cierres: [
+      // Campos existentes
       {name:'clienteNombre',text:{}},{name:'aseguradora',text:{}},
       {name:'primaTotal',number:{}},{name:'primaNeta',number:{}},
       {name:'vigDesde',text:{}},{name:'vigHasta',text:{}},
@@ -754,6 +828,20 @@ async function spAsegurarColumnas(logCol){
       {name:'crm_id',text:{}},
       {name:'cuenta',text:{}},{name:'clienteId',text:{}},{name:'cotizacionId',text:{}},
       {name:'comision',number:{}},{name:'comisionPct',number:{}},
+      // Fase 1 — Desglose real de cargos (Excel: filas 15-22 PRODUCTOS PRODUBANCO)
+      {name:'derechosEmision',number:{}}, // Escala tiered: $0.50→$9 (fila 15)
+      {name:'segCampesino',number:{}},    // Prima Neta × 0.5% (fila 16)
+      {name:'supBancos',number:{}},       // Prima Neta × 3.5% (fila 17)
+      {name:'iva',number:{}},             // Subtotal × 15% (fila 21)
+      {name:'vidaPrima',number:{}},       // Prima vida pagada (fila 19)
+      {name:'axaPrima',number:{}},        // AXA $52.17 neto (fila 18)
+      {name:'cuotaInicial',number:{}},    // Cuota inicial (Excel: col Z)
+      {name:'numCuotas',number:{}},       // # cuotas (Excel: col AB)
+      {name:'valorCuota',number:{}},      // Valor por cuota (filas 23-24)
+      {name:'tipoPago',text:{}},          // TC / DÉBITO / CONTADO / CHEQUES (Hoja1)
+      {name:'tasaAplicada',number:{}},    // Tasa % usada (Excel: fila 9)
+      {name:'polizaAnterior',text:{}},    // Póliza anterior (renovaciones)
+      {name:'asegAnterior',text:{}},      // Aseguradora anterior
     ],
     CRM_Usuarios: [
       {name:'userId',text:{}},{name:'rol',text:{}},
@@ -866,7 +954,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(!colsDone || !['3','4','5','6','7'].includes(colsDone)){
+      if(!colsDone || !['3','4','5','6','7','8'].includes(colsDone)){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -888,7 +976,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','7');
+        localStorage.setItem('sp_cols_done','8');
         if(setupEl) setupEl.style.display='none';
       }
     }
