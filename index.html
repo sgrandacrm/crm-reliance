@@ -705,9 +705,20 @@
         <div class="card-header"><div class="card-title">Datos del Cliente</div></div>
         <div class="card-body">
           <div class="form-grid form-grid-2" style="gap:12px">
+            <div class="form-group full">
+              <label class="form-label">Tipo de Cliente</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+                <button type="button" class="pill active" onclick="selTipoCliente('PRODUBANCO',this)">🏦 Produbanco</button>
+                <button type="button" class="pill" onclick="selTipoCliente('PARTICULAR',this)">👤 Particular</button>
+                <button type="button" class="pill" onclick="selTipoCliente('NUEVO',this)">✨ Nuevo Seguro</button>
+              </div>
+              <input type="hidden" id="nc-tipo-cliente" value="PRODUBANCO">
+            </div>
             <div class="form-group full"><label class="form-label">Nombre Completo</label><input class="form-input" id="nc-nombre" placeholder="APELLIDOS NOMBRES"></div>
             <div class="form-group"><label class="form-label">CI / RUC</label><input class="form-input" id="nc-ci"></div>
-            <div class="form-group"><label class="form-label">Celular</label><input class="form-input" id="nc-cel"></div>
+            <div class="form-group"><label class="form-label">Celular Principal</label><input class="form-input" id="nc-cel"></div>
+            <div class="form-group"><label class="form-label">Celular 2</label><input class="form-input" id="nc-cel2" placeholder="Opcional"></div>
+            <div class="form-group"><label class="form-label">Teléfono Fijo</label><input class="form-input" id="nc-tel-fijo" placeholder="Opcional"></div>
             <div class="form-group"><label class="form-label">Correo</label><input class="form-input" id="nc-email" type="email"></div>
             <div class="form-group"><label class="form-label">Ciudad</label><select class="form-select" id="nc-ciudad"><option>QUITO</option><option>GUAYAQUIL</option><option>CUENCA</option><option>SALINAS</option><option>PORTOVIEJO</option><option>AMBATO</option></select></div>
             <div class="form-group"><label class="form-label">Región</label><select class="form-select" id="nc-region"><option value="SIERRA">SIERRA</option><option value="COSTA">COSTA</option></select></div>
@@ -715,7 +726,16 @@
             <div class="form-group"><label class="form-label">Género</label><select class="form-select" id="nc-genero"><option>MASCULINO</option><option>FEMENINO</option></select></div>
             <div class="form-group"><label class="form-label">Estado Civil</label><select class="form-select" id="nc-civil"><option>SOLTERO</option><option>CASADO</option><option>DIVORCIADO</option><option>VIUDO</option></select></div>
             <div class="form-group"><label class="form-label">Profesión</label><input class="form-input" id="nc-profesion"></div>
-            <div class="form-group full"><label class="form-label">Dirección</label><input class="form-input" id="nc-dir"></div>
+            <div class="form-group full"><label class="form-label">Dirección Domicilio</label><input class="form-input" id="nc-dir"></div>
+            <!-- Loan data — shown only for PRODUBANCO -->
+            <div class="form-group full" id="nc-produbanco-section" style="border-top:1px solid var(--border);padding-top:10px">
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#1a4c84;margin-bottom:8px">🏦 Datos Crédito Produbanco</div>
+              <div class="form-grid form-grid-2" style="gap:12px">
+                <div class="form-group"><label class="form-label">N° Préstamo</label><input class="form-input" id="nc-prestamo" placeholder="Número de préstamo" style="font-family:'DM Mono',monospace"></div>
+                <div class="form-group"><label class="form-label">Saldo Crédito ($)</label><input class="form-input" type="number" step="0.01" id="nc-saldo" placeholder="0.00"></div>
+                <div class="form-group"><label class="form-label">Vencimiento Crédito</label><input class="form-input" type="date" id="nc-vto-cred"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -961,20 +981,101 @@
         <div class="form-group"><label class="form-label">N° de Póliza Nueva <span style="color:var(--red)">*</span></label><input class="form-input" id="cv-poliza" placeholder="000000-000000"></div>
         <div class="form-group"><label class="form-label">Vigencia Desde <span style="color:var(--red)">*</span></label><input class="form-input" type="date" id="cv-desde" onchange="autocalcHasta()"></div>
         <div class="form-group"><label class="form-label">Vigencia Hasta <span style="color:var(--red)">*</span></label><input class="form-input" type="date" id="cv-hasta"></div>
-        <div class="form-group"><label class="form-label">Prima Neta <span style="color:var(--red)">*</span></label><input class="form-input" id="cv-pn" type="number" step="0.01" placeholder="0.00" oninput="recalcPrimaTotal()"></div>
-        <div class="form-group"><label class="form-label">Prima Total <span style="color:var(--red)">*</span></label><input class="form-input" id="cv-total-val" type="number" step="0.01" placeholder="0.00" oninput="syncCuotasTotal()"></div>
-        <div class="form-group"><label class="form-label">Cuenta Produbanco</label><input class="form-input" id="cv-cuenta" placeholder="Nº de cuenta" style="font-family:'DM Mono',monospace"></div>
-        <div class="form-group"><label class="form-label">AXA / VD</label>
-          <select class="form-select" id="cv-axavd">
+        <div class="form-group"><label class="form-label">Póliza Anterior</label><input class="form-input" id="cv-poliza-anterior" placeholder="N° póliza anterior" style="font-family:'DM Mono',monospace"></div>
+        <div class="form-group"><label class="form-label">Aseg. Anterior</label><input class="form-input" id="cv-aseg-anterior" placeholder="Aseguradora anterior"></div>
+        <!-- Desglose de prima -->
+        <div class="form-group full" style="border-top:1px solid var(--border);padding-top:12px;margin-top:2px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent)">Desglose de Prima</div>
+        </div>
+        <div class="form-group"><label class="form-label">Prima Neta <span style="color:var(--red)">*</span></label><input class="form-input" id="cv-pn" type="number" step="0.01" placeholder="0.00" oninput="recalcDesglose()"></div>
+        <div class="form-group"><label class="form-label">AXA / Vida Desgravamen</label>
+          <select class="form-select" id="cv-axavd" onchange="recalcDesglose()">
             <option value="">Sin AXA ni VD</option>
-            <option value="AXA">AXA</option>
+            <option value="AXA">AXA Asistencia Vial</option>
             <option value="VD">VD (Vida Desgravamen)</option>
             <option value="AXA+VD">AXA + VD</option>
           </select>
         </div>
-        <!-- Forma de pago -->
+        <!-- Desglose panel (readonly, rendered by recalcDesglose) -->
+        <div class="form-group full" id="cv-desglose-panel" style="margin:0"></div>
+        <!-- Vida prima - shown when VD is selected -->
+        <div class="form-group" id="cv-vida-prima-wrap" style="display:none">
+          <label class="form-label">Prima Vida Desgravamen ($)</label>
+          <input class="form-input" id="cv-vida-prima" type="number" step="0.01" placeholder="0.00" oninput="recalcDesglose()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Prima Total <span style="color:var(--red)">*</span></label>
+          <input class="form-input" id="cv-total-val" type="number" step="0.01" placeholder="0.00" style="font-weight:700" oninput="syncCuotasTotal()">
+        </div>
+        <div class="form-group"><label class="form-label">Cuenta Produbanco</label><input class="form-input" id="cv-cuenta" placeholder="Nº de cuenta" style="font-family:'DM Mono',monospace"></div>
+        <!-- Hidden breakdown values -->
+        <input type="hidden" id="cv-der-emision" value="0">
+        <input type="hidden" id="cv-seg-camp" value="0">
+        <input type="hidden" id="cv-sup-bancos" value="0">
+        <input type="hidden" id="cv-axa-prima-val" value="0">
+        <input type="hidden" id="cv-iva-val" value="0">
+        <!-- Tipo de Pago exacto (Excel) -->
         <div class="form-group full" style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
-          <label class="form-label">Forma de Pago <span style="color:var(--red)">*</span></label>
+          <label class="form-label">Tipo de Pago <span style="color:var(--red)">*</span></label>
+          <select class="form-select" id="cv-tipo-pago" onchange="syncTipoPagoToFormaPago()" style="font-size:12px">
+            <option value="">— Seleccionar —</option>
+            <optgroup label="Contado">
+              <option>CONTADO TRANSFERENCIA</option>
+              <option>CONTADO DEPOSITO</option>
+            </optgroup>
+            <optgroup label="Débitos Produbanco">
+              <option>1 DEBITO PRODUBANCO</option>
+              <option>2 DEBITOS PRODUBANCO</option>
+              <option>3 DEBITOS PRODUBANCO</option>
+              <option>4 DEBITOS PRODUBANCO</option>
+              <option>5 DEBITOS PRODUBANCO</option>
+              <option>6 DEBITOS PRODUBANCO</option>
+              <option>7 DEBITOS PRODUBANCO</option>
+              <option>8 DEBITOS PRODUBANCO</option>
+              <option>9 DEBITOS PRODUBANCO</option>
+              <option>10 DEBITOS PRODUBANCO</option>
+              <option>11 DEBITOS PRODUBANCO</option>
+              <option>12 DEBITOS PRODUBANCO</option>
+            </optgroup>
+            <optgroup label="Tarjeta de Crédito">
+              <option>TC 3 MESES</option>
+              <option>TC 6 MESES</option>
+              <option>TC 9 MESES</option>
+              <option>TC 12 MESES</option>
+            </optgroup>
+            <optgroup label="Débitos Otros Bancos">
+              <option>6 DEBITOS OTROS BANCOS</option>
+              <option>8 DEBITOS OTROS BANCOS</option>
+              <option>10 DEBITOS OTROS BANCOS</option>
+              <option>12 DEBITOS OTROS BANCOS</option>
+            </optgroup>
+            <optgroup label="Pagos Directos">
+              <option>6 PAGOS DIRECTOS</option>
+              <option>8 PAGOS DIRECTOS</option>
+              <option>10 PAGOS DIRECTOS</option>
+              <option>12 PAGOS DIRECTOS</option>
+            </optgroup>
+            <optgroup label="Cheques">
+              <option>CHEQUES POSFECHADOS</option>
+            </optgroup>
+            <optgroup label="Débitos Recurrentes TC">
+              <option>2 DEBITOS RECURRENTES TC</option>
+              <option>3 DEBITOS RECURRENTES TC</option>
+              <option>4 DEBITOS RECURRENTES TC</option>
+              <option>5 DEBITOS RECURRENTES TC</option>
+              <option>6 DEBITOS RECURRENTES TC</option>
+              <option>7 DEBITOS RECURRENTES TC</option>
+              <option>8 DEBITOS RECURRENTES TC</option>
+              <option>9 DEBITOS RECURRENTES TC</option>
+              <option>10 DEBITOS RECURRENTES TC</option>
+              <option>11 DEBITOS RECURRENTES TC</option>
+              <option>12 DEBITOS RECURRENTES TC</option>
+            </optgroup>
+          </select>
+        </div>
+        <!-- Forma de pago (sub-formulario según categoría) -->
+        <div class="form-group full" style="padding-top:4px">
+          <label class="form-label">Detalle de Pago <span style="color:var(--red)">*</span></label>
           <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
             <button class="pill active" onclick="selFormaPago('DEBITO_BANCARIO',this)">🏦 Débito Bancario</button>
             <button class="pill" onclick="selFormaPago('TARJETA_CREDITO',this)">💳 Tarjeta de Crédito</button>

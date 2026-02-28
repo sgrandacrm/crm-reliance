@@ -560,11 +560,26 @@ function openEditar(id){
   const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
   document.getElementById('modal-editar-body').innerHTML=`
     <div class="form-grid form-grid-2" style="gap:12px">
+      <div class="form-group full">
+        <label class="form-label">Tipo de Cliente</label>
+        <select class="form-select" id="ed-tipo-cliente">
+          <option value=""${!c.tipoCliente?' selected':''}>— Sin especificar —</option>
+          <option value="PRODUBANCO"${c.tipoCliente==='PRODUBANCO'?' selected':''}>🏦 Produbanco</option>
+          <option value="PARTICULAR"${c.tipoCliente==='PARTICULAR'?' selected':''}>👤 Particular</option>
+          <option value="NUEVO"${c.tipoCliente==='NUEVO'?' selected':''}>✨ Nuevo Seguro</option>
+        </select>
+      </div>
       <div class="form-group full"><label class="form-label">Nombre</label><input class="form-input" id="ed-nombre" value="${c.nombre||''}"></div>
       <div class="form-group"><label class="form-label">CI</label><input class="form-input" id="ed-ci" value="${c.ci||''}"></div>
-      <div class="form-group"><label class="form-label">Celular</label><input class="form-input" id="ed-cel" value="${c.celular||''}"></div>
+      <div class="form-group"><label class="form-label">Celular Principal</label><input class="form-input" id="ed-cel" value="${c.celular||''}"></div>
+      <div class="form-group"><label class="form-label">Celular 2</label><input class="form-input" id="ed-cel2" value="${c.celular2||''}"></div>
+      <div class="form-group"><label class="form-label">Teléfono Fijo</label><input class="form-input" id="ed-tel-fijo" value="${c.telFijo||''}"></div>
       <div class="form-group"><label class="form-label">Correo</label><input class="form-input" id="ed-email" value="${c.correo||''}"></div>
       <div class="form-group"><label class="form-label">Ciudad</label><input class="form-input" id="ed-ciudad" value="${c.ciudad||''}"></div>
+      <div class="form-group"><label class="form-label">Nacimiento</label><input class="form-input" type="date" id="ed-nacimiento" value="${c.fechaNac||''}"></div>
+      <div class="form-group"><label class="form-label">Género</label><select class="form-select" id="ed-genero"><option value=""${!c.genero?' selected':''}>—</option><option${c.genero==='MASCULINO'?' selected':''}>MASCULINO</option><option${c.genero==='FEMENINO'?' selected':''}>FEMENINO</option></select></div>
+      <div class="form-group"><label class="form-label">Estado Civil</label><select class="form-select" id="ed-civil"><option value=""${!c.estadoCivil?' selected':''}>—</option><option${c.estadoCivil==='SOLTERO'?' selected':''}>SOLTERO</option><option${c.estadoCivil==='CASADO'?' selected':''}>CASADO</option><option${c.estadoCivil==='DIVORCIADO'?' selected':''}>DIVORCIADO</option><option${c.estadoCivil==='VIUDO'?' selected':''}>VIUDO</option></select></div>
+      <div class="form-group"><label class="form-label">Profesión</label><input class="form-input" id="ed-profesion" value="${c.profesion||''}"></div>
       <div class="form-group"><label class="form-label">Aseguradora</label><input class="form-input" id="ed-aseg" value="${c.aseguradora||''}"></div>
       <div class="form-group"><label class="form-label">Póliza</label><input class="form-input" id="ed-poliza" value="${c.poliza||''}"></div>
       <div class="form-group"><label class="form-label">Vigencia Hasta</label><input class="form-input" type="date" id="ed-hasta" value="${c.hasta||''}"></div>
@@ -572,6 +587,10 @@ function openEditar(id){
       <div class="form-group"><label class="form-label">Tasa (%)</label><input class="form-input" type="number" step="0.01" id="ed-tasa" value="${c.tasa||''}"></div>
       <div class="form-group"><label class="form-label">Marca</label><input class="form-input" id="ed-marca" value="${c.marca||''}"></div>
       <div class="form-group"><label class="form-label">Placa</label><input class="form-input" id="ed-placa" value="${c.placa||''}"></div>
+      <div class="form-group"><label class="form-label">Cuenta Produbanco</label><input class="form-input" id="ed-cuenta" value="${c.cuentaBanc||c.cuenta||''}"></div>
+      <div class="form-group"><label class="form-label">N° Préstamo</label><input class="form-input" id="ed-prestamo" value="${c.prestamo||''}"></div>
+      <div class="form-group"><label class="form-label">Saldo Crédito ($)</label><input class="form-input" type="number" id="ed-saldo" value="${c.saldo||''}"></div>
+      <div class="form-group"><label class="form-label">Vto. Crédito</label><input class="form-input" type="date" id="ed-vto-cred" value="${c.fechaVtoCred||''}"></div>
       ${currentUser&&currentUser.rol==='admin'?`<div class="form-group"><label class="form-label">Asignar a Ejecutivo</label><select class="form-select" id="ed-ejecutivo">${USERS.filter(u=>u.rol==='ejecutivo').map(u=>`<option value="${u.id}"${c.ejecutivo===u.id?' selected':''}>${u.name}</option>`).join('')}</select></div>`:''}
       <div class="form-group full"><label class="form-label">Comentarios</label><textarea class="form-textarea" id="ed-comentario">${c.comentario||''}</textarea></div>
     </div>`;
@@ -579,8 +598,15 @@ function openEditar(id){
     c.nombre=document.getElementById('ed-nombre').value;
     c.ci=document.getElementById('ed-ci').value;
     c.celular=document.getElementById('ed-cel').value;
+    c.celular2=document.getElementById('ed-cel2')?.value||c.celular2||'';
+    c.telFijo=document.getElementById('ed-tel-fijo')?.value||c.telFijo||'';
     c.correo=document.getElementById('ed-email').value;
     c.ciudad=document.getElementById('ed-ciudad').value;
+    c.tipoCliente=document.getElementById('ed-tipo-cliente')?.value||c.tipoCliente||'';
+    c.fechaNac=document.getElementById('ed-nacimiento')?.value||c.fechaNac||'';
+    c.genero=document.getElementById('ed-genero')?.value||c.genero||'';
+    c.estadoCivil=document.getElementById('ed-civil')?.value||c.estadoCivil||'';
+    c.profesion=document.getElementById('ed-profesion')?.value||c.profesion||'';
     c.aseguradora=document.getElementById('ed-aseg').value;
     c.poliza=document.getElementById('ed-poliza').value;
     c.hasta=document.getElementById('ed-hasta').value;
@@ -588,6 +614,10 @@ function openEditar(id){
     c.tasa=parseFloat(document.getElementById('ed-tasa').value)||null;
     c.marca=document.getElementById('ed-marca').value;
     c.placa=document.getElementById('ed-placa').value;
+    c.cuentaBanc=document.getElementById('ed-cuenta')?.value||c.cuentaBanc||'';
+    c.prestamo=document.getElementById('ed-prestamo')?.value||c.prestamo||'';
+    c.saldo=parseFloat(document.getElementById('ed-saldo')?.value)||c.saldo||0;
+    c.fechaVtoCred=document.getElementById('ed-vto-cred')?.value||c.fechaVtoCred||'';
     c.comentario=document.getElementById('ed-comentario').value;
     if(document.getElementById('ed-ejecutivo')) c.ejecutivo=document.getElementById('ed-ejecutivo').value;
     await sincronizarCotizPorCliente(c.id, c.nombre, c.ci, c.estado);
@@ -1337,6 +1367,17 @@ function calcCotizacion(){
 
 // ── CIERRE DE VENTA ──────────────────────────────────
 let cierreVentaData={};
+// ══════════════════════════════════════════════════════
+//  TIPO CLIENTE — NUEVO CLIENTE FORM
+// ══════════════════════════════════════════════════════
+function selTipoCliente(tipo, btn){
+  document.querySelectorAll('#page-nuevo-cliente .pill').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  document.getElementById('nc-tipo-cliente').value=tipo;
+  const sec=document.getElementById('nc-produbanco-section');
+  if(sec) sec.style.display=tipo==='PRODUBANCO'?'':'none';
+}
+
 let _pendingCierreClienteId=null;
 
 // Busca la cotización más reciente activa (no REEMPLAZADA, no EMITIDA) para un cliente
@@ -1364,10 +1405,10 @@ function _abrirCierreDirecto(id){
   let total=0,pn=0,tcN=12,debN=10,tcCuota=0,debCuota=0;
   if(cfg&&va>0){
     const [,cfgObj]=cfg;
-    const tasa=cfgObj.tasa(va);
-    const p=calcPrima(va,tasa,cfgObj.pnMin);
-    const tc=calcCuotasTc(p.total,cfgObj.tcMax,12);
-    const deb=calcCuotasDeb(p.total,10);
+    const tasa=typeof cfgObj.tasa==='function'?cfgObj.tasa(va):cfgObj.tasa;
+    const p=calcPrima(va,tasa,cfgObj.pnMin||0);
+    const tc=calcCuotasTc(p.total,cfgObj.tcMax||12,12,cfgObj.pisoTC||0);
+    const deb=calcCuotasDeb(p.total,10,cfgObj.pisoDeb||0);
     total=p.total; pn=p.pn; tcN=tc.n; debN=deb.n; tcCuota=tc.cuota; debCuota=deb.cuota;
   }
   cierreVentaData={asegNombre:aseg,total,pn,cuotaTc:tcCuota,cuotaDeb:debCuota,nTc:tcN,nDeb:debN,clienteId:id};
@@ -1460,11 +1501,100 @@ function abrirCierreVenta(asegNombre, total, pn, cuotaTc, cuotaDeb, nTc, nDeb){
 }
 function getTotal(){ return parseFloat(document.getElementById('cv-total-val')?.value)||cierreVentaData.total||0; }
 function recalcPrimaTotal(){
-  // cuando editan prima neta, recalcular total (pn + derechos + campesino + sb + iva)
+  recalcDesglose(); // backward compat alias
+}
+
+// Helper: map aseg display name → ASEGURADORAS key
+function _cvGetAsegKey(){
+  const asegVal=(document.getElementById('cv-nueva-aseg')?.value||'').toUpperCase();
+  const knownKeys=['ZURICH','LATINA','GENERALI','ADS','SWEADEN','MAPFRE','ALIANZA'];
+  for(const k of knownKeys){
+    if(asegVal.includes(k)) return k;
+    if(k==='ADS' && asegVal.includes('SUR')) return 'ADS';
+    if(k==='GENERALI' && asegVal.includes('GENERALI')) return 'GENERALI';
+  }
+  return null;
+}
+
+function recalcDesglose(){
   const pn=parseFloat(document.getElementById('cv-pn')?.value)||0;
-  const der=3, camp=pn*0.005, sb=pn*0.035, sub=pn+der+camp+sb, iva=sub*0.15, total=sub+iva;
-  const el=document.getElementById('cv-total-val'); if(el) el.value=total.toFixed(2);
-  cierreVentaData.total=total; cierreVentaData.pn=pn;
+  const axavd=document.getElementById('cv-axavd')?.value||'';
+  const vidaWrap=document.getElementById('cv-vida-prima-wrap');
+  if(vidaWrap) vidaWrap.style.display=(axavd.includes('VD'))?'':'none';
+
+  if(pn<=0){
+    const panel=document.getElementById('cv-desglose-panel'); if(panel) panel.innerHTML='';
+    const tv=document.getElementById('cv-total-val'); if(tv) tv.value='';
+    return;
+  }
+
+  const asegKey=_cvGetAsegKey();
+  const cfg=(asegKey&&ASEGURADORAS[asegKey])||{};
+  const extraFijo=cfg.extraFijo||0;
+  const axaIncluido=axavd.includes('AXA');
+  const vida=parseFloat(document.getElementById('cv-vida-prima')?.value)||0;
+
+  const der=_calcDerechosEmision(pn);
+  const camp=Math.round(pn*0.005*100)/100;
+  const sb=Math.round(pn*0.035*100)/100;
+  const axa=axaIncluido?Math.round((60/1.15)*100)/100:0;
+  const sub=Math.round((pn+der+camp+sb+axa+extraFijo)*100)/100;
+  const iva=Math.round(sub*0.15*100)/100;
+  const total=Math.round((sub+iva+vida)*100)/100;
+
+  // Store in hidden fields
+  const _s=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
+  _s('cv-der-emision',der);
+  _s('cv-seg-camp',camp);
+  _s('cv-sup-bancos',sb);
+  _s('cv-axa-prima-val',axa);
+  _s('cv-iva-val',iva);
+  _s('cv-total-val',total.toFixed(2));
+
+  // Render desglose panel
+  const panel=document.getElementById('cv-desglose-panel');
+  if(panel){
+    const row=(label,val,bold=false,muted=false)=>
+      `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px;${bold?'font-weight:700;':''}${muted?'color:var(--muted);':''}">
+        <span>${label}</span><span style="font-family:'DM Mono',monospace">${typeof val==='number'?val.toFixed(2):val}</span>
+      </div>`;
+    panel.innerHTML=`<div style="background:var(--warm);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12px">
+      ${row('Prima Neta',pn)}
+      ${row('Derechos Emisión',der,false,true)}
+      ${row('Seguro Campesino (0.5%)',camp,false,true)}
+      ${row('Superintendencia de Bancos (3.5%)',sb,false,true)}
+      ${axa>0?row('AXA Asistencia Vial',axa,false,true):''}
+      ${extraFijo>0?row(`Cargo fijo ${asegKey}`,extraFijo,false,true):''}
+      <div style="border-top:1px solid var(--border);margin:4px 0"></div>
+      ${row('Subtotal',sub)}
+      ${row('IVA 15%',iva,false,true)}
+      ${vida>0?row('Prima Vida Desgravamen',vida,false,true):''}
+      <div style="border-top:1px solid var(--border);margin:4px 0"></div>
+      ${row('TOTAL',total,true)}
+    </div>`;
+  }
+
+  cierreVentaData.total=total;
+  cierreVentaData.pn=pn;
+  renderCvFormaPago();
+}
+
+// Sync tipoPago dropdown → forma de pago pill
+function syncTipoPagoToFormaPago(){
+  const tp=(document.getElementById('cv-tipo-pago')?.value||'').toUpperCase();
+  let fp='DEBITO_BANCARIO';
+  if(tp.startsWith('CONTADO')) fp='CONTADO';
+  else if(tp.startsWith('TC ')) fp='TARJETA_CREDITO';
+  else if(tp.includes('RECURRENTES TC')) fp='TARJETA_CREDITO';
+  else if(tp.includes('CHEQUES')) fp='CONTADO';
+  else if(tp.includes('DIRECTO')) fp='CONTADO';
+  const fpEl=document.getElementById('cv-forma-pago');
+  if(fpEl) fpEl.value=fp;
+  // Update pill active state
+  document.querySelectorAll('#modal-cierre-venta .pill').forEach(b=>{
+    const oc=b.getAttribute('onclick')||'';
+    b.classList.toggle('active',oc.includes(`'${fp}'`));
+  });
   renderCvFormaPago();
 }
 function syncCuotasTotal(){
@@ -1729,18 +1859,32 @@ function guardarCierreVenta(){
 
   // Armar registro de cierre
   // _clienteId y _placa usan prefijo _ para ser solo locales (no se envían a SharePoint)
+  const _g=(id,def=0)=>parseFloat(document.getElementById(id)?.value)||def;
+  const _gs=(id,def='')=>document.getElementById(id)?.value||def;
   const cierre={
     id: Date.now(),
     fechaRegistro: new Date().toISOString().split('T')[0],
     clienteNombre, aseguradora:aseg, polizaNueva:poliza,
     facturaAseg:factura, primaTotal:total,
-    primaNeta:parseFloat(document.getElementById('cv-pn')?.value)||cierreVentaData.pn||0,
+    primaNeta:_g('cv-pn')||cierreVentaData.pn||0,
     vigDesde:desde, vigHasta:hasta,
     formaPago:pago, observacion:obs,
-    axavd, cuenta:document.getElementById('cv-cuenta')?.value||'',
+    axavd, cuenta:_gs('cv-cuenta'),
     ejecutivo:currentUser?currentUser.id:'',
     clienteId: c ? String(c.id) : '',
     cotizacionId: cierreVentaData.fromCotizacion||'',
+    // Desglose de prima (Fase 2)
+    derechosEmision: _g('cv-der-emision'),
+    segCampesino:    _g('cv-seg-camp'),
+    supBancos:       _g('cv-sup-bancos'),
+    iva:             _g('cv-iva-val'),
+    vidaPrima:       _g('cv-vida-prima'),
+    axaPrima:        _g('cv-axa-prima-val'),
+    // Pago detallado
+    tipoPago:        _gs('cv-tipo-pago'),
+    polizaAnterior:  _gs('cv-poliza-anterior'),
+    asegAnterior:    _gs('cv-aseg-anterior'),
+    tasaAplicada:    cierreVentaData.tasa||0,
     _clienteId: c ? String(c.id) : '',
     _placa: c?.placa||'',
   };
@@ -2769,9 +2913,27 @@ function irAEmision(id){
   const desdeEl = document.getElementById('cv-desde');
   if(pnEl    && r.pn)        pnEl.value    = r.pn.toFixed(2);
   if(desdeEl && cotiz.desde) desdeEl.value = cotiz.desde;
-  recalcPrimaTotal();
+  // Pre-fill AXA/VD from cotización
+  const axavdEl=document.getElementById('cv-axavd');
+  if(axavdEl){
+    const hasAxa=cotiz.axaIncluido==='SI';
+    const hasVida=(cotiz.vidaLatina||cotiz.vidaSweaden||cotiz.vidaMapfre||cotiz.vidaAlianza)>0;
+    axavdEl.value=hasAxa&&hasVida?'AXA+VD':hasAxa?'AXA':hasVida?'VD':'';
+  }
+  // Pre-fill vida prima from cotización result
+  const vidaVal=r.vida||0;
+  const vidaEl=document.getElementById('cv-vida-prima');
+  if(vidaEl&&vidaVal>0) vidaEl.value=vidaVal.toFixed(2);
+  // Pre-fill previous policy from client
+  const polAntEl=document.getElementById('cv-poliza-anterior');
+  const asegAntEl=document.getElementById('cv-aseg-anterior');
+  const clienteData=cotiz.clienteId?DB.find(x=>String(x.id)===String(cotiz.clienteId)):null;
+  if(polAntEl&&clienteData) polAntEl.value=clienteData.poliza||'';
+  if(asegAntEl&&clienteData) asegAntEl.value=clienteData.aseguradora||'';
+  // Store tasa for saving
+  if(r.tasa) cierreVentaData.tasa=r.tasa;
+  recalcDesglose();
   autocalcHasta();
-  renderCvFormaPago();
 
   openModal('modal-cierre-venta');
   showToast('📝 Cierre pre-llenado · ' + cotiz.asegElegida, 'info');
@@ -3307,15 +3469,29 @@ function guardarNuevoCliente(){
   DB.push({
     id:maxId+1,ejecutivo:currentUser.id,
     nombre:nombre.toUpperCase(),ci,tipo:document.getElementById('nc-tipo').value,
+    tipoCliente:document.getElementById('nc-tipo-cliente')?.value||'',
     region:document.getElementById('nc-region').value,ciudad:document.getElementById('nc-ciudad').value,
     obs:document.getElementById('nc-obs').value,celular:document.getElementById('nc-cel').value,
+    celular2:document.getElementById('nc-cel2')?.value||'',
+    telFijo:document.getElementById('nc-tel-fijo')?.value||'',
     correo:document.getElementById('nc-email').value,aseguradora:document.getElementById('nc-aseg').value,
     va:parseFloat(document.getElementById('nc-va').value)||0,
     tasa:parseFloat(document.getElementById('nc-tasa').value)||null,
     marca:document.getElementById('nc-marca').value,modelo:document.getElementById('nc-modelo').value,
     anio:parseInt(document.getElementById('nc-anio').value)||2025,placa:document.getElementById('nc-placa').value,
+    chasis:document.getElementById('nc-chasis')?.value||'',
+    color:document.getElementById('nc-color')?.value||'',
     desde:document.getElementById('nc-desde').value,hasta:document.getElementById('nc-hasta').value,
     comentario:document.getElementById('nc-comentario').value,
+    fechaNac:document.getElementById('nc-nacimiento')?.value||'',
+    genero:document.getElementById('nc-genero')?.value||'',
+    estadoCivil:document.getElementById('nc-civil')?.value||'',
+    profesion:document.getElementById('nc-profesion')?.value||'',
+    direccionDom:document.getElementById('nc-dir')?.value||'',
+    cuentaBanc:document.getElementById('nc-cuenta')?.value||'',
+    prestamo:document.getElementById('nc-prestamo')?.value||'',
+    saldo:parseFloat(document.getElementById('nc-saldo')?.value)||0,
+    fechaVtoCred:document.getElementById('nc-vto-cred')?.value||'',
     dep:0,poliza:'',estado:'PENDIENTE',nota:'',ultimoContacto:''
   });
   const nuevoC = DB[DB.length-1];
