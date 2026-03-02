@@ -3605,141 +3605,338 @@ function processExcel(file){
   reader.readAsArrayBuffer(file);
 }
 function showImportPreview(rows, sheetName, fileName){
-  const total=rows.length;
-  // Calcular nuevos vs existentes
-  const existingCIs=new Set(DB.map(c=>(c.ci||'').toString().trim()));
-  const nuevos=rows.filter(r=>{
-    const ci=(r['CI']||r['CEDULA']||r['ci']||'').toString().trim();
-    return ci&&!existingCIs.has(ci);
-  }).length;
-  const duplicados=total-nuevos;
+  const total = rows.length;
+  const existingCIs = new Set(DB.map(c=>(c.ci||'').toString().trim()));
+
+  // Mapear todas las filas con el nuevo helper
+  const mapped = rows.map(r => _mapExcelRowToCliente(r));
+  const nuevos = mapped.filter(m => m.ci && !existingCIs.has(m.ci)).length;
+  const duplicados = total - nuevos;
+
+  // Detectar campos ricos (Fase 2)
+  const conFechaNac = mapped.filter(m=>m.fechaNac).length;
+  const conPrestamo = mapped.filter(m=>m.prestamo||m.saldo).length;
+  const conCelular2 = mapped.filter(m=>m.celular2).length;
+  const produbanco  = mapped.filter(m=>m.tipoCliente==='PRODUBANCO').length;
 
   document.getElementById('import-preview-meta').textContent=`${total} registros encontrados en hoja "${sheetName}"`;
-  
-  // Resumen mapeo
-  const mapeoEl=document.getElementById('import-mapeo-resumen');
+
+  const mapeoEl = document.getElementById('import-mapeo-resumen');
   if(mapeoEl) mapeoEl.innerHTML=`
-    <div style="display:flex;gap:20px;flex-wrap:wrap">
-      <div>📋 <b>${total}</b> filas con datos</div>
-      <div style="color:var(--green)">🆕 <b>${nuevos}</b> clientes nuevos</div>
-      <div style="color:var(--muted)">🔁 <b>${duplicados}</b> ya existen (por CI)</div>
-      <div>📅 Mes: <b>${document.getElementById('import-mes')?.value||'—'}</b></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">
+      <div style="padding:8px;background:#fff;border-radius:6px;border:1px solid var(--border)">
+        📋 <b>${total}</b> filas totales
+      </div>
+      <div style="padding:8px;background:#d4edda;border-radius:6px;border:1px solid #2d6a4f">
+        🆕 <b>${nuevos}</b> clientes nuevos
+      </div>
+      <div style="padding:8px;background:var(--warm);border-radius:6px;border:1px solid var(--border)">
+        🔁 <b>${duplicados}</b> ya existen (por CI)
+      </div>
+      <div style="padding:8px;background:#e8f0fb;border-radius:6px;border:1px solid #1a4c84">
+        🏦 <b>${produbanco}</b> tipo Produbanco
+      </div>
+      ${conFechaNac?`<div style="padding:8px;background:var(--warm);border-radius:6px;border:1px solid var(--border)">🎂 <b>${conFechaNac}</b> con fecha nacimiento</div>`:''}
+      ${conPrestamo?`<div style="padding:8px;background:var(--warm);border-radius:6px;border:1px solid var(--border)">💳 <b>${conPrestamo}</b> con datos crédito</div>`:''}
+      ${conCelular2?`<div style="padding:8px;background:var(--warm);border-radius:6px;border:1px solid var(--border)">📱 <b>${conCelular2}</b> con celular 2</div>`:''}
     </div>`;
 
-  // Advertencia modo
-  const modo=document.getElementById('import-modo')?.value||'agregar';
-  const warnEl=document.getElementById('import-warning');
+  const modo = document.getElementById('import-modo')?.value||'agregar';
+  const warnEl = document.getElementById('import-warning');
   if(warnEl){
     if(modo==='reemplazar') warnEl.innerHTML=`<span style="color:var(--red)">⚠ Modo REEMPLAZAR: se eliminarán todos los clientes del ejecutivo seleccionado</span>`;
     else if(modo==='actualizar') warnEl.innerHTML=`<span style="color:var(--accent)">ℹ Modo ACTUALIZAR: se sobreescribirán datos de clientes existentes</span>`;
     else warnEl.innerHTML='';
   }
 
-  // Tabla preview — columnas clave
-  const previewCols=['Nombre Cliente','CI','ASEGURADORA','Fc_hasta ultima vigencia','Ultimo Val_Aseg.','Marca','Modelo','Placa'];
-  const keys=previewCols.filter(k=>rows[0]&&k in rows[0]);
-  const html=`<table><thead><tr>${keys.map(k=>`<th style="white-space:nowrap">${k}</th>`).join('')}<th>Estado</th></tr></thead>
-    <tbody>${rows.slice(0,15).map(r=>{
-      const ci=(r['CI']||r['CEDULA']||'').toString().trim();
-      const esNuevo=ci&&!existingCIs.has(ci);
-      return `<tr style="${esNuevo?'':'background:#f0f7f0'}">
-        ${keys.map(k=>`<td style="font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r[k]||''}</td>`).join('')}
-        <td>${esNuevo?'<span style="font-size:10px;color:var(--accent)">Nuevo</span>':'<span style="font-size:10px;color:var(--muted)">Existe</span>'}</td>
-      </tr>`;
-    }).join('')}${rows.length>15?`<tr><td colspan="${keys.length+1}" style="text-align:center;padding:8px;color:var(--muted);font-size:11px">... y ${rows.length-15} registros más</td></tr>`:''}</tbody>
+  // Tabla preview con campos mapeados (no los headers crudos)
+  const html=`<table><thead><tr>
+    <th>Nombre</th><th>CI</th><th>Tipo</th><th>Celular</th>
+    <th>Aseguradora</th><th>Placa</th><th>VA</th><th>Vig. Hasta</th>
+    <th>Crédito</th><th>Estado</th>
+  </tr></thead>
+  <tbody>${mapped.slice(0,20).map(m=>{
+    const esNuevo = m.ci && !existingCIs.has(m.ci);
+    return `<tr style="${!esNuevo?'opacity:.7':''}">
+      <td style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${m.nombre||'—'}</td>
+      <td style="font-size:11px;font-family:'DM Mono',monospace">${m.ci||'—'}</td>
+      <td style="font-size:10px"><span style="padding:2px 6px;border-radius:4px;background:${m.tipoCliente==='PRODUBANCO'?'#e8f0fb':'#f3f4f6'};color:${m.tipoCliente==='PRODUBANCO'?'#1a4c84':'#555'}">${m.tipoCliente}</span></td>
+      <td style="font-size:11px">${m.celular||'—'}</td>
+      <td style="font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.aseguradora||'—'}</td>
+      <td style="font-size:11px;font-family:'DM Mono',monospace">${m.placa||'—'}</td>
+      <td style="font-size:11px;text-align:right">${m.va?'$'+m.va.toLocaleString('es-EC'):'—'}</td>
+      <td style="font-size:11px;font-family:'DM Mono',monospace">${m.hasta||'—'}</td>
+      <td style="font-size:10px">${m.prestamo?'💳 '+m.prestamo:m.saldo?'$'+m.saldo:'—'}</td>
+      <td>${esNuevo?'<span style="font-size:10px;color:var(--green);font-weight:700">✓ Nuevo</span>':'<span style="font-size:10px;color:var(--muted)">Existe</span>'}</td>
+    </tr>`;
+  }).join('')}${mapped.length>20?`<tr><td colspan="10" style="text-align:center;padding:8px;color:var(--muted);font-size:11px">... y ${mapped.length-20} registros más</td></tr>`:''}</tbody>
   </table>`;
   document.getElementById('import-table-wrap').innerHTML=html;
   document.getElementById('import-preview').style.display='block';
   showToast(`${total} registros detectados — ${nuevos} nuevos`,'info');
 }
 function confirmImport(){
-  if(!importedRows.length){return;}
-  const execId=document.getElementById('import-assign-exec').value;
-  const modo=document.getElementById('import-modo')?.value||'agregar';
-  const mes=document.getElementById('import-mes')?.value||'';
-  // Modo reemplazar: eliminar cartera existente del ejecutivo
-  if(modo==='reemplazar'&&execId){
+  if(!importedRows.length) return;
+  const execId = document.getElementById('import-assign-exec').value;
+  const modo   = document.getElementById('import-modo')?.value||'agregar';
+  const mes    = document.getElementById('import-mes')?.value||'';
+
+  if(modo==='reemplazar' && execId){
     if(!confirm('¿Confirmar REEMPLAZAR toda la cartera del ejecutivo seleccionado?')) return;
-    // Borrar en SP los clientes del ejecutivo antes de reemplazar
-    if(_spReady){ const toDelSP=DB.filter(c=>String(c.ejecutivo)===String(execId)&&c._spId); toDelSP.forEach(c=>spDelete('clientes',c._spId)); }
-    DB=DB.filter(c=>String(c.ejecutivo)!==String(execId));
+    if(_spReady){
+      const toDelSP = DB.filter(c=>String(c.ejecutivo)===String(execId)&&c._spId);
+      toDelSP.forEach(c=>spDelete('clientes',c._spId));
+    }
+    DB = DB.filter(c=>String(c.ejecutivo)!==String(execId));
   }
-  const existingCIs=new Set(DB.map(c=>(c.ci||'').toString().trim()));
-  const maxId=DB.length?Math.max(...DB.map(c=>c.id||0)):0;
-  let added=0, updated=0;
-  importedRows.forEach((row,i)=>{
-    // Map common column names
-    const nombre=(row['Nombre Cliente']||row['NOMBRE']||row['nombre']||'').toString().toUpperCase().trim();
-    if(!nombre) return;
-    const hasta=(row['Fc_hasta ultima vigencia']||row['VIGENCIA HASTA']||row['hasta']||'').toString().split(' ')[0];
-    const desde=(row['Fc_desde ultima vigencia']||row['VIGENCIA DESDE']||row['desde']||'').toString().split(' ')[0];
-    const ci=(row['CI']||row['CEDULA']||row['ci']||'').toString().trim();
-    // Modo actualizar: si ya existe, actualizar datos
-    if(modo==='actualizar'&&ci&&existingCIs.has(ci)){
-      const idx=DB.findIndex(c=>(c.ci||'').toString().trim()===ci);
-      if(idx>=0){
-        DB[idx]={...DB[idx],aseguradora:(row['ASEGURADORA']||row['Aseguradora']||DB[idx].aseguradora||'').toString().trim(),
-          va:parseFloat(row['Ultimo Val_Aseg.']||row['VA']||DB[idx].va)||DB[idx].va,
-          hasta,desde};
-        updated++; return;
+
+  const existingCIs = new Set(DB.map(c=>(c.ci||'').toString().trim()));
+  const maxId = DB.length ? Math.max(...DB.map(c=>c.id||0)) : 0;
+  let added=0, updated=0, omitidos=0;
+
+  importedRows.forEach((row, i) => {
+    const m = _mapExcelRowToCliente(row);
+    if(!m.nombre || m.nombre.length < 2) { omitidos++; return; }
+
+    // MODO ACTUALIZAR — actualizar campos si el cliente ya existe por CI
+    if(modo==='actualizar' && m.ci && existingCIs.has(m.ci)){
+      const idx = DB.findIndex(c=>(c.ci||'').toString().trim()===m.ci);
+      if(idx >= 0){
+        DB[idx] = {
+          ...DB[idx],
+          // Datos de contacto
+          celular:   m.celular  || DB[idx].celular,
+          celular2:  m.celular2 || DB[idx].celular2,
+          telFijo:   m.telFijo  || DB[idx].telFijo,
+          correo:    m.correo   || DB[idx].correo,
+          // Datos demográficos
+          fechaNac:   m.fechaNac  || DB[idx].fechaNac,
+          genero:     m.genero    || DB[idx].genero,
+          estadoCivil:m.estadoCivil||DB[idx].estadoCivil,
+          profesion:  m.profesion || DB[idx].profesion,
+          direccionDom:m.direccionDom||DB[idx].direccionDom,
+          // Crédito Produbanco
+          cuentaBanc: m.cuentaBanc || DB[idx].cuentaBanc,
+          prestamo:   m.prestamo   || DB[idx].prestamo,
+          saldo:      m.saldo      || DB[idx].saldo,
+          fechaVtoCred:m.fechaVtoCred||DB[idx].fechaVtoCred,
+          // Póliza
+          aseguradora:  m.aseguradora  || DB[idx].aseguradora,
+          aseguradoraAnterior: m.aseguradoraAnterior || DB[idx].aseguradoraAnterior,
+          polizaAnterior: m.polizaAnterior || DB[idx].polizaAnterior,
+          va:   m.va   || DB[idx].va,
+          dep:  m.dep  || DB[idx].dep,
+          tasa: m.tasa || DB[idx].tasa,
+          pn:   m.pn   || DB[idx].pn,
+          desde:m.desde|| DB[idx].desde,
+          hasta:m.hasta|| DB[idx].hasta,
+          // Tipo cliente (solo si auto-detectado y el existente no tiene)
+          tipoCliente: DB[idx].tipoCliente || m.tipoCliente,
+          tasaAnterior: m.tasaAnterior || DB[idx].tasaAnterior,
+          _dirty: true,
+        };
+        updated++;
+        return;
       }
     }
-    // Modo agregar: omitir si ya existe por CI
-    if(modo==='agregar'&&ci&&existingCIs.has(ci)) return;
-    DB.push({
-      id:maxId+added+1,ejecutivo:execId,
-      nombre,ci,
-      tipo:(row['TIPO']||row['tipo']||'RENOVACION').toString().trim(),
-      region:(row['REGION']||row['region']||'SIERRA').toString().trim(),
-      ciudad:(row['Ciudad']||row['CIUDAD']||'QUITO').toString().trim(),
-      obs:(row['OBS POLIZA']||row['obs']||'RENOVACION').toString().trim(),
-      celular:(row['Celular 1']||row['CELULAR']||row['Celular']||'').toString().trim(),
-      aseguradora:(row['ASEGURADORA']||row['aseguradora']||row['Aseguradora']||row['AE']||'').toString().trim(),
-      // Col AC = POLIZA (póliza vigente anterior), Col AE = ASEGURADORA (aseg anterior)
-      polizaAnterior:(row['POLIZA']||'').toString().trim(),
-      aseguradoraAnterior:(row['ASEGURADORA']||row['Aseguradora']||'').toString().trim(),
-      poliza:(row['POLIZA RENOVADA']||row['poliza_nueva']||'').toString().trim(),
-      desde,hasta,
-      va:parseFloat(row['Ultimo Val_Aseg.']||row['Valor asegurado']||row['VA']||0)||0,
-      dep:parseFloat(row['v dep']||row['dep']||0)||0,
-      tasa:parseFloat(row['tasa presupuesto']||row['Tasa']||row['tasa']||0)||null,
-      pn:parseFloat(row['pn']||row['Prima Neta ']||row['Prima Neta']||0)||0,
-      marca:(row['Marca']||row['marca']||row['AO']||'').toString().trim(),
-      modelo:(row['Modelo']||row['modelo']||row['AP']||'').toString().trim(),
-      anio:parseInt(row['Año ']||row['Año']||row['AQ']||row['anio']||2024)||2024,
-      motor:(row['Motor']||row['AR']||'').toString().trim(),
-      chasis:(row['No De Chasis']||row['AS']||row['chasis']||'').toString().trim(),
-      color:(row['Color']||row['AT']||row['color']||'').toString().trim(),
-      placa:(row['Placa']||row['AU']||row['placa']||'').toString().trim(),
-      correo:(row['Correo']||row['Ac']||row['correo']||'').toString().trim(),
-      cuenta:(row['Cuenta']||row['AV']||'').toString().trim(),
-      estado:'PENDIENTE',nota:'',ultimoContacto:'',comentario:'',
-      fechaDebito:(row['FECHA DEBITO']||row['BT']||'').toString().split(' ')[0],
-      fechaCash:(row['FECHA DE CASH']||row['BM']||'').toString().split(' ')[0],
-      bitacora:[],
-    });
-    // Registrar en bitácora del cliente recién creado
-    const nuevoImport = DB[DB.length-1];
-    if(nuevoImport) _bitacoraAdd(nuevoImport, `Cliente importado desde Excel — ${importedFileName||'archivo.xlsx'}`, 'sistema');
+
+    // MODO AGREGAR — saltar si ya existe por CI
+    if(modo==='agregar' && m.ci && existingCIs.has(m.ci)){ omitidos++; return; }
+
+    // INSERTAR NUEVO CLIENTE
+    const nuevo = {
+      id: maxId + added + 1,
+      ejecutivo: execId,
+      tipo: 'RENOVACION',
+      estado: 'PENDIENTE',
+      nota: '', ultimoContacto: '', comentario: '', bitacora: [],
+      // Campos mapeados del Excel
+      nombre:   m.nombre,
+      ci:       m.ci,
+      tipoCliente: m.tipoCliente,
+      celular:  m.celular,
+      celular2: m.celular2,
+      telFijo:  m.telFijo,
+      correo:   m.correo,
+      ciudad:   m.ciudad,
+      region:   m.region,
+      direccionDom: m.direccionDom,
+      // Crédito
+      cuentaBanc:   m.cuentaBanc,
+      prestamo:     m.prestamo,
+      saldo:        m.saldo,
+      fechaVtoCred: m.fechaVtoCred,
+      // Demografía
+      fechaNac:   m.fechaNac,
+      genero:     m.genero,
+      estadoCivil:m.estadoCivil,
+      profesion:  m.profesion,
+      tasaAnterior: m.tasaAnterior,
+      estadoGest:   m.estadoGest,
+      // Vehículo
+      marca: m.marca, modelo: m.modelo, anio: m.anio,
+      motor: m.motor, chasis: m.chasis, color: m.color, placa: m.placa,
+      // Póliza
+      aseguradora:          m.aseguradora,
+      aseguradoraAnterior:  m.aseguradoraAnterior,
+      polizaAnterior:       m.polizaAnterior,
+      poliza:               m.poliza,
+      obs:                  m.obs,
+      desde: m.desde, hasta: m.hasta,
+      // Financiero
+      va: m.va, dep: m.dep, tasa: m.tasa, pn: m.pn,
+      _dirty: true,
+    };
+    DB.push(nuevo);
+    existingCIs.add(m.ci); // evitar duplicados dentro del mismo archivo
+    _bitacoraAdd(nuevo, `Importado desde Excel — ${importedFileName||'archivo.xlsx'}`, 'sistema');
     added++;
   });
+
   saveDB();
-  // Registrar en historial
-  const execUser=USERS.find(u=>u.id===execId);
-  const historial=(_cache.historial||JSON.parse(localStorage.getItem('reliance_import_historial')||'[]'));
+
+  // Historial de importación
+  const execUser = USERS.find(u=>u.id===execId);
+  const historial = (_cache.historial||JSON.parse(localStorage.getItem('reliance_import_historial')||'[]'));
   historial.push({
-    fecha:new Date().toISOString().split('T')[0],
-    archivo:importedFileName||'archivo.xlsx',
-    mes, ejecutivo:execUser?execUser.name:'Todos',
-    modo, agregados:added, actualizados:updated
+    fecha: new Date().toISOString().split('T')[0],
+    archivo: importedFileName||'archivo.xlsx',
+    mes, ejecutivo: execUser?execUser.name:'Todos',
+    modo, agregados: added, actualizados: updated,
   });
-  { _cache.historial=historial; localStorage.setItem('reliance_import_historial',JSON.stringify(historial)); }
+  _cache.historial = historial;
+  localStorage.setItem('reliance_import_historial', JSON.stringify(historial));
+
   document.getElementById('import-preview').style.display='none';
   importedRows=[];
   renderDashboard(); renderAdmin();
-  showToast(`✓ ${added} clientes importados${updated?' · '+updated+' actualizados':''}${modo==='reemplazar'?' (cartera reemplazada)':''}`);
+  actualizarBadgeCobranza();
+
+  const msg=`✓ ${added} importados${updated?' · '+updated+' actualizados':''}${omitidos?' · '+omitidos+' omitidos':''}${modo==='reemplazar'?' (cartera reemplazada)':''}`;
+  showToast(msg, 'success');
 }
 function cancelImport(){document.getElementById('import-preview').style.display='none';importedRows=[];}
+
+// ══════════════════════════════════════════════════════
+//  IMPORT HELPERS — FASE 4
+// ══════════════════════════════════════════════════════
+
+// Convierte serial de fecha Excel o string a ISO yyyy-mm-dd
+function _excelDateToISO(v){
+  if(!v && v!==0) return '';
+  const s = String(v).trim();
+  if(!s) return '';
+  // Ya es fecha ISO
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  // Formato dd/mm/yyyy
+  if(/^\d{1,2}\/\d{1,2}\/\d{4}/.test(s)){
+    const [d,m,y]=s.split('/'); return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+  // Formato dd-mm-yyyy
+  if(/^\d{1,2}-\d{1,2}-\d{4}/.test(s)){
+    const [d,m,y]=s.split('-'); return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+  // Serial numérico de Excel (días desde 1900-01-01)
+  const n = parseFloat(s);
+  if(!isNaN(n) && n > 40000 && n < 60000){
+    const d = new Date(Math.round((n - 25569) * 86400 * 1000));
+    if(!isNaN(d)) return d.toISOString().split('T')[0];
+  }
+  return '';
+}
+
+// Lee un campo de una fila de Excel probando múltiples nombres de columna
+function _excelCellStr(row, ...keys){
+  for(const k of keys){
+    const v = row[k];
+    if(v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+  }
+  return '';
+}
+
+// Mapea una fila raw del Excel (PRODU VH) a un objeto cliente CRM
+function _mapExcelRowToCliente(row){
+  const str = (...k) => _excelCellStr(row, ...k);
+  const num = (...k) => { const v=str(...k); return parseFloat(v.replace(',','.'))||0; };
+  const date = (...k) => _excelDateToISO(str(...k));
+
+  // Nombre — múltiples variantes de columna
+  const nombre = str('Nombre Cliente','NOMBRE CLIENTE','Nombre','NOMBRE','nombre').toUpperCase();
+  const ci     = str('CI','CEDULA','Cédula','C.I.','ci','cédula','IDENTIFICACION');
+  const celular= str('Celular 1','CELULAR 1','Celular','CELULAR','celular','Cel 1','TEL CELULAR');
+  const celular2=str('Celular 2','CELULAR 2','cel2','celular2','Cel 2','CELULAR2');
+  const telFijo =str('Tel Fijo','TEL FIJO','Teléfono Fijo','TELEFONO FIJO','telefono','telfijo','TEL DOMICILIO');
+  const correo  =str('Correo','CORREO','Email','EMAIL','email','correo','E-MAIL');
+  const ciudad  =str('Ciudad','CIUDAD','ciudad','CANTON');
+  const region  =str('Region','REGION','región','region');
+  const dir     =str('Dirección','DIRECCION','Direccion','direccion','Domicilio','DOMICILIO');
+
+  // Cuenta Produbanco — col J en PRODU VH, header varía
+  const cuentaBanc = str('Cuenta Produbanco','CUENTA PRODUBANCO','Cuenta','CUENTA','cuenta','Nro Cuenta','NRO CUENTA','No Cuenta');
+
+  // Crédito Produbanco
+  const prestamo    = str('Préstamo','PRESTAMO','Prestamo','No Prestamo','NRO PRESTAMO','N Prestamo','prestamo','# Prestamo');
+  const saldo       = num('Saldo','SALDO','Saldo Credito','SALDO CREDITO','saldo');
+  const fechaVtoCred= date('Vencimiento Credito','Fecha Vto Credito','VTO CREDITO','FechaVtoCred','fechaVtoCred','Vto Credito');
+
+  // Demografía
+  const fechaNac  = date('Fecha Nacimiento','FECHA NACIMIENTO','Nacimiento','F_NACIMIENTO','fechaNac','F. Nacimiento');
+  const genero    = str('Genero','GENERO','Género','Sexo','SEXO','genero').toUpperCase();
+  const estadoCivil=str('Estado Civil','ESTADO CIVIL','Civil','CIVIL','estadoCivil','E. Civil').toUpperCase();
+  const profesion = str('Profesion','PROFESION','Profesión','Ocupacion','OCUPACION','profesion');
+  const tasaAnterior=num('Tasa Anterior','TASA ANTERIOR','Tasa presupuesto','tasa presupuesto','tasaAnterior','Tasa Vig Ant','TASA VIG ANT');
+
+  // Vehículo
+  const marca  = str('Marca','MARCA','marca','AO');
+  const modelo = str('Modelo','MODELO','modelo','AP');
+  const anio   = parseInt(str('Año','AÑO','Año ','anio','ANO','Modelo Año','AQ'))||2024;
+  const motor  = str('Motor','MOTOR','motor','AR','N Motor','N. Motor');
+  const chasis = str('No De Chasis','N De Chasis','CHASIS','Chasis','chasis','AS','N° Chasis');
+  const color  = str('Color','COLOR','color','AT');
+  const placa  = str('Placa','PLACA','placa','AU');
+
+  // Póliza anterior
+  const polizaAnterior = str('POLIZA','Poliza','Póliza','poliza','Poliza Anterior','POLIZA ANTERIOR');
+  const aseguradora    = str('ASEGURADORA','Aseguradora','aseguradora','ASEG','AE');
+  const aseguradoraAnterior = aseguradora; // En PRODU VH la aseguradora es la anterior
+
+  // Vigencia
+  const desde = date('Fc_desde ultima vigencia','Vigencia Desde','VIGENCIA DESDE','desde','DESDE','Fc Desde');
+  const hasta = date('Fc_hasta ultima vigencia','Vigencia Hasta','VIGENCIA HASTA','hasta','HASTA','Fc Hasta');
+
+  // Valores financieros
+  const va  = num('Ultimo Val_Aseg.','Valor Asegurado','VALOR ASEGURADO','VA','va','Val Aseg');
+  const dep = num('v dep','Depreciacion','DEP','dep');
+  const pn  = num('pn','Prima Neta ','Prima Neta','PRIMA NETA','PN');
+  const tasa= num('tasa presupuesto','Tasa','TASA','tasa')||tasaAnterior||null;
+  const obs = str('OBS POLIZA','OBS','obs','Obs','observacion','OBSERVACION')||'RENOVACION';
+
+  // Estado de gestión
+  const estadoGest = str('Estado Gestion','ESTADO GESTION','Estado','ESTADO GESTION','estadoGest','K');
+
+  // Auto-detectar tipoCliente
+  let tipoCliente = str('Tipo Cliente','TIPO CLIENTE','tipoCliente');
+  if(!tipoCliente){
+    tipoCliente = (cuentaBanc||prestamo) ? 'PRODUBANCO' : 'PARTICULAR';
+  }
+
+  return {
+    nombre, ci, celular, celular2, telFijo, correo,
+    ciudad: ciudad||'QUITO', region: region||'SIERRA',
+    direccionDom: dir,
+    tipoCliente, cuentaBanc, prestamo,
+    saldo, fechaVtoCred,
+    fechaNac, genero, estadoCivil, profesion,
+    tasaAnterior: tasaAnterior||null,
+    estadoGest,
+    marca, modelo, anio, motor, chasis, color, placa,
+    aseguradora, aseguradoraAnterior, polizaAnterior,
+    poliza: str('POLIZA RENOVADA','poliza_nueva','Poliza Nueva','POLIZA NUEVA')||'',
+    desde, hasta,
+    va, dep, tasa: tasa||null, pn,
+    obs,
+  };
+}
 
 // ══════════════════════════════════════════════════════
 //  NUEVO CLIENTE
