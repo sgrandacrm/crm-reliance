@@ -284,7 +284,7 @@ function openModal(id){document.getElementById(id).classList.add('open')}
 // ══════════════════════════════════════════════════════
 //  NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles={dashboard:'Dashboard',cierres:'Cierres de Venta',clientes:'Cartera de Clientes',vencimientos:'Vencimientos de Pólizas',calendario:'Calendario de Vencimientos',seguimiento:'Seguimiento de Clientes',cotizador:'Cotizador de Primas',comparativo:'Comparativo de Coberturas',tasas:'Tabla de Tasas',admin:'Panel de Administración','nuevo-cliente':'Registrar Cliente',cobranza:'Módulo de Cobranza'};
+const pageTitles={dashboard:'Dashboard',cierres:'Cierres de Venta',clientes:'Cartera de Clientes',vencimientos:'Vencimientos de Pólizas',calendario:'Calendario de Vencimientos',seguimiento:'Seguimiento de Clientes',cotizador:'Cotizador de Primas',comparativo:'Comparativo de Coberturas',tasas:'Tabla de Tasas',admin:'Panel de Administración','nuevo-cliente':'Registrar Cliente',cobranza:'Módulo de Cobranza',bitacora:'Bitácora de Gestión'};
 function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   const navItems = document.querySelectorAll('.nav-item');
@@ -294,7 +294,7 @@ function showPage(id){
   navItems.forEach(n=>{
     if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes("'"+id+"'")) n.classList.add('active');
   });
-  const renders={clientes:renderClientes,vencimientos:()=>showPage('seguimiento'),calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones,cobranza:()=>renderCobranza(_currentFiltroCobranza||'mes')};
+  const renders={clientes:renderClientes,vencimientos:()=>showPage('seguimiento'),calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones,cobranza:()=>renderCobranza(_currentFiltroCobranza||'mes'),bitacora:()=>renderBitacora(_currentFiltroBitacora||'semana')};
   if(renders[id]) renders[id]();
 }
 
@@ -550,6 +550,17 @@ function showClienteModal(id){
   document.getElementById('modal-btn-cotizar').onclick=()=>{ closeModal('modal-cliente'); prefillCotizador(c); showPage('cotizador'); setTimeout(calcCotizacion,200); };
   document.getElementById('modal-btn-editar').onclick=()=>{ closeModal('modal-cliente'); openEditar(id); };
   document.getElementById('modal-btn-eliminar').onclick=()=>{ if(confirm(`¿Eliminar a ${c.nombre}?`)){ const cliToDel=DB.find(x=>String(x.id)===String(id)); if(cliToDel?._spId && _spReady) spDelete('clientes', cliToDel._spId); DB=DB.filter(x=>String(x.id)!==String(id)); saveDB(); closeModal('modal-cliente'); renderClientes(); renderDashboard(); showToast('Cliente eliminado','error'); }};
+  // Botón rápido de gestión (si no existe, agrégar dinámicamente)
+  let btnGest = document.getElementById('modal-btn-gestion');
+  if(!btnGest){
+    btnGest = document.createElement('button');
+    btnGest.id='modal-btn-gestion';
+    btnGest.className='btn btn-sm';
+    btnGest.style.cssText='background:#2d6a4f;color:#fff;border:none';
+    btnGest.textContent='📓 Gestión';
+    document.querySelector('#modal-cliente .modal-footer').prepend(btnGest);
+  }
+  btnGest.onclick=()=>{ closeModal('modal-cliente'); abrirModalGestion(c.id, c.nombre); };
   openModal('modal-cliente');
 }
 
@@ -2585,6 +2596,196 @@ function exportCobranzaExcel(){
   XLSX.writeFile(wb, `Cobranza_Reliance_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
+// ══════════════════════════════════════════════════════
+//  BITÁCORA DE GESTIÓN
+// ══════════════════════════════════════════════════════
+const _BITACORA_KEY = '_reliance_bitacora';
+let _currentFiltroBitacora = 'semana';
+
+function _getBitacora(){ try{ return JSON.parse(localStorage.getItem(_BITACORA_KEY)||'[]'); }catch(e){return[];} }
+function _saveBitacora(arr){ localStorage.setItem(_BITACORA_KEY, JSON.stringify(arr)); }
+
+function filtrarBitacora(filtro, btn){
+  _currentFiltroBitacora = filtro;
+  document.querySelectorAll('#page-bitacora .pill').forEach(p=>p.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderBitacora(filtro);
+}
+
+function renderBitacora(filtro='semana'){
+  const all = _getBitacora();
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const todayStr = hoy.toISOString().split('T')[0];
+  const semStr   = new Date(hoy.getTime()-6*86400000).toISOString().split('T')[0];
+  const mesStr   = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
+  const tipoFiltro = document.getElementById('bitacora-filtro-tipo')?.value||'';
+  const busq = (document.getElementById('bitacora-search')?.value||'').toLowerCase();
+  const isAdmin = _currentUser?.rol==='admin'||_currentUser?.rol==='jefe';
+
+  let items = all.filter(g=>{
+    if(filtro==='hoy'   && g.fecha!==todayStr)  return false;
+    if(filtro==='semana'&& g.fecha<semStr)       return false;
+    if(filtro==='mes'   && g.fecha<mesStr)       return false;
+    if(tipoFiltro && g.tipo!==tipoFiltro)        return false;
+    if(!isAdmin){
+      const exec=USERS.find(u=>u.id===_currentUser?.id);
+      if(exec && g.ejecutivo && g.ejecutivo!==_currentUser?.id) return false;
+    }
+    if(busq && !(g.clienteNombre||'').toLowerCase().includes(busq)) return false;
+    return true;
+  }).sort((a,b)=>b.fecha.localeCompare(a.fecha)||(b.hora||'').localeCompare(a.hora||''));
+
+  // Stats
+  const hoyItems  = all.filter(g=>g.fecha===todayStr);
+  const semItems  = all.filter(g=>g.fecha>=semStr);
+  const seguims   = all.filter(g=>g.seguimiento&&g.seguimiento>=todayStr&&g.seguimiento<=new Date(hoy.getTime()+7*86400000).toISOString().split('T')[0]);
+  const statsEl   = document.getElementById('bitacora-stats');
+  if(statsEl) statsEl.innerHTML=`
+    <div class="stat-card"><div class="stat-label">Gestiones hoy</div><div class="stat-value" style="color:var(--accent2)">${hoyItems.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Esta semana</div><div class="stat-value" style="color:var(--green)">${semItems.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Total registros</div><div class="stat-value">${all.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Seguimientos 7d</div><div class="stat-value" style="color:var(--accent)">${seguims.length}</div></div>`;
+
+  const countEl = document.getElementById('bitacora-count');
+  if(countEl) countEl.textContent = items.length+' registros';
+
+  const TIPO_ICON  ={LLAMADA:'📞',WHATSAPP:'💬',EMAIL:'📧',VISITA:'🚗',COBRO:'💰',OTRO:'•'};
+  const RES_COLOR  ={CONTACTADO:'var(--green)',NO_CONTESTA:'var(--muted)',BUZON:'var(--muted)',PROMESA_PAGO:'var(--accent)',PAGO_REALIZADO:'var(--green)',NO_INTERESADO:'var(--red)',OTRO:'var(--text)'};
+  const RES_LABEL  ={CONTACTADO:'Contactado',NO_CONTESTA:'No contesta',BUZON:'Buzón de voz',PROMESA_PAGO:'Promesa de pago',PAGO_REALIZADO:'Pago realizado',NO_INTERESADO:'No interesado',OTRO:'Otro'};
+
+  const tabla = document.getElementById('bitacora-tabla');
+  if(!tabla) return;
+  if(!items.length){
+    tabla.innerHTML='<div class="empty-state"><div class="empty-icon">📓</div><p>Sin registros en este período</p></div>'; return;
+  }
+  tabla.innerHTML=`<div class="tbl-wrap"><table>
+    <thead><tr><th>Fecha</th><th>Cliente</th><th>Tipo</th><th>Resultado</th><th>Nota</th><th>Seguimiento</th><th>Ejecutivo</th><th></th></tr></thead>
+    <tbody>${items.map(g=>{
+      const exec=USERS.find(u=>u.id===g.ejecutivo);
+      const esSeguim=g.seguimiento&&g.seguimiento===todayStr;
+      return`<tr style="${esSeguim?'background:var(--warm2,#fffde7)':''}">
+        <td><span class="mono" style="font-size:11px">${g.fecha||'—'}</span><br><span style="color:var(--muted);font-size:10px">${g.hora||''}</span></td>
+        <td style="font-weight:500;font-size:12px">${g.clienteNombre||'—'}</td>
+        <td style="font-size:12px">${TIPO_ICON[g.tipo]||'•'} ${g.tipo||''}</td>
+        <td><span style="color:${RES_COLOR[g.resultado]||'var(--text)'};font-size:12px;font-weight:500">${RES_LABEL[g.resultado]||g.resultado||'—'}</span></td>
+        <td style="font-size:11px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(g.nota||'').replace(/"/g,"'")}">${g.nota||'—'}</td>
+        <td style="text-align:center">${g.seguimiento?`<span class="badge ${esSeguim?'badge-gold':'badge-blue'}" style="font-size:10px">${g.seguimiento}</span>`:'—'}</td>
+        <td style="font-size:11px">${exec?exec.name:'—'}</td>
+        <td><button class="btn btn-sm" style="padding:2px 8px;font-size:11px;background:var(--accent);color:#fff;border:none" onclick="eliminarGestion('${g.id}')">✕</button></td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+function actualizarBadgeBitacora(){
+  const all = _getBitacora();
+  const hoy = new Date().toISOString().split('T')[0];
+  const seguim = all.filter(g=>g.seguimiento===hoy).length;
+  const badge = document.getElementById('badge-bitacora');
+  if(badge){ badge.textContent=seguim; badge.style.display=seguim?'inline':'none'; }
+}
+
+function abrirModalGestion(clienteId=null, clienteNombre=null){
+  document.getElementById('gest-fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('gest-seguimiento').value = '';
+  document.getElementById('gest-nota').value = '';
+  document.getElementById('gest-tipo').value = 'LLAMADA';
+  document.getElementById('gest-resultado').value = 'CONTACTADO';
+  if(clienteId){
+    document.getElementById('gest-cliente-id').value = clienteId;
+    document.getElementById('gest-cliente-nombre').value = clienteNombre||'';
+    document.getElementById('gest-cliente-search').value = clienteNombre||'';
+  } else {
+    document.getElementById('gest-cliente-id').value = '';
+    document.getElementById('gest-cliente-nombre').value = '';
+    document.getElementById('gest-cliente-search').value = '';
+  }
+  openModal('modal-gestion');
+}
+
+function buscarClienteGestion(q){
+  const res = document.getElementById('gest-cliente-results');
+  if(!res) return;
+  if(q.length < 2){ res.style.display='none'; return; }
+  const matches = myClientes().filter(c=>(c.nombre||'').toLowerCase().includes(q.toLowerCase())).slice(0,8);
+  if(!matches.length){ res.style.display='none'; return; }
+  res.style.display='block';
+  res.innerHTML = matches.map(c=>`
+    <div style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--warm)"
+         onmousedown="seleccionarClienteGestion(${c.id},'${(c.nombre||'').replace(/'/g,"\\'")}')">
+      <b>${c.nombre||'—'}</b> <span style="color:var(--muted)">${c.ci||''}</span>
+    </div>`).join('');
+}
+
+function seleccionarClienteGestion(id, nombre){
+  document.getElementById('gest-cliente-id').value = id;
+  document.getElementById('gest-cliente-nombre').value = nombre;
+  document.getElementById('gest-cliente-search').value = nombre;
+  document.getElementById('gest-cliente-results').style.display='none';
+}
+
+function guardarGestion(){
+  const clienteId   = document.getElementById('gest-cliente-id').value;
+  const clienteNom  = document.getElementById('gest-cliente-nombre').value||document.getElementById('gest-cliente-search').value;
+  const fecha       = document.getElementById('gest-fecha').value;
+  const tipo        = document.getElementById('gest-tipo').value;
+  const resultado   = document.getElementById('gest-resultado').value;
+  const nota        = document.getElementById('gest-nota').value.trim();
+  const seguimiento = document.getElementById('gest-seguimiento').value;
+  if(!fecha){ showToast('Selecciona una fecha','error'); return; }
+  if(!clienteNom){ showToast('Selecciona un cliente','error'); return; }
+
+  const all = _getBitacora();
+  const maxId = all.length ? Math.max(...all.map(g=>parseInt(g.id)||0)) : 0;
+  const g = {
+    id: String(maxId+1),
+    clienteId: clienteId||'',
+    clienteNombre: clienteNom.toUpperCase(),
+    ejecutivo: _currentUser?.id||'',
+    fecha,
+    hora: new Date().toTimeString().slice(0,5),
+    tipo, resultado, nota, seguimiento,
+  };
+  all.push(g);
+  _saveBitacora(all);
+
+  // Sync SP
+  if(_spReady) spCreate('cobranzas', g);
+
+  actualizarBadgeBitacora();
+  closeModal('modal-gestion');
+  renderBitacora(_currentFiltroBitacora||'semana');
+  showToast('Gestión registrada','success');
+}
+
+function eliminarGestion(id){
+  if(!confirm('¿Eliminar este registro de gestión?')) return;
+  const all = _getBitacora().filter(g=>g.id!==id);
+  _saveBitacora(all);
+  actualizarBadgeBitacora();
+  renderBitacora(_currentFiltroBitacora||'semana');
+  showToast('Registro eliminado');
+}
+
+function exportBitacoraExcel(){
+  const all = _getBitacora();
+  const TIPO_LABEL={LLAMADA:'Llamada',WHATSAPP:'WhatsApp',EMAIL:'Email',VISITA:'Visita',COBRO:'Cobro',OTRO:'Otro'};
+  const RES_LABEL={CONTACTADO:'Contactado',NO_CONTESTA:'No contesta',BUZON:'Buzón',PROMESA_PAGO:'Promesa de pago',PAGO_REALIZADO:'Pago realizado',NO_INTERESADO:'No interesado',OTRO:'Otro'};
+  const rows = all.map(g=>{
+    const exec = USERS.find(u=>u.id===g.ejecutivo);
+    return {
+      'Fecha':g.fecha,'Hora':g.hora,'Cliente':g.clienteNombre,
+      'Tipo':TIPO_LABEL[g.tipo]||g.tipo,'Resultado':RES_LABEL[g.resultado]||g.resultado,
+      'Nota':g.nota,'Seguimiento':g.seguimiento||'','Ejecutivo':exec?exec.name:''
+    };
+  });
+  const ws=XLSX.utils.json_to_sheet(rows);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Bitácora');
+  XLSX.writeFile(wb,`Bitacora_Reliance_${new Date().toISOString().split('T')[0]}.xlsx`);
+  showToast('Bitácora exportada');
+}
+
 function actualizarBadgeCotizaciones(){
   const all = _getCotizaciones();
   const pendientes = all.filter(c=>['ENVIADA','VISTA'].includes(c.estado)).length;
@@ -3593,8 +3794,12 @@ function processExcel(file){
     if(sheetPref==='auto') sheetName=wb.SheetNames.find(s=>s.includes('VH')||s.includes('vh'))||wb.SheetNames[0];
     else sheetName=wb.SheetNames.find(s=>s===sheetPref)||wb.SheetNames[0];
     const ws=wb.Sheets[sheetName];
-    const json=XLSX.utils.sheet_to_json(ws,{defval:''});
-    if(!json.length){showToast('No se encontraron datos en el archivo','error');return;}
+    const rawJson=XLSX.utils.sheet_to_json(ws,{defval:''});
+    if(!rawJson.length){showToast('No se encontraron datos en el archivo','error');return;}
+    // Normalizar nombres de columna (eliminar espacios extra en headers del Excel)
+    const json=rawJson.map(row=>{
+      const n={}; Object.entries(row).forEach(([k,v])=>{n[k.trim()]=v;}); return n;
+    });
     // Filtrar filas con nombre
     importedRows=json.filter(r=>{
       const n=(r['Nombre Cliente']||r['NOMBRE']||r['nombre']||'').toString().trim();
@@ -3862,52 +4067,55 @@ function _mapExcelRowToCliente(row){
 
   // Nombre — múltiples variantes de columna
   const nombre = str('Nombre Cliente','NOMBRE CLIENTE','Nombre','NOMBRE','nombre').toUpperCase();
-  const ci     = str('CI','CEDULA','Cédula','C.I.','ci','cédula','IDENTIFICACION');
-  const celular= str('Celular 1','CELULAR 1','Celular','CELULAR','celular','Cel 1','TEL CELULAR');
-  const celular2=str('Celular 2','CELULAR 2','cel2','celular2','Cel 2','CELULAR2');
-  const telFijo =str('Tel Fijo','TEL FIJO','Teléfono Fijo','TELEFONO FIJO','telefono','telfijo','TEL DOMICILIO');
+  const ci     = str('CI','CEDULA','Cédula','C.I.','ci','cédula','IDENTIFICACION','RUC');
+  // Celular: el archivo tiene "Celular 1" en col 9 (primario) y "Celular 1_1" (duplicado renombrado col 58)
+  const celular= str('Celular 1','CELULAR 1','Celular','CELULAR','celular','Cel 1','TEL CELULAR','Celular 1_1');
+  const celular2=str('Celular 2','CELULAR 2','cel2','celular2','Cel 2','CELULAR2','TELÉFONOS ADICIONALES');
+  // Teléfono fijo: el archivo tiene "Teléfono fijo" (col 54) y "Teléfono fijo_1" (col 56, renombrado)
+  const telFijo =str('Teléfono fijo','Tel Fijo','TEL FIJO','Teléfono Fijo','TELEFONO FIJO','telefono','telfijo','Teléfono fijo_1');
   const correo  =str('Correo','CORREO','Email','EMAIL','email','correo','E-MAIL');
   const ciudad  =str('Ciudad','CIUDAD','ciudad','CANTON');
-  const region  =str('Region','REGION','región','region');
-  const dir     =str('Dirección','DIRECCION','Direccion','direccion','Domicilio','DOMICILIO');
+  const region  =str('REGION','Region','región','region');
+  // Dirección: el archivo usa "Direccion Dom"
+  const dir     =str('Direccion Dom','Dirección Dom','DIRECCION DOM','Dirección','DIRECCION','Direccion','direccion','Domicilio','DOMICILIO');
 
   // Cuenta Produbanco — col J en PRODU VH, header varía
   const cuentaBanc = str('Cuenta Produbanco','CUENTA PRODUBANCO','Cuenta','CUENTA','cuenta','Nro Cuenta','NRO CUENTA','No Cuenta');
 
-  // Crédito Produbanco
-  const prestamo    = str('Préstamo','PRESTAMO','Prestamo','No Prestamo','NRO PRESTAMO','N Prestamo','prestamo','# Prestamo');
-  const saldo       = num('Saldo','SALDO','Saldo Credito','SALDO CREDITO','saldo');
-  const fechaVtoCred= date('Vencimiento Credito','Fecha Vto Credito','VTO CREDITO','FechaVtoCred','fechaVtoCred','Vto Credito');
+  // Crédito Produbanco — el archivo usa "Nº Préstamo" y "Fecha Vencimiento Crédito"
+  const prestamo    = str('Nº Préstamo','Nº Prestamo','N° Préstamo','Préstamo','PRESTAMO','Prestamo','No Prestamo','NRO PRESTAMO','N Prestamo','prestamo','# Prestamo');
+  const saldo       = num('Saldo','SALDO','Saldo Credito','SALDO CREDITO','saldo','Monto','MONTO');
+  const fechaVtoCred= date('Fecha Vencimiento Crédito','Vencimiento Credito','Fecha Vto Credito','VTO CREDITO','FechaVtoCred','fechaVtoCred','Vto Credito');
 
-  // Demografía
-  const fechaNac  = date('Fecha Nacimiento','FECHA NACIMIENTO','Nacimiento','F_NACIMIENTO','fechaNac','F. Nacimiento');
-  const genero    = str('Genero','GENERO','Género','Sexo','SEXO','genero').toUpperCase();
-  const estadoCivil=str('Estado Civil','ESTADO CIVIL','Civil','CIVIL','estadoCivil','E. Civil').toUpperCase();
-  const profesion = str('Profesion','PROFESION','Profesión','Ocupacion','OCUPACION','profesion');
-  const tasaAnterior=num('Tasa Anterior','TASA ANTERIOR','Tasa presupuesto','tasa presupuesto','tasaAnterior','Tasa Vig Ant','TASA VIG ANT');
+  // Demografía — el archivo usa "FECHA_NACIMIENTO" y "ESTADO_CIVIL" con guiones bajos
+  const fechaNac  = date('FECHA_NACIMIENTO','Fecha Nacimiento','FECHA NACIMIENTO','Nacimiento','F_NACIMIENTO','fechaNac','F. Nacimiento');
+  const genero    = str('GENERO','Genero','Género','Sexo','SEXO','genero').toUpperCase();
+  const estadoCivil=str('ESTADO_CIVIL','Estado Civil','ESTADO CIVIL','Civil','CIVIL','estadoCivil','E. Civil').toUpperCase();
+  const profesion = str('PROFESION','Profesion','Profesión','Ocupacion','OCUPACION','profesion');
+  const tasaAnterior=num('tasa VIG ANTERIOR','Tasa Anterior','TASA ANTERIOR','tasa presupuesto','tasaAnterior','Tasa Vig Ant','TASA VIG ANT');
 
-  // Vehículo
-  const marca  = str('Marca','MARCA','marca','AO');
-  const modelo = str('Modelo','MODELO','modelo','AP');
-  const anio   = parseInt(str('Año','AÑO','Año ','anio','ANO','Modelo Año','AQ'))||2024;
-  const motor  = str('Motor','MOTOR','motor','AR','N Motor','N. Motor');
-  const chasis = str('No De Chasis','N De Chasis','CHASIS','Chasis','chasis','AS','N° Chasis');
-  const color  = str('Color','COLOR','color','AT');
-  const placa  = str('Placa','PLACA','placa','AU');
+  // Vehículo — el archivo tiene "Año " con espacio (ya normalizado al trim del key)
+  const marca  = str('Marca','MARCA','marca');
+  const modelo = str('Modelo','MODELO','modelo');
+  const anio   = parseInt(str('Año','AÑO','anio','ANO','Modelo Año','AO'))||2024;
+  const motor  = str('Motor','MOTOR','motor','N Motor','N. Motor');
+  const chasis = str('No De Chasis','N De Chasis','CHASIS','Chasis','chasis','N° Chasis');
+  const color  = str('Color','COLOR','color');
+  const placa  = str('Placa','PLACA','placa');
 
-  // Póliza anterior
-  const polizaAnterior = str('POLIZA','Poliza','Póliza','poliza','Poliza Anterior','POLIZA ANTERIOR');
-  const aseguradora    = str('ASEGURADORA','Aseguradora','aseguradora','ASEG','AE');
+  // Póliza — el archivo usa "POLIZA ACTUAL" y "ASEGURADORA ACTUAL"
+  const polizaAnterior = str('POLIZA ACTUAL','POLIZA','Poliza','Póliza','poliza','Poliza Anterior','POLIZA ANTERIOR');
+  const aseguradora    = str('ASEGURADORA ACTUAL','ASEGURADORA','Aseguradora','aseguradora','ASEG');
   const aseguradoraAnterior = aseguradora; // En PRODU VH la aseguradora es la anterior
 
   // Vigencia
   const desde = date('Fc_desde ultima vigencia','Vigencia Desde','VIGENCIA DESDE','desde','DESDE','Fc Desde');
   const hasta = date('Fc_hasta ultima vigencia','Vigencia Hasta','VIGENCIA HASTA','hasta','HASTA','Fc Hasta');
 
-  // Valores financieros
-  const va  = num('Ultimo Val_Aseg.','Valor Asegurado','VALOR ASEGURADO','VA','va','Val Aseg');
-  const dep = num('v dep','Depreciacion','DEP','dep');
-  const pn  = num('pn','Prima Neta ','Prima Neta','PRIMA NETA','PN');
+  // Valores financieros — el archivo tiene "Ultimo Val_Aseg." y "PRIMA NETA" (col AK, la real)
+  const va  = num('Ultimo Val_Aseg.','Valor asegurado','Valor Asegurado','VALOR ASEGURADO','VA','va','Val Aseg');
+  const dep = num('VALOR AUTO DEPRECIADO','v dep','Depreciacion','DEP','dep');
+  const pn  = num('PRIMA NETA','Prima Neta','pn','PN');   // PRIMA NETA col AK tiene los valores reales
   const tasa= num('tasa presupuesto','Tasa','TASA','tasa')||tasaAnterior||null;
   const obs = str('OBS POLIZA','OBS','obs','Obs','observacion','OBSERVACION')||'RENOVACION';
 
@@ -5649,6 +5857,7 @@ async function initApp(){
   actualizarBadgeCotizaciones();
   actualizarBadgeTareas();
   actualizarBadgeCobranza();
+  actualizarBadgeBitacora();
   renderDashTareas();
 
   // Ocultar login, mostrar app

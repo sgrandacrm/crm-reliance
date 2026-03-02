@@ -86,6 +86,7 @@
     <div class="nav-item" onclick="showPage('seguimiento')"><span class="icon">◎</span><span>Seguimiento</span><span class="nav-badge" style="background:var(--accent)" id="badge-seg-urgente" style="display:none">0</span></div>
     <div class="nav-item" onclick="showPage('cierres')"><span class="icon">✓</span><span>Cierres de Venta</span><span class="nav-badge" style="background:var(--green)" id="badge-cierres">0</span></div>
     <div class="nav-item" onclick="showPage('cobranza')"><span class="icon">💰</span><span>Cobranza</span><span class="nav-badge" style="background:var(--red);display:none" id="badge-cobranza">0</span></div>
+    <div class="nav-item" onclick="showPage('bitacora')"><span class="icon">📓</span><span>Bitácora</span><span class="nav-badge" style="background:var(--accent2);display:none" id="badge-bitacora">0</span></div>
     <div class="nav-section">Herramientas</div>
     <div class="nav-item" onclick="showPage('cotizaciones')"><span class="icon">📋</span><span>Cotizaciones</span><span class="nav-badge" style="background:var(--accent2)" id="badge-cotizaciones">0</span></div>
     <div class="nav-item" onclick="showPage('cotizador')"><span class="icon">◆</span><span>Cotizador</span></div>
@@ -894,7 +895,120 @@
     </div>
   </div>
 
+  <!-- ══ BITÁCORA DE GESTIÓN ══ -->
+  <div class="page" id="page-bitacora">
+    <div class="highlight-card" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9);border-color:#2d6a4f;margin-bottom:20px">
+      <div class="flex items-center justify-between">
+        <div>
+          <div style="font-family:'DM Serif Display',serif;font-size:18px;color:#2d6a4f">📓 Bitácora de Gestión</div>
+          <div class="text-muted" style="font-size:12px">Registro de gestiones, llamadas, cobros y seguimientos por cliente</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm" style="background:#2d6a4f;color:#fff;border:none" onclick="abrirModalGestion()">+ Nueva Gestión</button>
+          <button class="btn btn-sm btn-secondary" onclick="exportBitacoraExcel()">⬇ Exportar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid-4" id="bitacora-stats" style="margin-bottom:20px"></div>
+
+    <!-- Filtros -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-body" style="padding:12px 16px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="pill active" onclick="filtrarBitacora('hoy',this)">📅 Hoy</button>
+          <button class="pill" onclick="filtrarBitacora('semana',this)">🗓 Esta semana</button>
+          <button class="pill" onclick="filtrarBitacora('mes',this)">📆 Este mes</button>
+          <button class="pill" onclick="filtrarBitacora('todas',this)">📋 Todas</button>
+          <div style="flex:1"></div>
+          <select class="form-select" id="bitacora-filtro-tipo" style="width:160px" onchange="renderBitacora(_currentFiltroBitacora)">
+            <option value="">Todos los tipos</option>
+            <option value="LLAMADA">📞 Llamada</option>
+            <option value="WHATSAPP">💬 WhatsApp</option>
+            <option value="EMAIL">📧 Email</option>
+            <option value="VISITA">🚗 Visita</option>
+            <option value="COBRO">💰 Cobro</option>
+            <option value="OTRO">• Otro</option>
+          </select>
+          <input class="form-input" id="bitacora-search" placeholder="🔍 Buscar cliente…" style="width:200px" oninput="renderBitacora(_currentFiltroBitacora)">
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabla de gestiones -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Registro de Gestiones</div>
+        <span class="text-muted" style="font-size:12px" id="bitacora-count">0 registros</span>
+      </div>
+      <div id="bitacora-tabla"></div>
+    </div>
+  </div>
+
 </div><!-- /main -->
+
+<!-- Modal Nueva Gestión -->
+<div class="modal-overlay" id="modal-gestion">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-gestion-title">📓 Registrar Gestión</div>
+      <button class="modal-close" onclick="closeModal('modal-gestion')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid-2" style="gap:12px;margin-bottom:12px">
+        <div>
+          <label class="form-label">Cliente *</label>
+          <input class="form-input" id="gest-cliente-search" placeholder="Buscar cliente…" oninput="buscarClienteGestion(this.value)" autocomplete="off">
+          <div id="gest-cliente-results" style="position:absolute;background:#fff;border:1px solid var(--warm);border-radius:8px;max-height:180px;overflow-y:auto;z-index:9999;width:220px;display:none"></div>
+          <input type="hidden" id="gest-cliente-id">
+          <input type="hidden" id="gest-cliente-nombre">
+        </div>
+        <div>
+          <label class="form-label">Fecha *</label>
+          <input class="form-input" type="date" id="gest-fecha">
+        </div>
+      </div>
+      <div class="grid-2" style="gap:12px;margin-bottom:12px">
+        <div>
+          <label class="form-label">Tipo de gestión *</label>
+          <select class="form-select" id="gest-tipo">
+            <option value="LLAMADA">📞 Llamada telefónica</option>
+            <option value="WHATSAPP">💬 WhatsApp</option>
+            <option value="EMAIL">📧 Email</option>
+            <option value="VISITA">🚗 Visita presencial</option>
+            <option value="COBRO">💰 Cobro</option>
+            <option value="OTRO">• Otro</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Resultado *</label>
+          <select class="form-select" id="gest-resultado">
+            <option value="CONTACTADO">✅ Contactado</option>
+            <option value="NO_CONTESTA">📵 No contesta</option>
+            <option value="BUZON">📬 Buzón de voz</option>
+            <option value="PROMESA_PAGO">🤝 Promesa de pago</option>
+            <option value="PAGO_REALIZADO">💵 Pago realizado</option>
+            <option value="NO_INTERESADO">❌ No interesado</option>
+            <option value="OTRO">• Otro</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-bottom:12px">
+        <label class="form-label">Nota / Observación</label>
+        <textarea class="form-input" id="gest-nota" rows="3" placeholder="Detalle de la gestión realizada…" style="resize:vertical"></textarea>
+      </div>
+      <div>
+        <label class="form-label">Próximo seguimiento (opcional)</label>
+        <input class="form-input" type="date" id="gest-seguimiento">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-gestion')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarGestion()">Guardar Gestión</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════ MODALS ══════════ -->
 <!-- Modal Detalle Cliente -->

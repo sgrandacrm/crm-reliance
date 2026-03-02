@@ -15,6 +15,7 @@ const SP_CONFIG = {
     cotizaciones:  'CRM_Cotizaciones',
     cierres:       'CRM_Cierres',
     usuarios:      'CRM_Usuarios',
+    cobranzas:     'CRM_Cobranzas',
   }
 };
 
@@ -419,6 +420,10 @@ function spToFields(listKey, data){
     usuarios: new Set([
       'Title','userId','rol','email','activo','color','initials','crm_id',
     ]),
+    cobranzas: new Set([
+      'Title','clienteId','clienteNombre','ejecutivo',
+      'fecha','hora','tipo','resultado','nota','seguimiento','crm_id',
+    ]),
   };
   const permitidos = validos[listKey] || new Set();
   const camposNum  = new Set([
@@ -444,6 +449,7 @@ function spToFields(listKey, data){
   if(listKey==='cotizaciones') title = data.codigo || data.id || '';
   if(listKey==='cierres')      title = data.polizaNueva || data.id || '';
   if(listKey==='usuarios')     title = data.nombre || data.name || data.email || '';
+  if(listKey==='cobranzas')   title = (data.clienteNombre||'') + ' ' + (data.fecha||'');
   fields['Title'] = String(title||'').substring(0, 255);
 
   // id → crm_id
@@ -852,6 +858,18 @@ async function spAsegurarColumnas(logCol){
       {name:'color',text:{}},{name:'initials',text:{}},
       {name:'crm_id',text:{}},
     ],
+    CRM_Cobranzas: [
+      {name:'clienteId',text:{}},
+      {name:'clienteNombre',text:{}},
+      {name:'ejecutivo',text:{}},
+      {name:'fecha',text:{}},
+      {name:'hora',text:{}},
+      {name:'tipo',text:{}},       // LLAMADA / WHATSAPP / EMAIL / VISITA / COBRO / OTRO
+      {name:'resultado',text:{}},  // CONTACTADO / NO_CONTESTA / PROMESA_PAGO / PAGO_REALIZADO / ...
+      {name:'nota',text:{allowMultipleLines:true}},
+      {name:'seguimiento',text:{}}, // Fecha próximo seguimiento yyyy-mm-dd
+      {name:'crm_id',text:{}},
+    ],
   };
 
   for(const [listName, cols] of Object.entries(colsDef)){
@@ -957,7 +975,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(!colsDone || !['3','4','5','6','7','8','9'].includes(colsDone)){
+      if(!colsDone || !['3','4','5','6','7','8','9','10'].includes(colsDone)){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -979,7 +997,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','9');
+        localStorage.setItem('sp_cols_done','10');
         if(setupEl) setupEl.style.display='none';
       }
     }
