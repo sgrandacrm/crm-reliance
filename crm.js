@@ -284,7 +284,7 @@ function openModal(id){document.getElementById(id).classList.add('open')}
 // ══════════════════════════════════════════════════════
 //  NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles={dashboard:'Dashboard',cierres:'Cierres de Venta',clientes:'Cartera de Clientes',vencimientos:'Vencimientos de Pólizas',calendario:'Calendario de Vencimientos',seguimiento:'Seguimiento de Clientes',cotizador:'Cotizador de Primas',comparativo:'Comparativo de Coberturas',tasas:'Tabla de Tasas',admin:'Panel de Administración','nuevo-cliente':'Registrar Cliente'};
+const pageTitles={dashboard:'Dashboard',cierres:'Cierres de Venta',clientes:'Cartera de Clientes',vencimientos:'Vencimientos de Pólizas',calendario:'Calendario de Vencimientos',seguimiento:'Seguimiento de Clientes',cotizador:'Cotizador de Primas',comparativo:'Comparativo de Coberturas',tasas:'Tabla de Tasas',admin:'Panel de Administración','nuevo-cliente':'Registrar Cliente',cobranza:'Módulo de Cobranza'};
 function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   const navItems = document.querySelectorAll('.nav-item');
@@ -294,7 +294,7 @@ function showPage(id){
   navItems.forEach(n=>{
     if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes("'"+id+"'")) n.classList.add('active');
   });
-  const renders={clientes:renderClientes,vencimientos:()=>showPage('seguimiento'),calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones};
+  const renders={clientes:renderClientes,vencimientos:()=>showPage('seguimiento'),calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones,cobranza:()=>renderCobranza(_currentFiltroCobranza||'mes')};
   if(renders[id]) renders[id]();
 }
 
@@ -1944,6 +1944,7 @@ function guardarCierreVenta(){
   renderDashboard();
   renderCierres();
   actualizarBadgeCotizaciones();
+  actualizarBadgeCobranza();
 }
 // ── WhatsApp directo desde resultado de cotización ──────────────────
 function enviarWhatsAppCotiz(aseg, total, cuota, nCuotas){
@@ -2300,6 +2301,288 @@ function guardarCotizacion(){
   actualizarBadgeCotizaciones();
   renderCotizaciones();
   showToast(`✅ ${codigo} guardada — ${nombre.split(' ')[0]} · ${selected.length} aseguradoras`, 'success');
+}
+
+// ══════════════════════════════════════════════════════
+//  MÓDULO DE COBRANZA — FASE 3
+// ══════════════════════════════════════════════════════
+let _currentFiltroCobranza = 'mes';
+
+// Extrae todas las cuotas de un cierre con su estado actual
+function _getCuotasFromCierre(cierre){
+  const fp = cierre.formaPago || {};
+  const raw = cierre.cuotasEstado;
+  const estados = Array.isArray(raw) ? raw
+    : (typeof raw === 'string' && raw.startsWith('[')) ? (()=>{try{return JSON.parse(raw);}catch(e){return [];}})()
+    : [];
+
+  const cuotas = [];
+  const base = {
+    cierreId:      cierre.id,
+    clienteNombre: cierre.clienteNombre||'',
+    aseguradora:   cierre.aseguradora||'',
+    polizaNueva:   cierre.polizaNueva||'',
+    clienteId:     cierre.clienteId||cierre._clienteId||'',
+    primaTotal:    cierre.primaTotal||0,
+  };
+
+  if(fp.forma === 'DEBITO_BANCARIO' && Array.isArray(fp.calendario) && fp.calendario.length){
+    fp.calendario.forEach((fecha, i) => {
+      cuotas.push({...base,
+        idx: i, fecha,
+        monto: parseFloat(fp.cuotaMonto)||Math.round((cierre.primaTotal||0)/(fp.calendario.length||1)*100)/100,
+        estado: estados[i] || 'PENDIENTE',
+        nCuota: i+1, totalCuotas: fp.calendario.length,
+        tipo: 'DÉBITO', banco: fp.banco||'Produbanco', cuenta: fp.cuenta||cierre.cuenta||'',
+      });
+    });
+  } else if(fp.forma === 'TARJETA_CREDITO'){
+    const nC = fp.nCuotas || 1;
+    const cuotaMonto = parseFloat(fp.cuotaMonto) || Math.round((cierre.primaTotal||0)/nC*100)/100;
+    for(let i=0; i<nC; i++){
+      // project dates monthly from fechaContacto
+      let fecha = fp.fechaContacto || cierre.vigDesde || '';
+      if(fecha && i>0){
+        const d = new Date(fecha); d.setMonth(d.getMonth()+i);
+        fecha = d.toISOString().split('T')[0];
+      }
+      cuotas.push({...base,
+        idx: i, fecha,
+        monto: cuotaMonto,
+        estado: estados[i] || 'PENDIENTE',
+        nCuota: i+1, totalCuotas: nC,
+        tipo: 'TC', banco: fp.banco||'',
+      });
+    }
+  } else if(fp.forma === 'CONTADO'){
+    cuotas.push({...base,
+      idx: 0, fecha: fp.fechaCobro||cierre.vigDesde||'',
+      monto: cierre.primaTotal||0,
+      estado: estados[0] || 'PENDIENTE',
+      nCuota: 1, totalCuotas: 1, tipo: 'CONTADO',
+    });
+  } else if(fp.forma === 'MIXTO'){
+    cuotas.push({...base,
+      idx: 0, fecha: fp.fechaInicial||cierre.vigDesde||'',
+      monto: parseFloat(fp.montoInicial)||0,
+      estado: estados[0] || 'PENDIENTE',
+      nCuota: 1, totalCuotas: 1+(parseInt(fp.nCuotasResto)||0), tipo: 'MIXTO-INICIAL',
+    });
+    const nR = parseInt(fp.nCuotasResto||0);
+    const montoR = Math.round(((cierre.primaTotal||0)-(parseFloat(fp.montoInicial)||0))/(nR||1)*100)/100;
+    for(let i=0; i<nR; i++){
+      let fecha = fp.fechaCuotaResto||'';
+      if(fecha && i>0){ const d=new Date(fecha); d.setMonth(d.getMonth()+i); fecha=d.toISOString().split('T')[0]; }
+      cuotas.push({...base,
+        idx: i+1, fecha,
+        monto: montoR,
+        estado: estados[i+1]||'PENDIENTE',
+        nCuota: i+2, totalCuotas: 1+nR, tipo: 'MIXTO',
+      });
+    }
+  }
+  return cuotas;
+}
+
+// Filtrar cuotas según el período seleccionado
+function _filtrarCuotas(cuotas, filtro){
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const iniMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  const finMes = new Date(hoy.getFullYear(), hoy.getMonth()+1, 0);
+  const finSem = new Date(hoy); finSem.setDate(hoy.getDate()+7);
+  switch(filtro){
+    case 'mes':    return cuotas.filter(c=>{ const d=new Date(c.fecha); return d>=iniMes&&d<=finMes; });
+    case 'semana': return cuotas.filter(c=>{ const d=new Date(c.fecha); return d>=hoy&&d<=finSem; });
+    case 'vencidas': return cuotas.filter(c=>{ const d=new Date(c.fecha); return d<hoy&&c.estado==='PENDIENTE'; });
+    default: return cuotas;
+  }
+}
+
+function filtrarCobranza(filtro, btn){
+  _currentFiltroCobranza = filtro;
+  document.querySelectorAll('#page-cobranza .pill').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderCobranza(filtro);
+}
+
+function renderCobranza(filtro='mes'){
+  _currentFiltroCobranza = filtro;
+  const allCierres = _getCierres();
+  const busq = (document.getElementById('cobranza-search')?.value||'').toLowerCase();
+
+  // Recopilar todas las cuotas
+  let todasCuotas = [];
+  allCierres.forEach(c => { _getCuotasFromCierre(c).forEach(q=>todasCuotas.push(q)); });
+
+  // Aplicar filtro de período
+  let cuotas = _filtrarCuotas(todasCuotas, filtro);
+
+  // Aplicar búsqueda
+  if(busq) cuotas = cuotas.filter(c=>
+    c.clienteNombre.toLowerCase().includes(busq) ||
+    c.polizaNueva.toLowerCase().includes(busq) ||
+    c.aseguradora.toLowerCase().includes(busq)
+  );
+
+  // Stats
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const pendientes = cuotas.filter(c=>c.estado==='PENDIENTE');
+  const cobradas   = cuotas.filter(c=>c.estado==='COBRADO');
+  const fallidas   = cuotas.filter(c=>c.estado==='FALLIDO');
+  const vencidas   = pendientes.filter(c=>new Date(c.fecha)<hoy);
+  const montoPend  = pendientes.reduce((s,c)=>s+c.monto, 0);
+  const montoCob   = cobradas.reduce((s,c)=>s+c.monto, 0);
+
+  const statsEl = document.getElementById('cobranza-stats');
+  if(statsEl) statsEl.innerHTML = `
+    <div class="stat-card"><div class="stat-value">${cuotas.length}</div><div class="stat-label">Total cuotas</div></div>
+    <div class="stat-card" style="border-color:var(--red)"><div class="stat-value" style="color:var(--red)">${vencidas.length}</div><div class="stat-label">Vencidas / Urgentes</div></div>
+    <div class="stat-card" style="border-color:var(--green)"><div class="stat-value" style="color:var(--green)">${fmt(montoCob)}</div><div class="stat-label">Monto cobrado</div></div>
+    <div class="stat-card" style="border-color:var(--accent)"><div class="stat-value" style="color:var(--accent)">${fmt(montoPend)}</div><div class="stat-label">Monto pendiente</div></div>
+  `;
+
+  document.getElementById('cobranza-count').textContent = `${cuotas.length} cuota${cuotas.length!==1?'s':''}`;
+
+  // Ordenar: vencidas primero, luego por fecha asc
+  cuotas.sort((a,b)=>{
+    const av=new Date(a.fecha)<hoy&&a.estado==='PENDIENTE';
+    const bv=new Date(b.fecha)<hoy&&b.estado==='PENDIENTE';
+    if(av!==bv) return av?-1:1;
+    return (a.fecha||'').localeCompare(b.fecha||'');
+  });
+
+  const wrap = document.getElementById('cobranza-tabla');
+  if(!cuotas.length){
+    wrap.innerHTML=`<div style="padding:40px;text-align:center;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:8px">✅</div>
+      <div>No hay cuotas para este período</div>
+    </div>`;
+    return;
+  }
+
+  const estadoBadgeCob = (e, fecha) => {
+    const venc = new Date(fecha) < hoy && e==='PENDIENTE';
+    if(e==='COBRADO')  return `<span class="badge badge-green">✅ Cobrado</span>`;
+    if(e==='FALLIDO')  return `<span class="badge badge-red">❌ Fallido</span>`;
+    if(venc)           return `<span class="badge badge-red">⚠️ Vencida</span>`;
+    return `<span class="badge badge-orange">⏳ Pendiente</span>`;
+  };
+  const tipoBadge = t => {
+    const cfg = {DÉBITO:'#1a4c84','TC':'#7c4dff','CONTADO':'#2d6a4f','MIXTO':'#e65100','MIXTO-INICIAL':'#e65100'};
+    return `<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;background:${cfg[t]||'#555'}22;color:${cfg[t]||'#555'}">${t}</span>`;
+  };
+
+  const rows = cuotas.map(c=>`
+    <tr style="border-bottom:1px solid var(--border)${new Date(c.fecha)<hoy&&c.estado==='PENDIENTE'?';background:#fff3e0':''}">
+      <td style="padding:8px 12px;font-size:12px">
+        <div style="font-weight:600">${c.clienteNombre}</div>
+        <div style="color:var(--muted);font-size:11px">${c.aseguradora}</div>
+      </td>
+      <td style="padding:8px 12px;font-size:11px;font-family:'DM Mono',monospace">${c.polizaNueva||'—'}</td>
+      <td style="padding:8px 12px;text-align:center">${tipoBadge(c.tipo)}</td>
+      <td style="padding:8px 12px;text-align:center;font-size:12px;font-family:'DM Mono',monospace">
+        ${c.nCuota} / ${c.totalCuotas}
+      </td>
+      <td style="padding:8px 12px;font-size:12px;font-family:'DM Mono',monospace;white-space:nowrap">${c.fecha||'—'}</td>
+      <td style="padding:8px 12px;text-align:right;font-weight:700;color:var(--green)">${fmt(c.monto)}</td>
+      <td style="padding:8px 12px">${estadoBadgeCob(c.estado, c.fecha)}</td>
+      <td style="padding:8px 12px">
+        <div style="display:flex;gap:4px">
+          ${c.estado!=='COBRADO'?`<button class="btn btn-sm btn-green" title="Marcar cobrada" onclick="marcarCuota('${c.cierreId}',${c.idx},'COBRADO')" style="padding:3px 8px;font-size:11px">✅</button>`:''}
+          ${c.estado!=='FALLIDO'?`<button class="btn btn-sm" title="Marcar fallida" onclick="marcarCuota('${c.cierreId}',${c.idx},'FALLIDO')" style="padding:3px 8px;font-size:11px;background:var(--red);color:#fff;border:none">❌</button>`:''}
+          ${c.estado!=='PENDIENTE'?`<button class="btn btn-sm btn-ghost" title="Restablecer" onclick="marcarCuota('${c.cierreId}',${c.idx},'PENDIENTE')" style="padding:3px 8px;font-size:11px">↩</button>`:''}
+          <button class="btn btn-sm btn-ghost" title="Enviar recordatorio WhatsApp" onclick="enviarRecordatorioCobranza('${c.cierreId}',${c.idx})" style="padding:3px 8px;font-size:11px">📲</button>
+        </div>
+      </td>
+    </tr>`).join('');
+
+  wrap.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr>
+      <th>Cliente / Aseguradora</th><th>Póliza</th><th>Tipo</th>
+      <th style="text-align:center">Cuota</th><th>Fecha</th>
+      <th style="text-align:right">Monto</th><th>Estado</th><th>Acciones</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
+function marcarCuota(cierreId, cuotaIdx, estado){
+  const allCierres = _getCierres();
+  const cierre = allCierres.find(c=>String(c.id)===String(cierreId));
+  if(!cierre) return;
+  const fp = cierre.formaPago||{};
+  const nCuotas = fp.calendario?.length || fp.nCuotas || 1;
+  if(!Array.isArray(cierre.cuotasEstado) || cierre.cuotasEstado.length < nCuotas){
+    cierre.cuotasEstado = Array(nCuotas).fill('PENDIENTE');
+  }
+  cierre.cuotasEstado[cuotaIdx] = estado;
+  cierre._dirty = true;
+  _saveCierres(allCierres);
+  actualizarBadgeCobranza();
+  renderCobranza(_currentFiltroCobranza||'mes');
+  const msgs = {COBRADO:'✅ Cuota cobrada',FALLIDO:'❌ Cuota marcada fallida',PENDIENTE:'↩ Cuota restablecida'};
+  const types = {COBRADO:'success',FALLIDO:'error',PENDIENTE:'info'};
+  showToast(msgs[estado]||estado, types[estado]||'info');
+}
+
+function enviarRecordatorioCobranza(cierreId, cuotaIdx){
+  const cierre = _getCierres().find(c=>String(c.id)===String(cierreId));
+  if(!cierre) return;
+  const cuotas = _getCuotasFromCierre(cierre);
+  const cuota = cuotas[cuotaIdx];
+  if(!cuota) return;
+  const cliente = cuota.clienteId ? DB.find(x=>String(x.id)===String(cuota.clienteId)) : null;
+  const celular = (cliente?.celular||'').replace(/\D/g,'');
+  if(!celular){ showToast('Sin número de celular registrado','error'); return; }
+  const phone = celular.startsWith('593') ? celular : `593${celular.replace(/^0/,'')}`;
+  const nombre = (cierre.clienteNombre||'').split(' ').slice(-2).join(' ');
+  const fechaFmt = cuota.fecha ? new Date(cuota.fecha+'T12:00:00').toLocaleDateString('es-EC',{day:'numeric',month:'long',year:'numeric'}) : cuota.fecha;
+  const msg = encodeURIComponent(
+    `Estimado/a *${nombre}*, le recordamos que la cuota *${cuota.nCuota} de ${cuota.totalCuotas}* de su seguro vehicular con *${cierre.aseguradora}*`+
+    (cierre.polizaNueva ? ` — Póliza ${cierre.polizaNueva}` : '')+
+    ` por *$${cuota.monto.toFixed(2)}* se procesará el *${fechaFmt}*.\n\nReliance Broker de Seguros`
+  );
+  window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${msg}`, '_blank');
+}
+
+function actualizarBadgeCobranza(){
+  const allCierres = _getCierres();
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  let vencidas = 0;
+  allCierres.forEach(cierre=>{
+    _getCuotasFromCierre(cierre).forEach(c=>{
+      if(c.estado==='PENDIENTE' && new Date(c.fecha)<hoy) vencidas++;
+    });
+  });
+  const el = document.getElementById('badge-cobranza');
+  if(el){ el.textContent=vencidas; el.style.display=vencidas>0?'':'none'; }
+}
+
+function exportCobranzaExcel(){
+  const allCierres = _getCierres();
+  const rows = [];
+  allCierres.forEach(cierre=>{
+    _getCuotasFromCierre(cierre).forEach(c=>{
+      rows.push({
+        'Cliente': c.clienteNombre,
+        'Aseguradora': c.aseguradora,
+        'Póliza': c.polizaNueva,
+        'Tipo Pago': c.tipo,
+        'Cuota N°': c.nCuota,
+        'Total Cuotas': c.totalCuotas,
+        'Fecha': c.fecha,
+        'Monto': c.monto,
+        'Estado': c.estado,
+        'Banco': c.banco||'',
+        'Cuenta': c.cuenta||'',
+      });
+    });
+  });
+  if(!rows.length){ showToast('Sin datos para exportar','error'); return; }
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Cobranza');
+  XLSX.writeFile(wb, `Cobranza_Reliance_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
 function actualizarBadgeCotizaciones(){
@@ -5022,6 +5305,7 @@ async function initApp(){
   renderDashboard();
   actualizarBadgeCotizaciones();
   actualizarBadgeTareas();
+  actualizarBadgeCobranza();
   renderDashTareas();
 
   // Ocultar login, mostrar app

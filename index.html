@@ -85,6 +85,7 @@
     <div class="nav-item" onclick="showPage('calendario')"><span class="icon">📅</span><span>Calendario</span><span class="nav-badge" id="badge-tareas" style="display:none"></span></div>
     <div class="nav-item" onclick="showPage('seguimiento')"><span class="icon">◎</span><span>Seguimiento</span><span class="nav-badge" style="background:var(--accent)" id="badge-seg-urgente" style="display:none">0</span></div>
     <div class="nav-item" onclick="showPage('cierres')"><span class="icon">✓</span><span>Cierres de Venta</span><span class="nav-badge" style="background:var(--green)" id="badge-cierres">0</span></div>
+    <div class="nav-item" onclick="showPage('cobranza')"><span class="icon">💰</span><span>Cobranza</span><span class="nav-badge" style="background:var(--red);display:none" id="badge-cobranza">0</span></div>
     <div class="nav-section">Herramientas</div>
     <div class="nav-item" onclick="showPage('cotizaciones')"><span class="icon">📋</span><span>Cotizaciones</span><span class="nav-badge" style="background:var(--accent2)" id="badge-cotizaciones">0</span></div>
     <div class="nav-item" onclick="showPage('cotizador')"><span class="icon">◆</span><span>Cotizador</span></div>
@@ -816,6 +817,44 @@
         <thead><tr><th>Fecha</th><th>Cliente</th><th>Placa</th><th>Aseguradora</th><th>Póliza</th><th>Factura</th><th>Prima Total</th><th>Forma de Pago</th><th>Banco / Cuenta</th><th>Vigencia</th><th>AXA/VD</th><th>Acciones</th></tr></thead>
         <tbody id="cierres-tbody"></tbody>
       </table></div>
+    </div>
+  </div>
+
+  <!-- ══ COBRANZA ══ -->
+  <div class="page" id="page-cobranza">
+    <div class="highlight-card" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2);border-color:#e65100;margin-bottom:20px">
+      <div class="flex items-center justify-between">
+        <div>
+          <div style="font-family:'DM Serif Display',serif;font-size:18px;color:#e65100">💰 Módulo de Cobranza</div>
+          <div class="text-muted" style="font-size:12px">Control de cuotas por cobrar — débitos, TC y contado</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm" style="background:#e65100;color:#fff;border:none" onclick="exportCobranzaExcel()">⬇ Exportar</button>
+        </div>
+      </div>
+    </div>
+    <!-- Stats -->
+    <div class="grid-4" id="cobranza-stats" style="margin-bottom:20px"></div>
+    <!-- Filtros -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-body" style="padding:12px 16px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="pill active" onclick="filtrarCobranza('mes',this)">📅 Este Mes</button>
+          <button class="pill" onclick="filtrarCobranza('semana',this)">🗓 Esta Semana</button>
+          <button class="pill" onclick="filtrarCobranza('vencidas',this)">⚠️ Vencidas</button>
+          <button class="pill" onclick="filtrarCobranza('todas',this)">📋 Todas</button>
+          <div style="flex:1"></div>
+          <input class="form-input" id="cobranza-search" placeholder="🔍 Buscar cliente, póliza…" style="width:220px" oninput="renderCobranza(_currentFiltroCobranza)">
+        </div>
+      </div>
+    </div>
+    <!-- Tabla -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Cuotas por Gestionar</div>
+        <span class="text-muted" style="font-size:12px" id="cobranza-count">—</span>
+      </div>
+      <div id="cobranza-tabla"></div>
     </div>
   </div>
 
