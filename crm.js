@@ -5102,6 +5102,114 @@ function renderReportes(){
         <td style="font-size:11px">${exec?exec.name:'—'}</td>
       </tr>`;
     }).join('') || '<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">📊</div><p>Sin cierres en este período</p></div></td></tr>';
+
+  // ── CHART 5: Producción mensual últimos 6 meses ──
+  const meses6 = [], primasMes = [];
+  for(let i=5; i>=0; i--){
+    const d = new Date();
+    d.setDate(1); d.setMonth(d.getMonth()-i);
+    const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0');
+    meses6.push(d.toLocaleString('es-ES',{month:'short',year:'2-digit'}));
+    primasMes.push(Math.round(
+      allCierres.filter(c=>(c.fechaRegistro||'').startsWith(`${y}-${m}`))
+               .reduce((s,c)=>s+(c.primaTotal||0),0)
+    ));
+  }
+  renderBarChart('rep-chart-produccion', meses6, primasMes, '#1a4c84', 'Prima $');
+
+  // ── CHART 6: Cobranza del mes actual ──
+  const ahora = new Date();
+  const mesIni = new Date(ahora.getFullYear(), ahora.getMonth(), 1).toISOString().split('T')[0];
+  const mesFin = new Date(ahora.getFullYear(), ahora.getMonth()+1, 0).toISOString().split('T')[0];
+  let cobMonto=0, pendMonto=0, fallMonto=0, cobN=0, pendN=0, fallN=0;
+  allCierres.forEach(cierre=>{
+    _getCuotasFromCierre(cierre).forEach(q=>{
+      if((q.fecha||'')<mesIni||(q.fecha||'')>mesFin) return;
+      if(q.estado==='COBRADO')      { cobMonto+=q.monto; cobN++; }
+      else if(q.estado==='FALLIDO') { fallMonto+=q.monto; fallN++; }
+      else                          { pendMonto+=q.monto; pendN++; }
+    });
+  });
+  const cobEl = document.getElementById('rep-cobranza-stats');
+  if(cobEl) cobEl.innerHTML = `
+    <div class="stat-card" style="flex:1;min-width:110px;padding:10px">
+      <div class="stat-label" style="font-size:11px">Cobrado</div>
+      <div style="color:var(--green);font-weight:700;font-size:15px">${fmt(cobMonto)}</div>
+      <div style="color:var(--muted);font-size:10px">${cobN} cuotas</div>
+    </div>
+    <div class="stat-card" style="flex:1;min-width:110px;padding:10px">
+      <div class="stat-label" style="font-size:11px">Pendiente</div>
+      <div style="color:var(--accent);font-weight:700;font-size:15px">${fmt(pendMonto)}</div>
+      <div style="color:var(--muted);font-size:10px">${pendN} cuotas</div>
+    </div>
+    <div class="stat-card" style="flex:1;min-width:110px;padding:10px">
+      <div class="stat-label" style="font-size:11px">Fallido</div>
+      <div style="color:var(--red);font-weight:700;font-size:15px">${fmt(fallMonto)}</div>
+      <div style="color:var(--muted);font-size:10px">${fallN} cuotas</div>
+    </div>`;
+  renderBarChart('rep-chart-cobranza',
+    ['Cobrado','Pendiente','Fallido'],
+    [Math.round(cobMonto), Math.round(pendMonto), Math.round(fallMonto)],
+    ['#2d6a4f','#e6820a','#c84b1a'], '$');
+
+  // ── PROYECCIÓN DE RENOVACIONES 90 días ──
+  const proxVenc = DB.filter(c=>{ const d=daysUntil(c.hasta); return d>=0&&d<=90; })
+    .sort((a,b)=>(a.hasta||'').localeCompare(b.hasta||''));
+  const proyCount = document.getElementById('rep-proyeccion-count');
+  if(proyCount) proyCount.textContent = `${proxVenc.length} clientes`;
+  const primaEstTot = proxVenc.reduce((s,c)=>{
+    const ult = allCierres.filter(x=>String(x.clienteId)===String(c.id))
+      .sort((a,b)=>(b.fechaRegistro||'').localeCompare(a.fechaRegistro||''))[0];
+    return s+(ult?.primaTotal||0);
+  },0);
+  const proyEl = document.getElementById('rep-proyeccion');
+  if(proyEl){
+    proyEl.innerHTML = `
+      <div style="padding:12px 16px;background:var(--bg-alt);border-bottom:1px solid var(--warm);display:flex;gap:28px;flex-wrap:wrap">
+        <div><span style="color:var(--muted);font-size:12px">Clientes por vencer: </span><b>${proxVenc.length}</b></div>
+        <div><span style="color:var(--muted);font-size:12px">Prima estimada: </span><b style="color:var(--green)">${fmt(primaEstTot)}</b></div>
+        <div><span style="color:var(--muted);font-size:12px">En 30 días: </span><b style="color:var(--accent)">${proxVenc.filter(c=>daysUntil(c.hasta)<=30).length}</b></div>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th>Cliente</th><th>Vence</th><th>Días</th><th>Aseguradora</th>
+          <th>Prima anterior</th><th>Estado</th><th>Ejecutivo</th>
+        </tr></thead>
+        <tbody>${proxVenc.slice(0,20).map(c=>{
+          const dias = daysUntil(c.hasta);
+          const ult = allCierres.filter(x=>String(x.clienteId)===String(c.id))
+            .sort((a,b)=>(b.fechaRegistro||'').localeCompare(a.fechaRegistro||''))[0];
+          const exec = USERS.find(u=>u.id===c.ejecutivo);
+          const est = ESTADOS_RELIANCE[c.estado]||{icon:'•',label:c.estado||'—',color:'#999'};
+          return `<tr>
+            <td style="font-weight:500;font-size:12px">${c.nombre||'—'}</td>
+            <td class="mono" style="font-size:11px">${c.hasta||'—'}</td>
+            <td style="text-align:center">
+              <span style="font-weight:700;color:${dias<=15?'var(--red)':dias<=30?'var(--accent)':'var(--text)'}">${dias}</span>
+            </td>
+            <td style="font-size:11px">${c.aseguradora||'—'}</td>
+            <td class="mono" style="font-weight:700;color:var(--green);font-size:12px">${ult?fmt(ult.primaTotal):'—'}</td>
+            <td><span class="badge" style="background:${est.color}20;color:${est.color};font-size:10px">${est.icon} ${est.label}</span></td>
+            <td style="font-size:11px">${exec?exec.name:'—'}</td>
+          </tr>`;
+        }).join('')}${proxVenc.length>20?`<tr><td colspan="7" style="text-align:center;padding:8px;color:var(--muted);font-size:12px">... y ${proxVenc.length-20} más</td></tr>`:''}</tbody>
+      </table></div>`;
+  }
+
+  // ── CHART 7: Cartera por tipo de cliente ──
+  const tiposCount = {};
+  DB.forEach(c=>{ const t=c.tipoCliente||'PARTICULAR'; tiposCount[t]=(tiposCount[t]||0)+1; });
+  const tiposColors = {'PARTICULAR':'#1a4c84','PRODUBANCO':'#2d6a4f','FLOTA':'#c84b1a','OTRO':'#9c59b6'};
+  renderDonut('rep-chart-tipos',
+    Object.keys(tiposCount), Object.values(tiposCount),
+    Object.keys(tiposCount).map(k=>tiposColors[k]||'#9e9e9e'));
+
+  // ── CHART 8: Cartera por región ──
+  const regCount = {};
+  DB.forEach(c=>{ const r=(c.region||'Sin región').trim()||'Sin región'; regCount[r]=(regCount[r]||0)+1; });
+  const regSorted = Object.entries(regCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  renderBarChart('rep-chart-regiones',
+    regSorted.map(x=>x[0]), regSorted.map(x=>x[1]), '#6c3483', 'Clientes');
 }
 
 function renderDonut(canvasId, labels, data, colors){
@@ -5172,9 +5280,10 @@ function renderBarChart(canvasId, labels, data, color, label){
     const bh = (v/maxVal)*chartH;
     const bx = padL+i*gap+(gap-barW)/2;
     const by = padT+chartH-bh;
-    // Gradient effect
+    // Gradient effect (color puede ser string o array)
+    const c = Array.isArray(color) ? (color[i]||color[0]) : color;
     const grad=ctx.createLinearGradient(0,by,0,by+bh);
-    grad.addColorStop(0,color); grad.addColorStop(1,color+'88');
+    grad.addColorStop(0,c); grad.addColorStop(1,c+'88');
     ctx.fillStyle=grad;
     ctx.beginPath();
     const rad=4;
@@ -5221,9 +5330,46 @@ function exportarReporteExcel(){
   });
   const ws2=XLSX.utils.json_to_sheet(resumen);
   XLSX.utils.book_append_sheet(wb,ws2,'Resumen Ejecutivos');
+
+  // Sheet: Proyección renovaciones 90 días
+  const proxVencExp = DB.filter(c=>{ const d=daysUntil(c.hasta); return d>=0&&d<=90; })
+    .sort((a,b)=>(a.hasta||'').localeCompare(b.hasta||''));
+  const proyData = proxVencExp.map(c=>{
+    const ult = allCierres.filter(x=>String(x.clienteId)===String(c.id))
+      .sort((a,b)=>(b.fechaRegistro||'').localeCompare(a.fechaRegistro||''))[0];
+    const exec = USERS.find(u=>u.id===c.ejecutivo);
+    return {
+      'Cliente':c.nombre||'','CI/RUC':c.ci||'','Teléfono':c.celular||'',
+      'Aseguradora':c.aseguradora||'','Póliza':c.poliza||'',
+      'Vence':c.hasta||'','Días restantes':daysUntil(c.hasta),
+      'Prima anterior':ult?.primaTotal||0,'Estado':c.estado||'',
+      'Ejecutivo':exec?exec.name:''
+    };
+  });
+  const ws3=XLSX.utils.json_to_sheet(proyData);
+  XLSX.utils.book_append_sheet(wb,ws3,'Proyección Renovaciones');
+
+  // Sheet: Cobranza del mes actual
+  const ahoraExp = new Date();
+  const mesIniExp = new Date(ahoraExp.getFullYear(), ahoraExp.getMonth(), 1).toISOString().split('T')[0];
+  const mesFinExp = new Date(ahoraExp.getFullYear(), ahoraExp.getMonth()+1, 0).toISOString().split('T')[0];
+  const cobRows = [];
+  allCierres.forEach(cierre=>{
+    _getCuotasFromCierre(cierre).forEach(q=>{
+      if((q.fecha||'')<mesIniExp||(q.fecha||'')>mesFinExp) return;
+      cobRows.push({
+        'Cliente':cierre.clienteNombre||'','Aseguradora':cierre.aseguradora||'',
+        'Póliza':cierre.polizaNueva||'','Cuota N°':q.nCuota,'Total cuotas':q.totalCuotas,
+        'Fecha':q.fecha,'Monto':q.monto,'Estado':q.estado,'Tipo':q.tipo||''
+      });
+    });
+  });
+  const ws4=XLSX.utils.json_to_sheet(cobRows);
+  XLSX.utils.book_append_sheet(wb,ws4,'Cobranza Mes Actual');
+
   const periodo=document.getElementById('rep-periodo')?.value||'periodo';
   XLSX.writeFile(wb,`Reliance_Reporte_${periodo}_${new Date().toISOString().split('T')[0]}.xlsx`);
-  showToast('Reporte exportado');
+  showToast('Reporte exportado con 4 hojas');
 }
 
 // ══════════════════════════════════════════════════════

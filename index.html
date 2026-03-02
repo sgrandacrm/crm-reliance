@@ -529,6 +529,42 @@
       </div>
     </div>
 
+    <!-- Gráficos fila 3: Producción mensual + Cobranza del mes -->
+    <div class="grid-2" style="margin-bottom:20px">
+      <div class="card">
+        <div class="card-header"><div class="card-title">📈 Producción mensual (últimos 6 meses)</div></div>
+        <div class="card-body"><canvas id="rep-chart-produccion" height="220"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">💰 Cobranza del mes actual</div></div>
+        <div class="card-body">
+          <div id="rep-cobranza-stats" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap"></div>
+          <canvas id="rep-chart-cobranza" height="165"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Proyección de renovaciones -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <div class="card-title">🔮 Proyección de renovaciones (próximos 90 días)</div>
+        <span class="text-muted" style="font-size:12px" id="rep-proyeccion-count">—</span>
+      </div>
+      <div id="rep-proyeccion"></div>
+    </div>
+
+    <!-- Gráficos fila 4: Distribución de cartera -->
+    <div class="grid-2" style="margin-bottom:20px">
+      <div class="card">
+        <div class="card-header"><div class="card-title">🏷 Cartera por tipo de cliente</div></div>
+        <div class="card-body"><canvas id="rep-chart-tipos" height="220"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">🗺 Cartera por región</div></div>
+        <div class="card-body"><canvas id="rep-chart-regiones" height="220"></canvas></div>
+      </div>
+    </div>
+
     <!-- Ranking ejecutivos -->
     <div class="card" style="margin-bottom:20px">
       <div class="card-header"><div class="card-title">🏆 Ranking de Ejecutivos</div></div>
