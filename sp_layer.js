@@ -536,6 +536,13 @@ async function spSetupLists(onProgress){
       {name:'userId',type:'Text'},{name:'rol',type:'Text'},
       {name:'email',type:'Text'},{name:'activo',type:'Boolean'},
     ],
+    CRM_Cobranzas: [
+      {name:'clienteId',type:'Text'},{name:'clienteNombre',type:'Text'},
+      {name:'ejecutivo',type:'Text'},{name:'fecha',type:'Text'},
+      {name:'hora',type:'Text'},{name:'tipo',type:'Text'},
+      {name:'resultado',type:'Text'},{name:'nota',type:'Note'},
+      {name:'seguimiento',type:'Text'},{name:'crm_id',type:'Text'},
+    ],
   };
 
   for(const [listName, columns] of Object.entries(listDefs)){
@@ -875,8 +882,22 @@ async function spAsegurarColumnas(logCol){
   for(const [listName, cols] of Object.entries(colsDef)){
     logCol(`Configurando ${listName}...`);
     // Use the full SP list name (e.g. 'CRM_Cotizaciones') directly — NOT the short key name
-    const listId = await spGetListId(listName);
-    if(!listId){ logCol(`⚠ No se encontró ${listName}`); continue; }
+    let listId = await spGetListId(listName);
+    // Si no existe la lista, crearla (p.ej. CRM_Cobranzas en instalaciones antiguas)
+    if(!listId){
+      try{
+        const newList = await spGraph(`sites/${_siteId}/lists`, 'POST', {
+          displayName: listName,
+          list: { template: 'genericList' }
+        });
+        listId = newList.id;
+        _listIds[listName] = listId;
+        logCol(`✓ Lista ${listName} creada`);
+      }catch(e){
+        logCol(`⚠ No se pudo crear ${listName}: ${e.message}`);
+        continue;
+      }
+    }
     let ok=0, skip=0;
     for(const col of cols){
       try{

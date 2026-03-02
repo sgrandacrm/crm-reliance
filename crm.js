@@ -3524,13 +3524,15 @@ function renderComparativo(){
 //  ADMIN — EJECUTIVOS
 // ══════════════════════════════════════════════════════
 async function reconfigurarColumnasSP(){
-  if(!confirm('¿Reconfigurar columnas en SharePoint?\n\nEsto creará columnas que falten (no borra datos existentes).\nSe recargará la página al terminar.')) return;
+  if(!confirm('¿Reconfigurar columnas en SharePoint?\n\nEsto creará columnas y listas que falten (no borra datos existentes).\nSe recargará la página al terminar.')) return;
   localStorage.removeItem('sp_cols_done');
   showToast('🔄 Reconfigurando columnas SP…', 'info');
   try{
-    await spAsegurarColumnas(msg => console.log('[SP cols]', msg));
-    localStorage.setItem('sp_cols_done','8');
-    showToast('✅ Columnas configuradas — recargando…', 'success');
+    const logs = [];
+    await spAsegurarColumnas(msg => { logs.push(msg); console.log('[SP cols]', msg); });
+    localStorage.setItem('sp_cols_done','10');
+    showToast('✅ Listas y columnas configuradas — recargando…', 'success');
+    console.log('[SP setup]', logs.join('\n'));
     setTimeout(()=>location.reload(), 1500);
   }catch(e){
     showToast('⚠ Error al reconfigurar: ' + e.message, 'error');
