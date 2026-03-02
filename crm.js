@@ -840,8 +840,8 @@ function openSeguimiento(id){
   // Mostrar banner cierre si ya está EMITIDO
   const banner=document.getElementById('seg-cierre-banner');
   if(banner) banner.style.display=(currentSegEstado==='EMITIDO')?'block':'none';
-  // Renderizar bitácora existente
-  renderBitacora(c.bitacora||[]);
+  // Renderizar bitácora existente dentro del modal
+  _renderBitacoraModal(c.bitacora||[]);
   openModal('modal-seguimiento');
 }
 function setEstado(e){
@@ -874,12 +874,12 @@ function _bitacoraAdd(cliente, nota, tipo='manual'){
   if(nota) cliente.nota = nota;
 }
 
-// Renderiza el historial de bitácora dentro del modal
-function renderBitacora(bitacora){
+// Renderiza el historial de bitácora dentro del modal de seguimiento
+function _renderBitacoraModal(bitacora){
   const el = document.getElementById('bitacora-lista');
   if(!el) return;
   const lista = Array.isArray(bitacora) ? bitacora : [];
-  const cntEl = document.getElementById('bitacora-count');
+  const cntEl = document.getElementById('modal-bitacora-count');
   if(cntEl) cntEl.textContent = lista.length ? `(${lista.length} entrada${lista.length!==1?'s':''})` : '';
   if(!lista.length){
     el.innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:12px">Sin historial de gestión aún</div>';
@@ -2620,7 +2620,7 @@ function renderBitacora(filtro='semana'){
   const mesStr   = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
   const tipoFiltro = document.getElementById('bitacora-filtro-tipo')?.value||'';
   const busq = (document.getElementById('bitacora-search')?.value||'').toLowerCase();
-  const isAdmin = _currentUser?.rol==='admin'||_currentUser?.rol==='jefe';
+  const isAdmin = currentUser?.rol==='admin'||currentUser?.rol==='jefe';
 
   let items = all.filter(g=>{
     if(filtro==='hoy'   && g.fecha!==todayStr)  return false;
@@ -2628,8 +2628,7 @@ function renderBitacora(filtro='semana'){
     if(filtro==='mes'   && g.fecha<mesStr)       return false;
     if(tipoFiltro && g.tipo!==tipoFiltro)        return false;
     if(!isAdmin){
-      const exec=USERS.find(u=>u.id===_currentUser?.id);
-      if(exec && g.ejecutivo && g.ejecutivo!==_currentUser?.id) return false;
+      if(g.ejecutivo && g.ejecutivo!==currentUser?.id) return false;
     }
     if(busq && !(g.clienteNombre||'').toLowerCase().includes(busq)) return false;
     return true;
@@ -2741,7 +2740,7 @@ function guardarGestion(){
     id: String(maxId+1),
     clienteId: clienteId||'',
     clienteNombre: clienteNom.toUpperCase(),
-    ejecutivo: _currentUser?.id||'',
+    ejecutivo: currentUser?.id||'',
     fecha,
     hora: new Date().toTimeString().slice(0,5),
     tipo, resultado, nota, seguimiento,
