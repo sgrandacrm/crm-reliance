@@ -45,7 +45,9 @@ function saveDB(){
   localStorage.setItem('reliance_clientes', JSON.stringify(DB)); // fallback
   _cache.clientes = [...DB];
   if(_spReady){
-    DB.forEach(c => { if(!c._spId || c._dirty) c._dirty = true; });
+    // Solo marcar dirty los que aún no tienen _spId (nuevos sin sync)
+    // Los que ya tienen _spId solo se sincronizan si explícitamente se marcaron _dirty
+    DB.forEach(c => { if(!c._spId) c._dirty = true; });
     _flushDB();
   }
 }
@@ -294,7 +296,7 @@ function showPage(id){
   navItems.forEach(n=>{
     if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes("'"+id+"'")) n.classList.add('active');
   });
-  const renders={clientes:renderClientes,vencimientos:()=>showPage('seguimiento'),calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones,cobranza:()=>renderCobranza(_currentFiltroCobranza||'mes'),bitacora:()=>renderBitacora(_currentFiltroBitacora||'semana')};
+  const renders={clientes:renderClientes,vencimientos:()=>showPage('seguimiento'),calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones,cobranza:()=>renderCobranza(_currentFiltroCobranza||'mes'),bitacora:()=>renderBitacora(_currentFiltroBitacora||'semana'),cotizador:()=>setTimeout(calcCotizacion,100)};
   if(renders[id]) renders[id]();
 }
 
@@ -872,6 +874,8 @@ function _bitacoraAdd(cliente, nota, tipo='manual'){
   cliente.bitacora.unshift(entrada); // más reciente primero
   // Mantener nota principal como la más reciente con texto
   if(nota) cliente.nota = nota;
+  // Marcar para sync con SharePoint
+  cliente._dirty = true;
 }
 
 // Renderiza el historial de bitácora dentro del modal de seguimiento
@@ -2927,6 +2931,7 @@ function nuevaVersionCotiz(id){
   all[idx].estado = 'REEMPLAZADA';
   all[idx]._dirty = true;
   _saveCotizaciones(all);
+  actualizarBadgeCotizaciones();
   showPage('cotizador');
   setTimeout(()=>{
     const n=document.getElementById('cot-nombre'); if(n) n.value=original.clienteNombre||'';
@@ -2974,6 +2979,7 @@ function editarCotizacion(id){
   all[idx].estado = 'REEMPLAZADA';
   all[idx]._dirty = true;
   _saveCotizaciones(all);
+  actualizarBadgeCotizaciones();
   showPage('cotizador');
   setTimeout(()=>{
     const n=document.getElementById('cot-nombre'); if(n) n.value=original.clienteNombre||'';
@@ -4156,7 +4162,7 @@ function guardarNuevoCliente(){
   if(!nombre||!ci){showToast('Nombre y CI son requeridos','error');return;}
   const maxId=DB.length?Math.max(...DB.map(c=>c.id||0)):0;
   DB.push({
-    id:maxId+1,ejecutivo:currentUser.id,
+    id:maxId+1,ejecutivo:currentUser?.id||'',
     nombre:nombre.toUpperCase(),ci,tipo:document.getElementById('nc-tipo').value,
     tipoCliente:document.getElementById('nc-tipo-cliente')?.value||'',
     region:document.getElementById('nc-region').value,ciudad:document.getElementById('nc-ciudad').value,

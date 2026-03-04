@@ -358,12 +358,14 @@ async function spDelete(listKey, spId){
   if(!_spReady) return false;
   const listName = SP_CONFIG.lists[listKey];
   try{
-    await spGraph(`sites/${_siteId}/lists/${listName}/items/${spId}`, 'DELETE');
+    const listId = await spGetListId(listName);
+    if(!listId){ console.error('spDelete: lista no encontrada:', listName); return false; }
+    await spGraph(`sites/${_siteId}/lists/${listId}/items/${spId}`, 'DELETE');
     // Remover solo el item borrado del cache
     if(_cache[listKey]) _cache[listKey] = _cache[listKey].filter(x=>x._spId!==spId);
     return true;
   }catch(e){
-    console.error('spDelete error:', e);
+    console.error('spDelete error:', listKey, e);
     return false;
   }
 }
