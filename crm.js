@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════
-//  DATA & STATE
+//  DATA & STATE 
 // ══════════════════════════════════════════════════════
 const USERS = [
   {id:'admin',name:'Rubi González',email:'rubi@reliance.ec',pass:'admin2026',rol:'admin',color:'#c84b1a',initials:'RG'},
