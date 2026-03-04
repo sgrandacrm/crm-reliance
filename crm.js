@@ -43,6 +43,89 @@ const TASAS_RANGOS_DEFAULT = {
   ATLANTIDA:       [0.036, 0.036, 0.036, 0.036, 0.036],
   AIG:             [0.038, 0.038, 0.038, 0.038, 0.038],
 };
+// ── Planes de Vida / Asistencia Médica por aseguradora ───────────────────────
+// Costo en decimal y coberturas para mostrar en PDF (sin precio)
+const PLANES_VIDA = {
+  LATINA: {
+    'Plan Único': {
+      costo: 50,
+      coberturas: [
+        { concepto:'Vida / Muerte Accidental',        valor:'$20,000' },
+        { concepto:'Renta Hospitalización',           valor:'$50/día · máx. 10 días' },
+        { concepto:'Telemedicina',                    valor:'E-DOCTOR (Med. General, Psicología, Nutrición)' },
+        { concepto:'Beneficio Dental',                valor:'Prevención y Cirugía · 70–100% cobertura' },
+        { concepto:'Asegurados',                      valor:'Titular y Cónyuge' },
+      ],
+    },
+  },
+  MAPFRE: {
+    'Plan Único': {
+      costo: 63.19,
+      coberturas: [
+        { concepto:'Vida / Muerte Accidental',        valor:'$5,000' },
+        { concepto:'Enfermedades Graves',             valor:'Anticipo 50% cobertura principal ($2,500)' },
+        { concepto:'Renta Hospitalización (acc.)',    valor:'$20/día · máx. 30 días · hasta $600' },
+        { concepto:'Gastos de Sepelio',               valor:'$500' },
+        { concepto:'Telemedicina / E-Doctor',         valor:'Sin límite' },
+        { concepto:'Médico a Domicilio',              valor:'Copago $10/evento · sin límite' },
+        { concepto:'Asegurados',                      valor:'Titular y Cónyuge' },
+      ],
+    },
+  },
+  ALIANZA: {
+    'Plan Único': {
+      costo: 55.74,
+      coberturas: [
+        { concepto:'Vida / Muerte Accidental',        valor:'$5,000' },
+        { concepto:'Enfermedades Graves',             valor:'$2,500' },
+        { concepto:'Renta Hospitalización',           valor:'$20/día · máx. 25 días · hasta $500' },
+        { concepto:'Gastos de Sepelio',               valor:'$500' },
+        { concepto:'Telemedicina',                    valor:'Orientación médica telefónica sin límite + E-Doctor' },
+        { concepto:'Médico a Domicilio',              valor:'Copago $10/evento · Titular y Cónyuge' },
+        { concepto:'Asegurados',                      valor:'Titular y Cónyuge' },
+      ],
+    },
+  },
+  SWEADEN: {
+    'Plan 1': {
+      costo: 59.99,
+      coberturas: [
+        { concepto:'Vida / Muerte Accidental',        valor:'$5,000' },
+        { concepto:'Desmembración / Incapacidad tot.', valor:'$5,000' },
+        { concepto:'Enfermedades Graves',             valor:'$2,500' },
+        { concepto:'Gastos Médicos por Accidente',    valor:'$250' },
+        { concepto:'Ambulancia por Accidente',        valor:'$150' },
+        { concepto:'Renta Hospitalización',           valor:'$20/día · máx. 30 días' },
+        { concepto:'Gastos de Sepelio',               valor:'$500' },
+        { concepto:'Médico a Domicilio + Telemedicina',valor:'Copago $10/evento' },
+        { concepto:'Asegurados',                      valor:'Titular y Cónyuge' },
+      ],
+    },
+    'Plan 2': {
+      costo: 99.99,
+      coberturas: [
+        { concepto:'Vida / Muerte Accidental',        valor:'$10,000' },
+        { concepto:'Desmembración / Incapacidad tot.', valor:'$10,000' },
+        { concepto:'Enfermedades Graves',             valor:'$5,000' },
+        { concepto:'Gastos Médicos por Accidente',    valor:'$500' },
+        { concepto:'Ambulancia por Accidente',        valor:'$150' },
+        { concepto:'Renta Hospitalización',           valor:'$25/día · máx. 30 días' },
+        { concepto:'Gastos de Sepelio',               valor:'$800' },
+        { concepto:'Médico a Domicilio + Telemedicina',valor:'Copago $10/evento' },
+        { concepto:'Asegurados',                      valor:'Grupo familiar (Titular, Cónyuge y 3 hijos ≤18 años)' },
+      ],
+    },
+  },
+};
+// Devuelve el nombre del plan a partir del costo cobrado
+function _getPlanVidaNombre(aseg, costo){
+  if(!costo || !PLANES_VIDA[aseg]) return '';
+  for(const [nombre, plan] of Object.entries(PLANES_VIDA[aseg])){
+    if(Math.abs(plan.costo - costo) < 0.01) return nombre;
+  }
+  return '';
+}
+
 function _getTasasRangos(){
   try{ return Object.assign({...TASAS_RANGOS_DEFAULT}, JSON.parse(localStorage.getItem('_reliance_tasas_rangos')||'{}')); }
   catch(e){ return {...TASAS_RANGOS_DEFAULT}; }
@@ -1345,7 +1428,8 @@ function calcCotizacion(){
       const p = calcPrima(vaT, tasa, cfg.pnMin, axaInc, vida, cfg.extraFijo||0);
       const tc  = calcCuotasTc(p.total, cfg.tcMax, cuotasTcReq,  cfg.pisoTC||0);
       const deb = calcCuotasDeb(p.total, Math.min(cuotasDebReq, cfg.debMax||cuotasDebReq), cfg.pisoDeb||0);
-      return { name, cfg, ...p, tc, deb };
+      const planVida = _getPlanVidaNombre(name, vida);
+      return { name, cfg, ...p, tc, deb, planVida };
     });
 
   const minTotal = Math.min(...results.map(r=>r.total));
@@ -1363,10 +1447,10 @@ function calcCotizacion(){
 
     const axaBadge = r.axa > 0
       ? `<div style="background:#e8f0fb;border:1px solid #1a4c84;border-radius:6px;padding:4px 8px;margin-bottom:6px;font-size:11px;color:#1a4c84;display:flex;justify-content:space-between">
-           <span>🚗 AXA Asistencia (neto)</span><span style="font-weight:700;font-family:'DM Mono',monospace">${fmt(r.axa)}</span></div>` : '';
+           <span>🚗 Auto sustituto AXA (neto)</span><span style="font-weight:700;font-family:'DM Mono',monospace">${fmt(r.axa)}</span></div>` : '';
     const vidaBadge = r.vida > 0
       ? `<div style="background:#e8f5e9;border:1px solid #2d6a4f;border-radius:6px;padding:4px 8px;margin-bottom:6px;font-size:11px;color:#2d6a4f;display:flex;justify-content:space-between">
-           <span>❤ Vida / Asistencia Médica</span><span style="font-weight:700;font-family:'DM Mono',monospace">${fmt(r.vida)}</span></div>` : '';
+           <span>❤ ${r.planVida||'Plan de Vida'}</span><span style="font-weight:700;font-family:'DM Mono',monospace">${fmt(r.vida)}</span></div>` : '';
     const extraBadge = r.extraFijo > 0
       ? `<div class="aseg-row" style="color:#e63946"><span class="aseg-key">Cargo adicional</span><span class="aseg-val">${fmt(r.extraFijo)}</span></div>` : '';
 
@@ -2184,7 +2268,8 @@ function printCotizacion(){
     const p = calcPrima(vaT, tasa, cfg.pnMin, axaInc, vida, cfg.extraFijo||0);
     const tc  = calcCuotasTc(p.total, cfg.tcMax, cuotasTcReq, cfg.pisoTC||0);
     const deb = calcCuotasDeb(p.total, Math.min(cuotasDebReq, cfg.debMax||cuotasDebReq), cfg.pisoDeb||0);
-    return {name,cfg,tasa,...p,tc,deb};
+    const planVida = _getPlanVidaNombre(name, vida);
+    return {name,cfg,tasa,...p,tc,deb,planVida};
   });
   const minTotal = Math.min(...results.map(r=>r.total));
 
@@ -2290,13 +2375,13 @@ function printCotizacion(){
       </tr>
       ${results.some(r=>r.axa>0)?`
       <tr>
-        <td class="col-cob">🛡 AXA / Auto Sustituto</td>
+        <td class="col-cob">🚗 Auto sustituto AXA</td>
         ${results.map(r=>`<td class="sweaden-extra">${r.axa>0?'$'+r.axa.toFixed(2):'—'}</td>`).join('')}
       </tr>`:''}
       ${results.some(r=>r.vida>0)?`
-      <tr>
-        <td class="col-cob">❤ Prima Vida</td>
-        ${results.map(r=>`<td>${r.vida>0?'$'+r.vida.toFixed(2):'—'}</td>`).join('')}
+      <tr style="background:#e8f5e9">
+        <td class="col-cob" style="color:#2d6a4f">❤ Plan de Vida</td>
+        ${results.map(r=>`<td style="color:#2d6a4f;font-size:9px">${r.planVida||'—'}</td>`).join('')}
       </tr>`:''}
       <tr class="total-row">
         <td class="col-cob" style="font-weight:700">TOTAL</td>
@@ -2335,6 +2420,34 @@ function printCotizacion(){
       <tr><td class="col-cob">Pérd. Total Robo</td>${results.map(r=>`<td>${r.cfg.ded_robo_sin}</td>`).join('')}</tr>
     </tbody>
   </table>
+
+  ${results.some(r=>r.vida>0)?`
+  <div style="margin-top:16px;border:2px solid #2d6a4f;border-radius:6px;overflow:hidden;page-break-inside:avoid">
+    <div style="background:#2d6a4f;color:#fff;padding:7px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px">
+      ❤ Planes de Vida / Asistencia Médica incluidos en esta cotización
+    </div>
+    <div style="padding:10px 12px;display:flex;flex-wrap:wrap;gap:14px;background:#f0faf4">
+      ${results.filter(r=>r.vida>0&&r.planVida).map(r=>{
+        const plan = PLANES_VIDA[r.name]?.[r.planVida];
+        if(!plan) return '';
+        return `<div style="flex:1;min-width:180px">
+          <div style="font-weight:700;font-size:11px;color:${r.cfg.color};margin-bottom:5px;border-bottom:1px solid #c8e6c9;padding-bottom:3px">
+            ${r.name} — ${r.planVida}
+          </div>
+          <table style="font-size:9px;width:100%;border-collapse:collapse">
+            ${plan.coberturas.map((c,i)=>`
+              <tr style="${i%2===0?'background:#e8f5e9':''}">
+                <td style="padding:2px 4px;color:#3a5a40">${c.concepto}</td>
+                <td style="padding:2px 4px;font-weight:600;color:#1a3a24;text-align:right;white-space:nowrap">${c.valor}</td>
+              </tr>`).join('')}
+          </table>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="padding:5px 12px;background:#e8f5e9;font-size:9px;color:#5a7a5a;font-style:italic;border-top:1px solid #c8e6c9">
+      * Los planes de vida/asistencia médica son opcionales y están sujetos a condiciones de la póliza. SWEADEN: incluido en la póliza del vehículo. LATINA/MAPFRE/ALIANZA: póliza y factura independientes.
+    </div>
+  </div>`:''}
 
   <div class="footer">
     <span>Elaborado por ${exec} · Reliance Asesores Productores de Seguros · Quito, Ecuador</span>
@@ -2397,7 +2510,8 @@ function guardarCotizacion(){
     const debN = Math.min(cuotasDebReq, cfg.debMax||cuotasDebReq);
     const tc  = calcCuotasTc(p.total, cfg.tcMax, cuotasTcReq, cfg.pisoTC||0);
     const deb = calcCuotasDeb(p.total, debN, cfg.pisoDeb||0);
-    return { name, tasa, pn:p.pn, total:p.total, axa:p.axa, vida:p.vida, extraFijo:p.extraFijo,
+    const planVida = _getPlanVidaNombre(name, vida);
+    return { name, tasa, pn:p.pn, total:p.total, axa:p.axa, vida:p.vida, planVida, extraFijo:p.extraFijo,
              tcN:tc.n, tcCuota:tc.cuota, debN:deb.n, debCuota:deb.cuota };
   });
 
