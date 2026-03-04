@@ -35,6 +35,15 @@ function _getTasas(){
   catch(e){ return {...TASAS_DEFAULT}; }
 }
 function _saveTasas(obj){ localStorage.setItem('_reliance_tasas', JSON.stringify(obj)); }
+// Sanitiza el nombre de aseguradora para usarlo como sufijo de ID en el DOM
+function _safeName(n){ return n.replace(/[^a-zA-Z0-9]/g,'_'); }
+// Lee la tasa del input editable de la tarjeta (si existe); sino cae al default guardado
+function _getTasaFromCard(name){
+  const s = _safeName(name);
+  const input = document.getElementById('aseg-tasa-input-'+s);
+  if(input){ const v=parseFloat(input.value); if(!isNaN(v)&&v>0) return v/100; }
+  return _getTasas()[name] ?? (ASEGURADORAS[name]?.tasa||0.035);
+}
 
 let currentUser = null;
 let currentSegIdx = null;
@@ -1317,6 +1326,10 @@ function calcCotizacion(){
 
   const minTotal = Math.min(...results.map(r=>r.total));
 
+  // Inicializar almacén de datos por tarjeta (para botón WA y recálculo)
+  _cardData = {};
+  results.forEach(r => { _cardData[r.name] = { total: r.total, tc: r.tc, deb: r.deb }; });
+
   document.getElementById('aseg-cards-result').innerHTML = results.map(r => {
     const warnings = [];
     if(r.ajustado) warnings.push(`⚠ Prima mínima aplicada: $${r.pn.toFixed(2)}`);
@@ -1333,24 +1346,35 @@ function calcCotizacion(){
     const extraBadge = r.extraFijo > 0
       ? `<div class="aseg-row" style="color:#e63946"><span class="aseg-key">Cargo adicional</span><span class="aseg-val">${fmt(r.extraFijo)}</span></div>` : '';
 
-    return `<div class="aseg-card${r.total===minTotal?' mejor':''}">
+    const s = _safeName(r.name);
+    return `<div class="aseg-card${r.total===minTotal?' mejor':''}" id="aseg-card-${s}">
       <div class="aseg-name" style="color:${r.cfg.color}">${r.name}</div>
       ${warnings.length?`<div style="background:#fff8e1;border:1px solid #f0c040;border-radius:6px;padding:5px 8px;margin-bottom:8px;font-size:10px;color:#7a5c00;line-height:1.6">${warnings.join('<br>')}</div>`:''}
       ${axaBadge}${vidaBadge}
-      <div class="aseg-row"><span class="aseg-key">Tasa</span><span class="aseg-val">${(r.tasa*100).toFixed(2)}%</span></div>
-      <div class="aseg-row"><span class="aseg-key">Prima Neta</span><span class="aseg-val">${fmt(r.pn)}</span></div>
+      <div class="aseg-row">
+        <span class="aseg-key">Tasa</span>
+        <span class="aseg-val" style="display:flex;align-items:center;gap:3px">
+          <input type="number" id="aseg-tasa-input-${s}"
+                 value="${(r.tasa*100).toFixed(2)}"
+                 min="0.01" max="20" step="0.01"
+                 title="Editar tasa para esta cotización"
+                 style="width:58px;border:1px solid #ccc;border-radius:4px;padding:2px 4px;font-size:12px;font-family:inherit;text-align:right;background:var(--bg,#fff);color:inherit"
+                 onchange="recalcCard('${r.name}',this.value)"> %
+        </span>
+      </div>
+      <div class="aseg-row"><span class="aseg-key">Prima Neta</span><span class="aseg-val" id="aseg-pn-${s}">${fmt(r.pn)}</span></div>
       <div class="aseg-row"><span class="aseg-key">Der. Emisión</span><span class="aseg-val">${fmt(r.der)}</span></div>
       <div class="aseg-row"><span class="aseg-key">Seg. Campesino</span><span class="aseg-val">${fmt(r.camp)}</span></div>
       <div class="aseg-row"><span class="aseg-key">Super Bancos</span><span class="aseg-val">${fmt(r.sb)}</span></div>
       ${extraBadge}
-      <div class="aseg-row"><span class="aseg-key">Subtotal</span><span class="aseg-val">${fmt(r.sub)}</span></div>
-      <div class="aseg-row"><span class="aseg-key">IVA 15%</span><span class="aseg-val">${fmt(r.iva)}</span></div>
+      <div class="aseg-row"><span class="aseg-key">Subtotal</span><span class="aseg-val" id="aseg-sub-${s}">${fmt(r.sub)}</span></div>
+      <div class="aseg-row"><span class="aseg-key">IVA 15%</span><span class="aseg-val" id="aseg-iva-${s}">${fmt(r.iva)}</span></div>
       ${r.vida>0?`<div class="aseg-row" style="color:#2d6a4f"><span class="aseg-key">Vida (post-IVA)</span><span class="aseg-val">${fmt(r.vida)}</span></div>`:''}
-      <div class="aseg-total"><span class="aseg-total-key">COSTO TOTAL</span><span class="aseg-total-val">${fmt(r.total)}</span></div>
-      <div class="aseg-cuota">💳 TC ${r.tc.n} cuotas: <b>${fmt(r.tc.cuota)}/mes</b></div>
-      <div class="aseg-cuota">🏦 Débito ${r.deb.n} cuotas: <b>${fmt(r.deb.cuota)}/mes</b></div>
+      <div class="aseg-total"><span class="aseg-total-key">COSTO TOTAL</span><span class="aseg-total-val" id="aseg-total-${s}">${fmt(r.total)}</span></div>
+      <div class="aseg-cuota" id="aseg-tc-${s}">💳 TC ${r.tc.n} cuotas: <b>${fmt(r.tc.cuota)}/mes</b></div>
+      <div class="aseg-cuota" id="aseg-deb-${s}">🏦 Débito ${r.deb.n} cuotas: <b>${fmt(r.deb.cuota)}/mes</b></div>
       <div style="margin-top:10px">
-        <button class="btn btn-blue btn-xs w-full" onclick="enviarWhatsAppCotiz('${r.name}',${r.total.toFixed(2)},${r.tc.cuota.toFixed(2)},${r.tc.n})">📱 Enviar por WhatsApp</button>
+        <button class="btn btn-blue btn-xs w-full" onclick="enviarWhatsAppCotiz('${r.name}',_cardData['${r.name}'].total,_cardData['${r.name}'].tc.cuota,_cardData['${r.name}'].tc.n)">📱 Enviar por WhatsApp</button>
       </div>
     </div>`;
   }).join('');
@@ -1396,6 +1420,51 @@ function calcCotizacion(){
     </tbody></table>`;
 
   document.getElementById('cotizacion-resultado').style.display='block';
+}
+
+// ── Recálculo por tarjeta cuando el ejecutivo cambia la tasa ──────────────────
+let _cardData = {};  // { 'ZURICH': { total, tc, deb }, ... }
+
+function recalcCard(name, tasaPct){
+  const cfg = ASEGURADORAS[name]; if(!cfg) return;
+  const s   = _safeName(name);
+  const tasa = parseFloat(tasaPct)/100;
+  if(isNaN(tasa)||tasa<=0) return;
+  const va  = parseFloat(document.getElementById('cot-va')?.value)||0;
+  const ext = parseFloat(document.getElementById('cot-extras')?.value)||0;
+  const vaT = va+ext;
+  const cuotasTcReq  = parseInt(document.getElementById('cot-cuotas-tc')?.value)||12;
+  const cuotasDebReq = parseInt(document.getElementById('cot-cuotas-deb')?.value)||10;
+  const axaInc = name==='SWEADEN' ? (document.getElementById('cot-axa')?.checked||false) : false;
+  const vidaIds = {LATINA:'cot-vida-latina',SWEADEN:'cot-vida-sweaden',MAPFRE:'cot-vida-mapfre',ALIANZA:'cot-vida-alianza'};
+  const vida = parseFloat(document.getElementById(vidaIds[name])?.value)||0;
+  const p   = calcPrima(vaT, tasa, cfg.pnMin, axaInc, vida, cfg.extraFijo||0);
+  const tc  = calcCuotasTc(p.total, cfg.tcMax, cuotasTcReq, cfg.pisoTC||0);
+  const deb = calcCuotasDeb(p.total, Math.min(cuotasDebReq, cfg.debMax||cuotasDebReq), cfg.pisoDeb||0);
+  // Actualizar valores en el DOM
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.textContent=v; };
+  set('aseg-pn-'+s,    fmt(p.pn));
+  set('aseg-sub-'+s,   fmt(p.sub));
+  set('aseg-iva-'+s,   fmt(p.iva));
+  set('aseg-total-'+s, fmt(p.total));
+  const tcEl=document.getElementById('aseg-tc-'+s);
+  if(tcEl) tcEl.innerHTML=`💳 TC ${tc.n} cuotas: <b>${fmt(tc.cuota)}/mes</b>`;
+  const debEl=document.getElementById('aseg-deb-'+s);
+  if(debEl) debEl.innerHTML=`🏦 Débito ${deb.n} cuotas: <b>${fmt(deb.cuota)}/mes</b>`;
+  // Actualizar almacén y refrescar badge "mejor"
+  _cardData[name]={total:p.total, tc, deb};
+  _actualizarMejorBadge();
+}
+
+function _actualizarMejorBadge(){
+  const entries=Object.entries(_cardData);
+  if(!entries.length) return;
+  const min=Math.min(...entries.map(([,d])=>d.total));
+  entries.forEach(([name,d])=>{
+    const el=document.getElementById('aseg-card-'+_safeName(name));
+    if(!el) return;
+    el.classList.toggle('mejor', d.total===min);
+  });
 }
 
 // ── CIERRE DE VENTA ──────────────────────────────────
@@ -2084,8 +2153,8 @@ function printCotizacion(){
 
   const results = selected.map(name=>{
     const cfg = ASEGURADORAS[name];
-    // Tasa editable desde Admin → Tasas; fallback al config hardcodeado
-    const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : (_getTasas()[name] ?? cfg.tasa);
+    // Tasa: lee del input editable en la tarjeta (si fue modificado); sino usa default guardado
+    const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : _getTasaFromCard(name);
     const axaInc = name === 'SWEADEN' ? axaActivo : false;
     const vida   = vidaInputs[name] || 0;
     const p = calcPrima(vaT, tasa, cfg.pnMin, axaInc, vida, cfg.extraFijo||0);
@@ -2296,7 +2365,8 @@ function guardarCotizacion(){
   // Calcular resultados de las aseguradoras seleccionadas
   const resultados = selected.map(name=>{
     const cfg = ASEGURADORAS[name];
-    const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : (_getTasas()[name] ?? cfg.tasa);
+    // Usa la tasa que el ejecutivo ingresó en la tarjeta (si la cambió); sino usa el default
+    const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : _getTasaFromCard(name);
     const axaInc = name==='SWEADEN' ? axaIncluido : false;
     const vida = vidaInputsSave[name]||0;
     const p = calcPrima(vaT, tasa, cfg.pnMin, axaInc, vida, cfg.extraFijo||0);
