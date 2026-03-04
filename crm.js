@@ -24,6 +24,18 @@ function _getComisiones(){
 }
 function _saveComisiones(obj){ localStorage.setItem('reliance_comisiones',JSON.stringify(obj)); }
 
+// ── Tasas por aseguradora (editables desde Admin → pestaña Tasas) ─────────────
+const TASAS_DEFAULT = {
+  ZURICH:0.043, LATINA:0.038, GENERALI:0.035, ADS:0.045,
+  SWEADEN:0.035, MAPFRE:0.037, ALIANZA:0.032,
+  'ASEG. DEL SUR':0.034, EQUINOCCIAL:0.034, ATLANTIDA:0.036, AIG:0.038,
+};
+function _getTasas(){
+  try{ return Object.assign({...TASAS_DEFAULT}, JSON.parse(localStorage.getItem('_reliance_tasas')||'{}')); }
+  catch(e){ return {...TASAS_DEFAULT}; }
+}
+function _saveTasas(obj){ localStorage.setItem('_reliance_tasas', JSON.stringify(obj)); }
+
 let currentUser = null;
 let currentSegIdx = null;
 let currentSegEstado = 'PENDIENTE';
@@ -303,7 +315,7 @@ function showPage(id){
   navItems.forEach(n=>{
     if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes("'"+id+"'")) n.classList.add('active');
   });
-  const renders={clientes:renderClientes,vencimientos:()=>showPage('seguimiento'),calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones,cobranza:()=>renderCobranza(_currentFiltroCobranza||'mes'),bitacora:()=>renderBitacora(_currentFiltroBitacora||'semana'),cotizador:()=>setTimeout(calcCotizacion,100)};
+  const renders={clientes:renderClientes,vencimientos:()=>showPage('seguimiento'),calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones,cobranza:()=>renderCobranza(_currentFiltroCobranza||'mes'),bitacora:()=>renderBitacora(_currentFiltroBitacora||'semana'),cotizador:()=>setTimeout(calcCotizacion,100),tasas:renderTasas};
   if(renders[id]) renders[id]();
 }
 
@@ -1293,8 +1305,8 @@ function calcCotizacion(){
   const results = Object.entries(ASEGURADORAS)
     .filter(([name]) => selectedAseg.includes(name))
     .map(([name, cfg]) => {
-      // Tasa: puede ser número fijo (nuevas) o función legacy (antiguas)
-      const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : cfg.tasa;
+      // Tasa: usa la editada en Admin → Tasas; si no hay, usa la del config (fallback)
+      const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : (_getTasas()[name] ?? cfg.tasa);
       const axaInc   = name === 'SWEADEN' ? axaActivo : false;
       const vida     = vidaInputs[name] !== undefined ? vidaInputs[name] : 0;
       const p = calcPrima(vaT, tasa, cfg.pnMin, axaInc, vida, cfg.extraFijo||0);
@@ -1425,8 +1437,8 @@ function _abrirCierreDirecto(id){
   const cfg=Object.entries(ASEGURADORAS).find(([k])=>aseg.toUpperCase().includes(k));
   let total=0,pn=0,tcN=12,debN=10,tcCuota=0,debCuota=0;
   if(cfg&&va>0){
-    const [,cfgObj]=cfg;
-    const tasa=typeof cfgObj.tasa==='function'?cfgObj.tasa(va):cfgObj.tasa;
+    const [asegKey,cfgObj]=cfg;
+    const tasa=typeof cfgObj.tasa==='function'?cfgObj.tasa(va):(_getTasas()[asegKey]??cfgObj.tasa);
     const p=calcPrima(va,tasa,cfgObj.pnMin||0);
     const tc=calcCuotasTc(p.total,cfgObj.tcMax||12,12,cfgObj.pisoTC||0);
     const deb=calcCuotasDeb(p.total,10,cfgObj.pisoDeb||0);
@@ -2072,10 +2084,10 @@ function printCotizacion(){
 
   const results = selected.map(name=>{
     const cfg = ASEGURADORAS[name];
-    const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : cfg.tasa;
+    // Tasa editable desde Admin → Tasas; fallback al config hardcodeado
+    const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : (_getTasas()[name] ?? cfg.tasa);
     const axaInc = name === 'SWEADEN' ? axaActivo : false;
     const vida   = vidaInputs[name] || 0;
-    // Usar exactamente la misma lógica que calcCotizacion()
     const p = calcPrima(vaT, tasa, cfg.pnMin, axaInc, vida, cfg.extraFijo||0);
     const tc  = calcCuotasTc(p.total, cfg.tcMax, cuotasTcReq, cfg.pisoTC||0);
     const deb = calcCuotasDeb(p.total, Math.min(cuotasDebReq, cfg.debMax||cuotasDebReq), cfg.pisoDeb||0);
@@ -2284,7 +2296,7 @@ function guardarCotizacion(){
   // Calcular resultados de las aseguradoras seleccionadas
   const resultados = selected.map(name=>{
     const cfg = ASEGURADORAS[name];
-    const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : cfg.tasa;
+    const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : (_getTasas()[name] ?? cfg.tasa);
     const axaInc = name==='SWEADEN' ? axaIncluido : false;
     const vida = vidaInputsSave[name]||0;
     const p = calcPrima(vaT, tasa, cfg.pnMin, axaInc, vida, cfg.extraFijo||0);
@@ -3613,6 +3625,99 @@ function guardarComisionesAdmin(){
   showToast('✅ Comisiones actualizadas','success');
 }
 
+// ══════════════════════════════════════════════════════
+//  ADMIN — TASAS POR ASEGURADORA
+// ══════════════════════════════════════════════════════
+function renderTasasAdmin(){
+  const el = document.getElementById('admin-tasas-body'); if(!el) return;
+  const tasas = _getTasas();
+  const aseguradoras = Object.keys(TASAS_DEFAULT);
+  el.innerHTML = `
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px">
+      Tasa base usada en el cotizador para calcular la prima neta de cada aseguradora.
+      El Admin actualiza estos valores cuando la aseguradora cambia su tarifa —
+      todos los ejecutivos verán los precios actualizados automáticamente.
+    </p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px">
+      ${aseguradoras.map(a=>{
+        const cfg = ASEGURADORAS[a]||{};
+        const tasaActual = (tasas[a] ?? TASAS_DEFAULT[a]) * 100;
+        const tasaDefault = (TASAS_DEFAULT[a] * 100).toFixed(2);
+        const esModificada = Math.abs((tasas[a]??TASAS_DEFAULT[a]) - TASAS_DEFAULT[a]) > 0.00001;
+        return `<div class="card" style="margin:0;border:${esModificada?'2px solid var(--accent)':''}">
+          <div class="card-body" style="padding:12px">
+            <div style="font-weight:700;font-size:12px;color:${cfg.color||'var(--ink)'};margin-bottom:8px">${a}</div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input class="form-input" type="number" min="0.1" max="20" step="0.01"
+                id="tasa-${a.replace(/[^a-zA-Z0-9]/g,'_')}"
+                value="${tasaActual.toFixed(2)}"
+                style="text-align:right;font-family:'DM Mono',monospace;font-size:14px;font-weight:700;width:80px;padding:4px 8px">
+              <span style="font-size:13px;font-weight:600;color:var(--muted)">%</span>
+            </div>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px">
+              ${esModificada ? `<span style="color:var(--accent)">● Modificada</span> · default: ${tasaDefault}%` : `Default: ${tasaDefault}%`}
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" style="flex:1" onclick="guardarTasasAdmin()">💾 Guardar tasas</button>
+      <button class="btn btn-ghost" onclick="restaurarTasasDefault()" title="Volver a los valores originales del sistema">↺ Restaurar defaults</button>
+    </div>`;
+}
+
+function guardarTasasAdmin(){
+  const tasas = {};
+  Object.keys(TASAS_DEFAULT).forEach(a=>{
+    const id = 'tasa-'+a.replace(/[^a-zA-Z0-9]/g,'_');
+    const el = document.getElementById(id);
+    if(el) tasas[a] = (parseFloat(el.value)||0) / 100; // % → decimal
+  });
+  _saveTasas(tasas);
+  showToast('✅ Tasas actualizadas — el cotizador usará los nuevos valores','success');
+  renderTasasAdmin(); // re-render para mostrar badges "Modificada"
+  // Si page-tasas está activa, también la actualizamos
+  if(document.getElementById('page-tasas')?.classList.contains('active')) renderTasas();
+}
+
+function restaurarTasasDefault(){
+  if(!confirm('¿Restaurar todas las tasas a los valores por defecto del sistema?')) return;
+  _saveTasas({...TASAS_DEFAULT});
+  showToast('↺ Tasas restauradas a valores por defecto','info');
+  renderTasasAdmin();
+  if(document.getElementById('page-tasas')?.classList.contains('active')) renderTasas();
+}
+
+// ── Página "Tabla de Tasas" — muestra tasas actuales dinámicamente ────────────
+function renderTasas(){
+  const el = document.getElementById('tasas-dinamicas'); if(!el) return;
+  const tasas = _getTasas();
+  // Solo las 7 aseguradoras principales del cotizador Produbanco
+  const principales = ['SWEADEN','MAPFRE','ALIANZA','ZURICH','LATINA','GENERALI','ADS'];
+  el.innerHTML = principales.map(name=>{
+    const cfg = ASEGURADORAS[name]||{};
+    const tasaActual = (tasas[name] ?? TASAS_DEFAULT[name] ?? cfg.tasa ?? 0) * 100;
+    const tasaDefault = (TASAS_DEFAULT[name] ?? cfg.tasa ?? 0) * 100;
+    const esModificada = Math.abs(tasaActual - tasaDefault) > 0.001;
+    return `<div class="card">
+      <div class="card-header" style="background:${cfg.color||'#1a4c84'}18">
+        <div class="card-title" style="color:${cfg.color||'var(--ink)'}">${name}</div>
+        ${esModificada ? `<span style="font-size:10px;color:var(--accent);font-weight:600">● Actualizada</span>` : ''}
+      </div>
+      <div class="card-body" style="text-align:center">
+        <div style="font-size:36px;font-family:'DM Mono',monospace;font-weight:700;color:${cfg.color||'var(--ink)'};line-height:1.1">
+          ${tasaActual.toFixed(2)}%
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">Tasa vigente en cotizador</div>
+        ${cfg.pnMin ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">Prima mínima: <b>$${cfg.pnMin}</b></div>` : ''}
+        ${cfg.tcMax ? `<div style="font-size:11px;color:var(--muted)">TC máx: <b>${cfg.tcMax} cuotas</b> · Débito: <b>${cfg.debMax||10} cuotas</b></div>` : ''}
+        ${esModificada ? `<div style="font-size:10px;color:var(--muted);margin-top:6px">Default: ${tasaDefault.toFixed(2)}%</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
 function renderAdmin(){
   const execs=USERS.filter(u=>u.rol==='ejecutivo');
   // Poblar select ejecutivos
@@ -3691,15 +3796,16 @@ function renderAdmin(){
   // Historial importaciones
   renderImportHistorial();
   renderComisionesAdmin();
+  renderTasasAdmin();
 }
 function showAdminTab(tab, el){
-  ['importar','historial','ejecutivos','datos'].forEach(t=>{
+  ['importar','historial','ejecutivos','datos','tasas'].forEach(t=>{
     const el2=document.getElementById('admin-tab-'+t);
     if(el2) el2.style.display=t===tab?'':'none';
   });
   document.querySelectorAll('#admin-tabs .pill').forEach(p=>p.classList.remove('active'));
   if(el) el.classList.add('active');
-  if(tab==='datos') renderAdmin(); // Refresh stats
+  if(tab==='datos' || tab==='tasas') renderAdmin(); // Refresh stats y tasas
 }
 function renderImportHistorial(){
   const historial=(_cache.historial||JSON.parse(localStorage.getItem('reliance_import_historial')||'[]'));
