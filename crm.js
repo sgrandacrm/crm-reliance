@@ -24,25 +24,49 @@ function _getComisiones(){
 }
 function _saveComisiones(obj){ localStorage.setItem('reliance_comisiones',JSON.stringify(obj)); }
 
-// ── Tasas por aseguradora (editables desde Admin → pestaña Tasas) ─────────────
-const TASAS_DEFAULT = {
-  ZURICH:0.043, LATINA:0.038, GENERALI:0.035, ADS:0.045,
-  SWEADEN:0.035, MAPFRE:0.037, ALIANZA:0.032,
-  'ASEG. DEL SUR':0.034, EQUINOCCIAL:0.034, ATLANTIDA:0.036, AIG:0.038,
+// ── Tasas por aseguradora con rangos de suma asegurada ───────────────────────
+// Breakpoints: límite SUPERIOR de cada rango (Infinity = sin límite)
+const RANGOS_VA    = [10000, 20000, 30000, 50000, Infinity];
+const RANGOS_LABEL = ['Hasta $10k', '$10k – $20k', '$20k – $30k', '$30k – $50k', 'Más de $50k'];
+// Defaults: [r1, r2, r3, r4, r5] en decimal por aseguradora
+// (igual valor en todos los rangos = mismo comportamiento que antes hasta que el Admin los diferencie)
+const TASAS_RANGOS_DEFAULT = {
+  ZURICH:          [0.043, 0.043, 0.043, 0.043, 0.043],
+  LATINA:          [0.038, 0.038, 0.038, 0.038, 0.038],
+  GENERALI:        [0.035, 0.035, 0.035, 0.035, 0.035],
+  ADS:             [0.045, 0.045, 0.045, 0.045, 0.045],
+  SWEADEN:         [0.035, 0.035, 0.035, 0.035, 0.035],
+  MAPFRE:          [0.037, 0.037, 0.037, 0.037, 0.037],
+  ALIANZA:         [0.032, 0.032, 0.032, 0.032, 0.032],
+  'ASEG. DEL SUR': [0.034, 0.034, 0.034, 0.034, 0.034],
+  EQUINOCCIAL:     [0.034, 0.034, 0.034, 0.034, 0.034],
+  ATLANTIDA:       [0.036, 0.036, 0.036, 0.036, 0.036],
+  AIG:             [0.038, 0.038, 0.038, 0.038, 0.038],
 };
-function _getTasas(){
-  try{ return Object.assign({...TASAS_DEFAULT}, JSON.parse(localStorage.getItem('_reliance_tasas')||'{}')); }
-  catch(e){ return {...TASAS_DEFAULT}; }
+function _getTasasRangos(){
+  try{ return Object.assign({...TASAS_RANGOS_DEFAULT}, JSON.parse(localStorage.getItem('_reliance_tasas_rangos')||'{}')); }
+  catch(e){ return {...TASAS_RANGOS_DEFAULT}; }
 }
-function _saveTasas(obj){ localStorage.setItem('_reliance_tasas', JSON.stringify(obj)); }
+function _saveTasasRangos(obj){ localStorage.setItem('_reliance_tasas_rangos', JSON.stringify(obj)); }
+// Devuelve la tasa correspondiente al valor asegurado para una aseguradora
+function _getTasaRango(name, va){
+  const rangos = _getTasasRangos()[name];
+  if(!rangos || !rangos.length) return ASEGURADORAS[name]?.tasa || 0.035;
+  for(let i = 0; i < RANGOS_VA.length; i++){
+    if(va <= RANGOS_VA[i]) return rangos[i];
+  }
+  return rangos[rangos.length - 1];
+}
 // Sanitiza el nombre de aseguradora para usarlo como sufijo de ID en el DOM
 function _safeName(n){ return n.replace(/[^a-zA-Z0-9]/g,'_'); }
-// Lee la tasa del input editable de la tarjeta (si existe); sino cae al default guardado
+// Lee la tasa del input de la tarjeta (si ejecutivo la modificó); sino usa el rango correspondiente
 function _getTasaFromCard(name){
   const s = _safeName(name);
   const input = document.getElementById('aseg-tasa-input-'+s);
   if(input){ const v=parseFloat(input.value); if(!isNaN(v)&&v>0) return v/100; }
-  return _getTasas()[name] ?? (ASEGURADORAS[name]?.tasa||0.035);
+  const va  = parseFloat(document.getElementById('cot-va')?.value)||0;
+  const ext = parseFloat(document.getElementById('cot-extras')?.value)||0;
+  return _getTasaRango(name, va + ext);
 }
 
 let currentUser = null;
@@ -1314,8 +1338,8 @@ function calcCotizacion(){
   const results = Object.entries(ASEGURADORAS)
     .filter(([name]) => selectedAseg.includes(name))
     .map(([name, cfg]) => {
-      // Tasa: usa la editada en Admin → Tasas; si no hay, usa la del config (fallback)
-      const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : (_getTasas()[name] ?? cfg.tasa);
+      // Tasa: lee el input de la tarjeta si fue editado; si no, usa el rango de SA configurado en Admin
+      const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : _getTasaFromCard(name);
       const axaInc   = name === 'SWEADEN' ? axaActivo : false;
       const vida     = vidaInputs[name] !== undefined ? vidaInputs[name] : 0;
       const p = calcPrima(vaT, tasa, cfg.pnMin, axaInc, vida, cfg.extraFijo||0);
@@ -1507,7 +1531,7 @@ function _abrirCierreDirecto(id){
   let total=0,pn=0,tcN=12,debN=10,tcCuota=0,debCuota=0;
   if(cfg&&va>0){
     const [asegKey,cfgObj]=cfg;
-    const tasa=typeof cfgObj.tasa==='function'?cfgObj.tasa(va):(_getTasas()[asegKey]??cfgObj.tasa);
+    const tasa=typeof cfgObj.tasa==='function'?cfgObj.tasa(va):_getTasaRango(asegKey,va);
     const p=calcPrima(va,tasa,cfgObj.pnMin||0);
     const tc=calcCuotasTc(p.total,cfgObj.tcMax||12,12,cfgObj.pisoTC||0);
     const deb=calcCuotasDeb(p.total,10,cfgObj.pisoDeb||0);
@@ -3696,93 +3720,108 @@ function guardarComisionesAdmin(){
 }
 
 // ══════════════════════════════════════════════════════
-//  ADMIN — TASAS POR ASEGURADORA
+//  ADMIN — TASAS POR ASEGURADORA (rangos de SA)
 // ══════════════════════════════════════════════════════
 function renderTasasAdmin(){
   const el = document.getElementById('admin-tasas-body'); if(!el) return;
-  const tasas = _getTasas();
-  const aseguradoras = Object.keys(TASAS_DEFAULT);
+  const tasas = _getTasasRangos();
+  const defs  = TASAS_RANGOS_DEFAULT;
   el.innerHTML = `
     <p style="font-size:12px;color:var(--muted);margin-bottom:14px">
-      Tasa base usada en el cotizador para calcular la prima neta de cada aseguradora.
-      El Admin actualiza estos valores cuando la aseguradora cambia su tarifa —
-      todos los ejecutivos verán los precios actualizados automáticamente.
+      Tasa por <b>rango de suma asegurada</b>. El cotizador aplica automáticamente la tasa
+      del rango que corresponde al valor del vehículo ingresado.
     </p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px">
-      ${aseguradoras.map(a=>{
-        const cfg = ASEGURADORAS[a]||{};
-        const tasaActual = (tasas[a] ?? TASAS_DEFAULT[a]) * 100;
-        const tasaDefault = (TASAS_DEFAULT[a] * 100).toFixed(2);
-        const esModificada = Math.abs((tasas[a]??TASAS_DEFAULT[a]) - TASAS_DEFAULT[a]) > 0.00001;
-        return `<div class="card" style="margin:0;border:${esModificada?'2px solid var(--accent)':''}">
-          <div class="card-body" style="padding:12px">
-            <div style="font-weight:700;font-size:12px;color:${cfg.color||'var(--ink)'};margin-bottom:8px">${a}</div>
-            <div style="display:flex;align-items:center;gap:6px">
-              <input class="form-input" type="number" min="0.1" max="20" step="0.01"
-                id="tasa-${a.replace(/[^a-zA-Z0-9]/g,'_')}"
-                value="${tasaActual.toFixed(2)}"
-                style="text-align:right;font-family:'DM Mono',monospace;font-size:14px;font-weight:700;width:80px;padding:4px 8px">
-              <span style="font-size:13px;font-weight:600;color:var(--muted)">%</span>
-            </div>
-            <div style="font-size:10px;color:var(--muted);margin-top:4px">
-              ${esModificada ? `<span style="color:var(--accent)">● Modificada</span> · default: ${tasaDefault}%` : `Default: ${tasaDefault}%`}
-            </div>
-          </div>
-        </div>`;
-      }).join('')}
+    <div style="overflow-x:auto;margin-bottom:16px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">
+        <thead>
+          <tr style="background:var(--bg2,#f5f5f5)">
+            <th style="text-align:left;padding:8px 10px;border:1px solid var(--border,#ddd);white-space:nowrap">Aseguradora</th>
+            ${RANGOS_LABEL.map(l=>`<th style="text-align:center;padding:8px 10px;border:1px solid var(--border,#ddd);white-space:nowrap;font-size:11px">${l}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${Object.keys(ASEGURADORAS).map(name=>{
+            const cfg = ASEGURADORAS[name]||{};
+            const r   = tasas[name] || defs[name] || [];
+            const d   = defs[name]  || [];
+            const mod = r.some((t,i)=>Math.abs(t-(d[i]||t))>0.00001);
+            return `<tr${mod?' style="background:#fff8f0"':''}>
+              <td style="padding:7px 10px;border:1px solid var(--border,#ddd);font-weight:700;color:${cfg.color||'var(--ink)'};white-space:nowrap">
+                ${name}${mod?` <span style="font-size:9px;color:var(--accent,#c84b1a)">●</span>`:''}
+              </td>
+              ${RANGOS_VA.map((_,i)=>`
+                <td style="padding:4px 6px;border:1px solid var(--border,#ddd)">
+                  <div style="display:flex;align-items:center;justify-content:center;gap:2px">
+                    <input type="number" id="adm-tr-${_safeName(name)}-${i}"
+                           value="${((r[i]??d[i]??0.035)*100).toFixed(2)}"
+                           min="0.01" max="20" step="0.01"
+                           style="width:58px;border:1px solid #ccc;border-radius:4px;padding:3px 4px;font-size:12px;font-family:'DM Mono',monospace;text-align:right;font-weight:600">
+                    <span style="font-size:11px;color:var(--muted)">%</span>
+                  </div>
+                </td>`).join('')}
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
     </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" style="flex:1" onclick="guardarTasasAdmin()">💾 Guardar tasas</button>
-      <button class="btn btn-ghost" onclick="restaurarTasasDefault()" title="Volver a los valores originales del sistema">↺ Restaurar defaults</button>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="restaurarTasasDefault()" title="Volver a los valores por defecto">↺ Restaurar defaults</button>
+      <button class="btn btn-primary" onclick="guardarTasasAdmin()">💾 Guardar tasas</button>
     </div>`;
 }
 
 function guardarTasasAdmin(){
-  const tasas = {};
-  Object.keys(TASAS_DEFAULT).forEach(a=>{
-    const id = 'tasa-'+a.replace(/[^a-zA-Z0-9]/g,'_');
-    const el = document.getElementById(id);
-    if(el) tasas[a] = (parseFloat(el.value)||0) / 100; // % → decimal
+  const nuevas = {};
+  Object.keys(ASEGURADORAS).forEach(name=>{
+    const s = _safeName(name);
+    nuevas[name] = RANGOS_VA.map((_,i)=>{
+      const inp = document.getElementById(`adm-tr-${s}-${i}`);
+      const v = parseFloat(inp?.value)||0;
+      return v > 0 ? v/100 : (TASAS_RANGOS_DEFAULT[name]?.[i] || 0.035);
+    });
   });
-  _saveTasas(tasas);
-  showToast('✅ Tasas actualizadas — el cotizador usará los nuevos valores','success');
-  renderTasasAdmin(); // re-render para mostrar badges "Modificada"
-  // Si page-tasas está activa, también la actualizamos
+  _saveTasasRangos(nuevas);
+  showToast('✅ Tasas por rango actualizadas','success');
+  renderTasasAdmin();
   if(document.getElementById('page-tasas')?.classList.contains('active')) renderTasas();
 }
 
 function restaurarTasasDefault(){
   if(!confirm('¿Restaurar todas las tasas a los valores por defecto del sistema?')) return;
-  _saveTasas({...TASAS_DEFAULT});
+  localStorage.removeItem('_reliance_tasas_rangos');
   showToast('↺ Tasas restauradas a valores por defecto','info');
   renderTasasAdmin();
   if(document.getElementById('page-tasas')?.classList.contains('active')) renderTasas();
 }
 
-// ── Página "Tabla de Tasas" — muestra tasas actuales dinámicamente ────────────
+// ── Página "Tabla de Tasas" — muestra rangos de tasas actuales ────────────────
 function renderTasas(){
   const el = document.getElementById('tasas-dinamicas'); if(!el) return;
-  const tasas = _getTasas();
-  // Solo las 7 aseguradoras principales del cotizador Produbanco
+  const tasas = _getTasasRangos();
   const principales = ['SWEADEN','MAPFRE','ALIANZA','ZURICH','LATINA','GENERALI','ADS'];
   el.innerHTML = principales.map(name=>{
-    const cfg = ASEGURADORAS[name]||{};
-    const tasaActual = (tasas[name] ?? TASAS_DEFAULT[name] ?? cfg.tasa ?? 0) * 100;
-    const tasaDefault = (TASAS_DEFAULT[name] ?? cfg.tasa ?? 0) * 100;
-    const esModificada = Math.abs(tasaActual - tasaDefault) > 0.001;
+    const cfg  = ASEGURADORAS[name]||{};
+    const r    = tasas[name] || TASAS_RANGOS_DEFAULT[name] || [];
+    const d    = TASAS_RANGOS_DEFAULT[name] || [];
+    const mod  = r.some((t,i)=>Math.abs(t-(d[i]||t))>0.00001);
     return `<div class="card">
       <div class="card-header" style="background:${cfg.color||'#1a4c84'}18">
         <div class="card-title" style="color:${cfg.color||'var(--ink)'}">${name}</div>
-        ${esModificada ? `<span style="font-size:10px;color:var(--accent);font-weight:600">● Actualizada</span>` : ''}
+        ${mod?`<span style="font-size:10px;color:var(--accent);font-weight:600">● Actualizada</span>`:''}
       </div>
-      <div class="card-body" style="text-align:center">
-        <div style="font-size:36px;font-family:'DM Mono',monospace;font-weight:700;color:${cfg.color||'var(--ink)'};line-height:1.1">
-          ${tasaActual.toFixed(2)}%
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:6px">Tasa vigente en cotizador</div>
-        ${cfg.pnMin ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">Prima mínima: <b>$${cfg.pnMin}</b></div>` : ''}
-        ${cfg.tcMax ? `<div style="font-size:11px;color:var(--muted)">TC máx: <b>${cfg.tcMax} cuotas</b> · Débito: <b>${cfg.debMax||10} cuotas</b></div>` : ''}
-        ${esModificada ? `<div style="font-size:10px;color:var(--muted);margin-top:6px">Default: ${tasaDefault.toFixed(2)}%</div>` : ''}
+      <div class="card-body" style="padding:10px 12px">
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          ${RANGOS_LABEL.map((label,i)=>`
+            <tr>
+              <td style="padding:3px 0;color:var(--muted)">${label}</td>
+              <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:${cfg.color||'var(--ink)'}">
+                ${((r[i]??d[i]??0)*100).toFixed(2)}%
+              </td>
+            </tr>`).join('')}
+        </table>
+        ${cfg.pnMin?`<div style="font-size:10px;color:var(--muted);margin-top:8px;border-top:1px solid var(--border,#eee);padding-top:6px">
+          Prima mín: <b>$${cfg.pnMin}</b> · TC máx: <b>${cfg.tcMax} cuotas</b> · Débito: <b>${cfg.debMax||10} cuotas</b>
+        </div>`:''}
       </div>
     </div>`;
   }).join('');
