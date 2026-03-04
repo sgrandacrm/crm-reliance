@@ -234,6 +234,13 @@ async function doLogin(){
 }
 function doLogout(){
   currentUser=null;
+  // Limpiar intervals para que no sigan corriendo sin sesión activa
+  if(typeof _syncInterval  !== 'undefined' && _syncInterval)  { clearInterval(_syncInterval);  _syncInterval  = null; }
+  if(typeof _notifInterval !== 'undefined' && _notifInterval) { clearInterval(_notifInterval); _notifInterval = null; }
+  if(typeof _visibilityHandler !== 'undefined' && _visibilityHandler){
+    document.removeEventListener('visibilitychange', _visibilityHandler);
+    _visibilityHandler = null;
+  }
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('login-user').value='';
   document.getElementById('login-pass').value='';
@@ -310,7 +317,7 @@ function renderDashboard(){
   document.getElementById('stat-renov').textContent = mine.filter(c=>c.tipo==='RENOVACION').length;
   document.getElementById('stat-nuevo').textContent = mine.filter(c=>c.tipo==='NUEVO').length;
   document.getElementById('stat-venc30').textContent = venc30;
-  document.getElementById('stat-mes').textContent = `Febrero 2026`;
+  document.getElementById('stat-mes').textContent = new Date().toLocaleDateString('es-EC',{month:'long',year:'numeric'}).replace(/^\w/,c=>c.toUpperCase());
   document.getElementById('badge-clientes').textContent = mine.length;
 
   // Vencimientos próximos en dashboard
@@ -2048,7 +2055,14 @@ function printCotizacion(){
   const desde    = document.getElementById('cot-desde')?.value  || '—';
   const cuotasTcReq  = parseInt(document.getElementById('cot-cuotas-tc')?.value)||12;
   const cuotasDebReq = parseInt(document.getElementById('cot-cuotas-deb')?.value)||10;
-  const autoSustActivo = document.getElementById('sweaden-autosust')?.checked||false;
+  // Leer mismos toggles que calcCotizacion para garantizar precios idénticos al PDF
+  const axaActivo = document.getElementById('cot-axa')?.checked || false;
+  const vidaInputs = {
+    LATINA:  parseFloat(document.getElementById('cot-vida-latina')?.value)||0,
+    SWEADEN: parseFloat(document.getElementById('cot-vida-sweaden')?.value)||0,
+    MAPFRE:  parseFloat(document.getElementById('cot-vida-mapfre')?.value)||0,
+    ALIANZA: parseFloat(document.getElementById('cot-vida-alianza')?.value)||0,
+  };
   const exec     = currentUser ? currentUser.name : '—';
   const fecha    = new Date().toLocaleDateString('es-EC',{day:'2-digit',month:'long',year:'numeric'});
 
@@ -2059,12 +2073,13 @@ function printCotizacion(){
   const results = selected.map(name=>{
     const cfg = ASEGURADORAS[name];
     const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : cfg.tasa;
-    const p = calcPrima(vaT,tasa,cfg.pnMin);
-    const extraAutoSust = (name==='SWEADEN'&&autoSustActivo) ? 60 : 0;
-    const total = p.total + extraAutoSust;
-    const tc  = calcCuotasTc(total, cfg.tcMax, cuotasTcReq);
-    const deb = calcCuotasDeb(total, cuotasDebReq);
-    return {name,cfg,tasa,...p,total,extraAutoSust,tc,deb};
+    const axaInc = name === 'SWEADEN' ? axaActivo : false;
+    const vida   = vidaInputs[name] || 0;
+    // Usar exactamente la misma lógica que calcCotizacion()
+    const p = calcPrima(vaT, tasa, cfg.pnMin, axaInc, vida, cfg.extraFijo||0);
+    const tc  = calcCuotasTc(p.total, cfg.tcMax, cuotasTcReq, cfg.pisoTC||0);
+    const deb = calcCuotasDeb(p.total, Math.min(cuotasDebReq, cfg.debMax||cuotasDebReq), cfg.pisoDeb||0);
+    return {name,cfg,tasa,...p,tc,deb};
   });
   const minTotal = Math.min(...results.map(r=>r.total));
 
@@ -2168,10 +2183,15 @@ function printCotizacion(){
         <td class="col-cob">IVA 15%</td>
         ${results.map(r=>`<td>$${r.iva.toFixed(2)}</td>`).join('')}
       </tr>
-      ${results.some(r=>r.extraAutoSust>0)?`
+      ${results.some(r=>r.axa>0)?`
       <tr>
-        <td class="col-cob">🚗 Auto Sustituto</td>
-        ${results.map(r=>`<td class="sweaden-extra">${r.extraAutoSust>0?'$'+r.extraAutoSust.toFixed(2):'—'}</td>`).join('')}
+        <td class="col-cob">🛡 AXA / Auto Sustituto</td>
+        ${results.map(r=>`<td class="sweaden-extra">${r.axa>0?'$'+r.axa.toFixed(2):'—'}</td>`).join('')}
+      </tr>`:''}
+      ${results.some(r=>r.vida>0)?`
+      <tr>
+        <td class="col-cob">❤ Prima Vida</td>
+        ${results.map(r=>`<td>${r.vida>0?'$'+r.vida.toFixed(2):'—'}</td>`).join('')}
       </tr>`:''}
       <tr class="total-row">
         <td class="col-cob" style="font-weight:700">TOTAL</td>
@@ -2751,8 +2771,16 @@ function guardarGestion(){
   all.push(g);
   _saveBitacora(all);
 
-  // Sync SP
-  if(_spReady) spCreate('cobranzas', g);
+  // Sync SP — guardar _spId devuelto para poder eliminar después
+  if(_spReady){
+    spCreate('cobranzas', g).then(spId=>{
+      if(spId){
+        const stored = _getBitacora();
+        const idx = stored.findIndex(x=>x.id===g.id);
+        if(idx>=0){ stored[idx]._spId = spId; _saveBitacora(stored); }
+      }
+    });
+  }
 
   actualizarBadgeBitacora();
   closeModal('modal-gestion');
@@ -2762,8 +2790,12 @@ function guardarGestion(){
 
 function eliminarGestion(id){
   if(!confirm('¿Eliminar este registro de gestión?')) return;
-  const all = _getBitacora().filter(g=>g.id!==id);
-  _saveBitacora(all);
+  const all = _getBitacora();
+  const toDelete = all.find(g=>g.id===id);
+  const filtered = all.filter(g=>g.id!==id);
+  _saveBitacora(filtered);
+  // Sincronizar eliminación con SharePoint si el registro ya fue creado en SP
+  if(_spReady && toDelete?._spId) spDelete('cobranzas', toDelete._spId);
   actualizarBadgeBitacora();
   renderBitacora(_currentFiltroBitacora||'semana');
   showToast('Registro eliminado');
