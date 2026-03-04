@@ -1330,9 +1330,8 @@ function calcCotizacion(){
       <div class="aseg-total"><span class="aseg-total-key">COSTO TOTAL</span><span class="aseg-total-val">${fmt(r.total)}</span></div>
       <div class="aseg-cuota">💳 TC ${r.tc.n} cuotas: <b>${fmt(r.tc.cuota)}/mes</b></div>
       <div class="aseg-cuota">🏦 Débito ${r.deb.n} cuotas: <b>${fmt(r.deb.cuota)}/mes</b></div>
-      <div style="margin-top:10px;display:flex;gap:4px">
-        <button class="btn btn-ghost btn-xs w-full" onclick="printOneAseg('${r.name}',${r.total.toFixed(2)},${r.pn.toFixed(2)},${r.tc.cuota.toFixed(2)},${r.deb.cuota.toFixed(2)},${r.tc.n},${r.deb.n})">🖨 PDF</button>
-        <button class="btn btn-blue btn-xs" onclick="enviarWhatsAppCotiz('${r.name}',${r.total.toFixed(2)},${r.tc.cuota.toFixed(2)},${r.tc.n})">📱 WA</button>
+      <div style="margin-top:10px">
+        <button class="btn btn-blue btn-xs w-full" onclick="enviarWhatsAppCotiz('${r.name}',${r.total.toFixed(2)},${r.tc.cuota.toFixed(2)},${r.tc.n})">📱 Enviar por WhatsApp</button>
       </div>
     </div>`;
   }).join('');
@@ -2059,7 +2058,7 @@ function printCotizacion(){
 
   const results = selected.map(name=>{
     const cfg = ASEGURADORAS[name];
-    const tasa = cfg.tasa(vaT);
+    const tasa = typeof cfg.tasa === 'function' ? cfg.tasa(vaT) : cfg.tasa;
     const p = calcPrima(vaT,tasa,cfg.pnMin);
     const extraAutoSust = (name==='SWEADEN'&&autoSustActivo) ? 60 : 0;
     const total = p.total + extraAutoSust;
