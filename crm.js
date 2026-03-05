@@ -1335,7 +1335,17 @@ function prefillCotizador(c){
   document.getElementById('cot-anio').value=c.anio||(new Date().getFullYear());
   document.getElementById('cot-modelo').value=c.modelo||'';
   document.getElementById('cot-placa').value=c.placa||'';
-  document.getElementById('cot-va').value=c.va||20000;
+  // Usar valor depreciado (AI del Excel) como VA sugerido si está disponible
+  document.getElementById('cot-va').value=c.dep||c.va||20000;
+  const depHintEl=document.getElementById('cot-dep-hint');
+  if(depHintEl){
+    if(c.dep && c.dep !== c.va){
+      depHintEl.textContent=`💡 Valor depreciado Excel: $${Number(c.dep).toLocaleString('es-EC')} · VA anterior: $${Number(c.va||0).toLocaleString('es-EC')}`;
+      depHintEl.style.display='block';
+    } else {
+      depHintEl.style.display='none';
+    }
+  }
   if(document.getElementById('cot-color'))  document.getElementById('cot-color').value=c.color||'';
   if(document.getElementById('cot-motor'))  document.getElementById('cot-motor').value=c.motor||'';
   if(document.getElementById('cot-chasis')) document.getElementById('cot-chasis').value=c.chasis||'';
@@ -1636,6 +1646,11 @@ function _abrirCierreDirecto(id){
   if(document.getElementById('cv-cuenta')) document.getElementById('cv-cuenta').value=c.cuentaBanc||c.cuenta||'';
   if(document.getElementById('cv-axavd')) document.getElementById('cv-axavd').value=c.obs&&c.obs.includes('AXA')&&c.obs.includes('VD')?'AXA+VD':c.obs&&c.obs.includes('AXA')?'AXA':c.obs&&c.obs.includes('VD')?'VD':'';
   ['cv-factura','cv-poliza','cv-observacion'].forEach(fid=>{ const el=document.getElementById(fid); if(el) el.value=''; });
+  // Pre-fill póliza anterior desde el cliente (AC del Excel)
+  const polAntDirEl=document.getElementById('cv-poliza-anterior');
+  if(polAntDirEl) polAntDirEl.value=c.polizaAnterior||c.polizaNueva||c.poliza||'';
+  const asegAntDirEl=document.getElementById('cv-aseg-anterior');
+  if(asegAntDirEl) asegAntDirEl.value=c.aseguradora||'';
   document.getElementById('cv-forma-pago').value='DEBITO_BANCARIO';
   renderCvFormaPago();
   openModal('modal-cierre-venta');
@@ -2139,6 +2154,8 @@ function guardarCierreVenta(){
     // Actualizar cliente en DB solo al registrar un cierre nuevo (no al editar)
     if(c){
       c._dirty = true;
+      // Preservar póliza vigente como anterior (AC del Excel) antes de sobreescribir con la nueva
+      if(c.polizaNueva) c.polizaAnterior=c.polizaNueva;
       c.polizaNueva=poliza; c.factura=factura; c.aseguradora=aseg;
       c.desde=desde; c.hasta=hasta; c.formaPago=pago;
       c.primaTotal=total; c.axavd=axavd;
@@ -3782,7 +3799,7 @@ function irAEmision(id){
   const polAntEl=document.getElementById('cv-poliza-anterior');
   const asegAntEl=document.getElementById('cv-aseg-anterior');
   const clienteData=cotiz.clienteId?DB.find(x=>String(x.id)===String(cotiz.clienteId)):null;
-  if(polAntEl&&clienteData) polAntEl.value=clienteData.poliza||'';
+  if(polAntEl&&clienteData) polAntEl.value=clienteData.polizaAnterior||clienteData.polizaNueva||clienteData.poliza||'';
   if(asegAntEl&&clienteData) asegAntEl.value=clienteData.aseguradora||'';
   // Pre-fill cuenta Produbanco desde el cliente
   const cuentaEl=document.getElementById('cv-cuenta');
