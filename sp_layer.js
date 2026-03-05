@@ -1007,7 +1007,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(!colsDone || !['3','4','5','6','7','8','9','10'].includes(colsDone)){
+      if(!colsDone || !['3','4','5','6','7','8','9','10','11'].includes(colsDone)){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -1029,7 +1029,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','10');
+        localStorage.setItem('sp_cols_done','11');
         if(setupEl) setupEl.style.display='none';
       }
     }
