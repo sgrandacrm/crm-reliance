@@ -423,6 +423,8 @@ function openModal(id){document.getElementById(id).classList.add('open')}
 // ══════════════════════════════════════════════════════
 const pageTitles={dashboard:'Dashboard',cierres:'Cierres de Venta',clientes:'Cartera de Clientes',vencimientos:'Vencimientos de Pólizas',calendario:'Calendario de Vencimientos',seguimiento:'Seguimiento de Clientes',cotizador:'Cotizador de Primas',comparativo:'Comparativo de Coberturas',tasas:'Tabla de Tasas',admin:'Panel de Administración','nuevo-cliente':'Registrar Cliente',cobranza:'Módulo de Cobranza',bitacora:'Bitácora de Gestión'};
 function showPage(id){
+  // Cerrar cualquier modal abierto al cambiar de módulo
+  document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   const navItems = document.querySelectorAll('.nav-item');
   navItems.forEach(n=>n.classList.remove('active'));
@@ -1631,7 +1633,7 @@ function _abrirCierreDirecto(id){
   document.getElementById('cv-hasta').value=hoyPlus1.toISOString().split('T')[0];
   document.getElementById('cv-pn').value=pn>0?pn.toFixed(2):'';
   document.getElementById('cv-total-val').value=total>0?total.toFixed(2):'';
-  if(document.getElementById('cv-cuenta')) document.getElementById('cv-cuenta').value=c.cuenta||'';
+  if(document.getElementById('cv-cuenta')) document.getElementById('cv-cuenta').value=c.cuentaBanc||c.cuenta||'';
   if(document.getElementById('cv-axavd')) document.getElementById('cv-axavd').value=c.obs&&c.obs.includes('AXA')&&c.obs.includes('VD')?'AXA+VD':c.obs&&c.obs.includes('AXA')?'AXA':c.obs&&c.obs.includes('VD')?'VD':'';
   ['cv-factura','cv-poliza','cv-observacion'].forEach(fid=>{ const el=document.getElementById(fid); if(el) el.value=''; });
   document.getElementById('cv-forma-pago').value='DEBITO_BANCARIO';
@@ -1702,7 +1704,7 @@ function abrirCierreVenta(asegNombre, total, pn, cuotaTc, cuotaDeb, nTc, nDeb){
   document.getElementById('cv-total-val').value=total.toFixed(2);
   // Buscar cuenta del cliente por nombre
   const cMatch=DB.find(x=>x.nombre.trim().toUpperCase()===clienteNombre.trim().toUpperCase());
-  if(cMatch&&document.getElementById('cv-cuenta')) document.getElementById('cv-cuenta').value=cMatch.cuenta||'';
+  if(cMatch&&document.getElementById('cv-cuenta')) document.getElementById('cv-cuenta').value=cMatch.cuentaBanc||cMatch.cuenta||'';
   if(document.getElementById('cv-axavd')) document.getElementById('cv-axavd').value='';
   ['cv-factura','cv-poliza','cv-fecha-cobro-inicial','cv-observacion'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('cv-forma-pago').value='DEBITO_BANCARIO';
@@ -2143,6 +2145,18 @@ function guardarCierreVenta(){
       saveDB();
       sincronizarCotizPorCliente(c.id, c.nombre, c.ci, 'RENOVADO');
     }
+
+    // Marcar cotización de origen como EMITIDA (independiente del estado actual)
+    if(cierreVentaData.fromCotizacion){
+      const allCotiz=_getCotizaciones();
+      const ci=allCotiz.findIndex(x=>String(x.id)===String(cierreVentaData.fromCotizacion));
+      if(ci>=0&&!['EMITIDA','REEMPLAZADA'].includes(allCotiz[ci].estado)){
+        allCotiz[ci].estado='EMITIDA';
+        allCotiz[ci].fechaAcept=allCotiz[ci].fechaAcept||new Date().toISOString().split('T')[0];
+        allCotiz[ci]._dirty=true;
+        _saveCotizaciones(allCotiz);
+      }
+    }
   }
 
   // Reset modo edición y botón
@@ -2153,6 +2167,7 @@ function guardarCierreVenta(){
   closeModal('modal-cierre-venta');
   renderDashboard();
   renderCierres();
+  renderCotizaciones();
   actualizarBadgeCotizaciones();
   actualizarBadgeCobranza();
 }
@@ -3446,9 +3461,9 @@ function sincronizarCotizPorCliente(clienteId, clienteNombre, clienteCI, nuevoEs
     const all = _getCotizaciones();
     let changed = false;
 
-    // Buscar cotizaciones EN EMISIÓN vinculadas a este cliente
+    // Buscar cotizaciones EN EMISIÓN o ACEPTADA vinculadas a este cliente
     all.forEach(cot=>{
-      if(cot.estado !== 'EN EMISIÓN') return;
+      if(!['EN EMISIÓN','ACEPTADA'].includes(cot.estado)) return;
       const vinculada =
         (clienteId  && String(cot.clienteId) === String(clienteId)) ||
         (clienteCI  && clienteCI.length>3 && cot.clienteCI === clienteCI) ||
@@ -3664,6 +3679,9 @@ function irAEmision(id){
   const clienteData=cotiz.clienteId?DB.find(x=>String(x.id)===String(cotiz.clienteId)):null;
   if(polAntEl&&clienteData) polAntEl.value=clienteData.poliza||'';
   if(asegAntEl&&clienteData) asegAntEl.value=clienteData.aseguradora||'';
+  // Pre-fill cuenta Produbanco desde el cliente
+  const cuentaEl=document.getElementById('cv-cuenta');
+  if(cuentaEl&&clienteData) cuentaEl.value=clienteData.cuentaBanc||clienteData.cuenta||'';
   // Store tasa for saving
   if(r.tasa) cierreVentaData.tasa=r.tasa;
   recalcDesglose();
