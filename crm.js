@@ -2004,7 +2004,7 @@ function guardarCierreVenta(){
   const hasta=document.getElementById('cv-hasta').value;
   const aseg=document.getElementById('cv-nueva-aseg').value.trim();
   const fp=document.getElementById('cv-forma-pago').value;
-  const clienteNombre=document.getElementById('cv-cliente').value.trim();
+  const clienteNombre=(document.getElementById('cv-cliente').value.trim())||cierreVentaData.clienteNombre||'';
   const obs=document.getElementById('cv-observacion').value.trim();
   const errors=[];
   const totalVal=parseFloat(document.getElementById('cv-total-val')?.value)||0;
@@ -3658,6 +3658,18 @@ function irAEmision(id){
   };
 
   // Llenar campos y calcular ANTES de abrir modal
+  // Nombre del cliente (campo obligatorio — sin esto guardarCierreVenta guarda vacío)
+  const clienteNombreResuelto = cotiz.clienteNombre || (cliente ? cliente.nombre : '');
+  const clienteEl2 = document.getElementById('cv-cliente');
+  if(clienteEl2) clienteEl2.value = clienteNombreResuelto;
+  // Cabecera del modal
+  const cvAsegEl = document.getElementById('cv-aseg');
+  const cvTotalEl = document.getElementById('cv-total');
+  if(cvAsegEl) cvAsegEl.textContent = cotiz.asegElegida;
+  if(cvTotalEl) cvTotalEl.textContent = r.total > 0 ? `${fmt(r.total)} total` : 'Ingrese prima manualmente';
+  // Limpiar campos que no deben heredar valores de usos anteriores del formulario
+  ['cv-factura','cv-poliza','cv-observacion'].forEach(fid=>{ const el=document.getElementById(fid); if(el) el.value=''; });
+
   const pnEl    = document.getElementById('cv-pn');
   const desdeEl = document.getElementById('cv-desde');
   if(pnEl    && r.pn)        pnEl.value    = r.pn.toFixed(2);
