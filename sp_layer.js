@@ -34,6 +34,7 @@ const _cache = {
   cierres:      null,
   usuarios:     null,
   tareas:       null,
+  cobranzas:    null, // gestiones de cobranza (CRM_Cobranzas)
 };
 
 // ── Inicializar MSAL ─────────────────────────────────────────
@@ -205,7 +206,8 @@ async function spGetAll(listKey){
       }
       // Aplicar defaults según tipo de lista para evitar undefined en UI
       if(listKey==='cotizaciones'){
-        obj.clienteNombre = obj.clienteNombre || obj.Title || '(sin nombre)';
+        // NOTA: Title = codigo de cotización, NO el nombre del cliente
+        obj.clienteNombre = obj.clienteNombre || '';
         obj.codigo        = obj.codigo || obj.Title || '';
         obj.estado        = obj.estado || 'ENVIADA';
         obj.fecha         = obj.fecha  || '';
@@ -233,7 +235,8 @@ async function spGetAll(listKey){
         obj.va           = obj.va || 0;
       }
       if(listKey==='cierres'){
-        obj.clienteNombre = obj.clienteNombre || obj.Title || '(sin nombre)';
+        // NOTA: Title = polizaNueva, NO el nombre del cliente — nunca usar como fallback de clienteNombre
+        obj.clienteNombre = obj.clienteNombre || '';
         obj.aseguradora   = obj.aseguradora || '';
         obj.primaTotal    = obj.primaTotal || 0;
         obj.fechaRegistro = obj.fechaRegistro || '';
@@ -425,6 +428,7 @@ function spToFields(listKey, data){
     cobranzas: new Set([
       'Title','clienteId','clienteNombre','ejecutivo',
       'fecha','hora','tipo','resultado','nota','seguimiento','crm_id',
+      'cierreId','cuotaIdx',
     ]),
   };
   const permitidos = validos[listKey] || new Set();
@@ -439,6 +443,8 @@ function spToFields(listKey, data){
     // Fase 1 — cierres desglose
     'derechosEmision','segCampesino','supBancos','iva',
     'vidaPrima','axaPrima','cuotaInicial','numCuotas','valorCuota','tasaAplicada',
+    // Cobranzas gestión
+    'cuotaIdx',
   ]);
   const ignorar    = new Set(['id','nombre','name','pass','password','_spId','_dirty','_spEtag']);
 
@@ -544,6 +550,7 @@ async function spSetupLists(onProgress){
       {name:'hora',type:'Text'},{name:'tipo',type:'Text'},
       {name:'resultado',type:'Text'},{name:'nota',type:'Note'},
       {name:'seguimiento',type:'Text'},{name:'crm_id',type:'Text'},
+      {name:'cierreId',type:'Text'},{name:'cuotaIdx',type:'Number'},
     ],
   };
 
@@ -873,11 +880,13 @@ async function spAsegurarColumnas(logCol){
       {name:'ejecutivo',text:{}},
       {name:'fecha',text:{}},
       {name:'hora',text:{}},
-      {name:'tipo',text:{}},       // LLAMADA / WHATSAPP / EMAIL / VISITA / COBRO / OTRO
-      {name:'resultado',text:{}},  // CONTACTADO / NO_CONTESTA / PROMESA_PAGO / PAGO_REALIZADO / ...
+      {name:'tipo',text:{}},        // LLAMADA / WHATSAPP / EMAIL / VISITA / NOTA
+      {name:'resultado',text:{}},   // PAGADO / IMPAGO / (vacío = sin cambio)
       {name:'nota',text:{allowMultipleLines:true}},
       {name:'seguimiento',text:{}}, // Fecha próximo seguimiento yyyy-mm-dd
       {name:'crm_id',text:{}},
+      {name:'cierreId',text:{}},    // ID del cierre al que pertenece esta gestión
+      {name:'cuotaIdx',number:{}},  // Índice de la cuota (0-based)
     ],
   };
 

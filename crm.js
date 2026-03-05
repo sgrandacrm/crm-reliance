@@ -2901,6 +2901,8 @@ function guardarGestionCobranza(){
   };
   all.unshift(entrada);
   _saveGestionCobranza(all);
+  // Sincronizar con SharePoint (fire-and-forget)
+  if(typeof spCreate === 'function') spCreate('cobranzas', entrada).catch(e=>console.warn('SP gest cobr:', e));
   // Si se indicó cambio de estado, aplicarlo
   if(resultado==='PAGADO'||resultado==='IMPAGO'){
     marcarCuota(_gestionCobranzaActiva.cierreId, _gestionCobranzaActiva.cuotaIdx, resultado);
@@ -6183,12 +6185,13 @@ async function _syncFromSP(){
     const prevHashC   = prevC.length   + '|' + (prevC[prevC.length-1]?._spId||'');
     const prevHashT   = prevT.length   + '|' + (prevT[prevT.length-1]?._spId||'');
 
-    // Cargar las 4 listas en paralelo (spGetAll actualiza _cache internamente)
-    const [clientes, cotizaciones, cierres, tareas] = await Promise.all([
+    // Cargar las listas en paralelo (spGetAll actualiza _cache internamente)
+    const [clientes, cotizaciones, cierres, tareas, gestCobr] = await Promise.all([
       spGetAll('clientes'),
       spGetAll('cotizaciones'),
       spGetAll('cierres'),
       spGetAll('tareas'),
+      spGetAll('cobranzas'),
     ]);
 
     // Una sola query al DOM para toda la función
@@ -6223,6 +6226,21 @@ async function _syncFromSP(){
       actualizarBadgeTareas();
       renderDashTareas();
       if(pg==='page-calendario') renderCalendario();
+    }
+    // Gestiones de cobranza (append-only: solo agregar las que no existen localmente)
+    if(gestCobr && gestCobr.length){
+      const localG = _getGestionCobranza();
+      let changed = false;
+      gestCobr.forEach(sg=>{
+        if(!localG.find(lg=>String(lg.id)===String(sg.id||sg.crm_id))){
+          localG.unshift(sg); changed=true;
+        }
+      });
+      if(changed){
+        localG.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+        _saveGestionCobranza(localG);
+        if(pg==='page-cobranza') renderCobranza(_currentFiltroCobranza||'mes');
+      }
     }
   }catch(e){ /* sync silencioso — no mostrar error */ }
 }
@@ -6291,15 +6309,26 @@ function _resetearCicloRenovacion(){
 
 async function initApp(){
   // Cargar todos los datos desde SharePoint en paralelo
-  const [cotiz, cierres, spUsers, spTareas] = await Promise.all([
+  const [cotiz, cierres, spUsers, spTareas, spGestCobr] = await Promise.all([
     spGetAll('cotizaciones'),
     spGetAll('cierres'),
     spGetAll('usuarios'),
     spGetAll('tareas'),
+    spGetAll('cobranzas'),
   ]);
   await loadDBAsync();
   _cache.cotizaciones = cotiz;
   _cache.cierres      = cierres;
+  // Fusionar gestiones de cobranza de SP con localStorage
+  if(spGestCobr && spGestCobr.length){
+    const localG = _getGestionCobranza();
+    const merged = [...localG];
+    spGestCobr.forEach(sg=>{
+      if(!merged.find(lg=>String(lg.id)===String(sg.id||sg.crm_id))) merged.push(sg);
+    });
+    merged.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+    _saveGestionCobranza(merged);
+  }
   _cache.usuarios     = spUsers;
   // Fusionar tareas SP con localStorage (SP tiene prioridad por _spId)
   if(spTareas && spTareas.length){
@@ -6339,7 +6368,6 @@ async function initApp(){
   actualizarBadgeCotizaciones();
   actualizarBadgeTareas();
   actualizarBadgeCobranza();
-  actualizarBadgeBitacora();
   renderDashTareas();
 
   // Ocultar login, mostrar app
