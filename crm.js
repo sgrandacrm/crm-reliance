@@ -2407,12 +2407,6 @@ function printCotizacion(){
       <tr><td class="col-cob">Auto Sustituto</td>${results.map(r=>`<td style="font-size:8px">${r.cfg.auto_sust}</td>`).join('')}</tr>
       <tr><td class="col-cob">Asist. Legal</td>${results.map(r=>`<td style="color:${(r.cfg.legal||'SÍ')==='SÍ'?'#2d6a4f':'#c84b1a'};font-weight:600">${r.cfg.legal||'SÍ'}</td>`).join('')}</tr>
       <tr><td class="col-cob">Asist. Exequial</td>${results.map(r=>`<td style="color:${r.cfg.exequial==='SÍ'?'#2d6a4f':'#c84b1a'};font-weight:600">${r.cfg.exequial}</td>`).join('')}</tr>
-      <tr><td class="col-cob">Vida/Muerte Acc.</td>${results.map(r=>`<td style="font-size:9px">${r.cfg.vida||'N/A'}</td>`).join('')}</tr>
-      <tr><td class="col-cob">Enf. Graves</td>${results.map(r=>`<td style="font-size:9px">${r.cfg.enf_graves||'N/A'}</td>`).join('')}</tr>
-      <tr><td class="col-cob">Renta Hosp.</td>${results.map(r=>`<td style="font-size:9px">${r.cfg.renta_hosp||'N/A'}</td>`).join('')}</tr>
-      <tr><td class="col-cob">Sepelio</td>${results.map(r=>`<td style="font-size:9px">${r.cfg.sepelio||'N/A'}</td>`).join('')}</tr>
-      <tr><td class="col-cob">Telemedicina</td>${results.map(r=>`<td style="font-size:9px">${r.cfg.telemedicina||'N/A'}</td>`).join('')}</tr>
-      <tr><td class="col-cob">Médico Domicilio</td>${results.map(r=>`<td style="font-size:9px">${r.cfg.medico_dom||'N/A'}</td>`).join('')}</tr>
 
       <tr class="section"><td class="col-cob" colspan="${results.length+1}">Deducibles</td></tr>
       <tr><td class="col-cob">Pérd. Parcial</td>${results.map(r=>`<td style="font-size:9px">${r.cfg.ded_parcial}</td>`).join('')}</tr>
@@ -2424,7 +2418,7 @@ function printCotizacion(){
   ${results.some(r=>r.vida>0)?`
   <div style="margin-top:16px;border:2px solid #2d6a4f;border-radius:6px;overflow:hidden;page-break-inside:avoid">
     <div style="background:#2d6a4f;color:#fff;padding:7px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px">
-      ❤ Planes de Vida / Asistencia Médica incluidos en esta cotización
+      ❤ Beneficios incluidos en esta cotización
     </div>
     <div style="padding:10px 12px;display:flex;flex-wrap:wrap;gap:14px;background:#f0faf4">
       ${results.filter(r=>r.vida>0&&r.planVida).map(r=>{
