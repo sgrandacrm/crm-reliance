@@ -433,7 +433,7 @@ function showPage(id){
   navItems.forEach(n=>{
     if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes("'"+id+"'")) n.classList.add('active');
   });
-  const renders={clientes:renderClientes,vencimientos:()=>showPage('seguimiento'),calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones,cobranza:()=>renderCobranza(_currentFiltroCobranza||'mes'),bitacora:()=>renderBitacora(_currentFiltroBitacora||'semana'),cotizador:()=>setTimeout(calcCotizacion,100),tasas:renderTasas};
+  const renders={clientes:renderClientes,vencimientos:()=>showPage('seguimiento'),calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones,cobranza:()=>renderCobranza(_currentFiltroCobranza||'mes'),cotizador:()=>setTimeout(calcCotizacion,100),tasas:renderTasas};
   if(renders[id]) renders[id]();
 }
 
@@ -1623,7 +1623,7 @@ function _abrirCierreDirecto(id){
     const deb=calcCuotasDeb(p.total,10,cfgObj.pisoDeb||0);
     total=p.total; pn=p.pn; tcN=tc.n; debN=deb.n; tcCuota=tc.cuota; debCuota=deb.cuota;
   }
-  cierreVentaData={asegNombre:aseg,total,pn,cuotaTc:tcCuota,cuotaDeb:debCuota,nTc:tcN,nDeb:debN,clienteId:id};
+  cierreVentaData={asegNombre:aseg,total,pn,cuotaTc:tcCuota,cuotaDeb:debCuota,nTc:tcN,nDeb:debN,clienteId:id,clienteNombre:c.nombre};
   document.getElementById('cv-aseg').textContent=aseg;
   document.getElementById('cv-total').textContent=total>0?`${fmt(total)} total`:'Ingrese prima manualmente';
   document.getElementById('cv-cliente').value=c.nombre;
@@ -1651,7 +1651,7 @@ function _continuarCierreSinCotiz(){
 // Valida cotización activa antes de abrir el cierre; enruta según el caso
 function abrirCierreDesdeCliente(id, skipEstadoCheck=false){
   const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
-  if(!skipEstadoCheck && c.estado!=='EMITIDO'){showToast('El estado debe ser EMITIDO para registrar un cierre','error');return;}
+  if(!skipEstadoCheck && !['RENOVADO','EMITIDO'].includes(c.estado)){showToast('El estado debe ser RENOVADO o EMITIDO para registrar un cierre','error');return;}
   currentSegIdx=id;
 
   const {cotiz, vencida}=_cotizParaCierre(c.id, c.ci, c.nombre);
@@ -1688,8 +1688,10 @@ function abrirCierreDesdeCliente(id, skipEstadoCheck=false){
 }
 
 function abrirCierreVenta(asegNombre, total, pn, cuotaTc, cuotaDeb, nTc, nDeb){
-  cierreVentaData={asegNombre,total,pn,cuotaTc,cuotaDeb,nTc,nDeb};
   const clienteNombre=document.getElementById('cot-nombre').value||'';
+  // Buscar cliente en DB para obtener ID y cuenta
+  const cMatch=DB.find(x=>x.nombre.trim().toUpperCase()===clienteNombre.trim().toUpperCase());
+  cierreVentaData={asegNombre,total,pn,cuotaTc,cuotaDeb,nTc,nDeb,clienteNombre,clienteId:cMatch?String(cMatch.id):null};
   const desde=document.getElementById('cot-desde').value||'';
   // Calcular fecha de hasta (1 año desde)
   let hastaVal='';
@@ -1702,8 +1704,6 @@ function abrirCierreVenta(asegNombre, total, pn, cuotaTc, cuotaDeb, nTc, nDeb){
   document.getElementById('cv-hasta').value=hastaVal;
   document.getElementById('cv-pn').value=pn.toFixed(2);
   document.getElementById('cv-total-val').value=total.toFixed(2);
-  // Buscar cuenta del cliente por nombre
-  const cMatch=DB.find(x=>x.nombre.trim().toUpperCase()===clienteNombre.trim().toUpperCase());
   if(cMatch&&document.getElementById('cv-cuenta')) document.getElementById('cv-cuenta').value=cMatch.cuentaBanc||cMatch.cuenta||'';
   if(document.getElementById('cv-axavd')) document.getElementById('cv-axavd').value='';
   ['cv-factura','cv-poliza','cv-fecha-cobro-inicial','cv-observacion'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
@@ -2004,7 +2004,7 @@ function guardarCierreVenta(){
   const hasta=document.getElementById('cv-hasta').value;
   const aseg=document.getElementById('cv-nueva-aseg').value.trim();
   const fp=document.getElementById('cv-forma-pago').value;
-  const clienteNombre=(document.getElementById('cv-cliente').value.trim())||cierreVentaData.clienteNombre||'';
+  const _cvClienteRaw=(document.getElementById('cv-cliente').value.trim())||cierreVentaData.clienteNombre||'';
   const obs=document.getElementById('cv-observacion').value.trim();
   const errors=[];
   const totalVal=parseFloat(document.getElementById('cv-total-val')?.value)||0;
@@ -2067,7 +2067,9 @@ function guardarCierreVenta(){
   const axavd=document.getElementById('cv-axavd')?.value||'';
 
   // Buscar cliente en DB
-  const c=cierreVentaData.clienteId ? DB.find(x=>String(x.id)===String(cierreVentaData.clienteId)) : DB.find(x=>x.nombre.trim().toUpperCase()===clienteNombre.trim().toUpperCase());
+  const c=cierreVentaData.clienteId ? DB.find(x=>String(x.id)===String(cierreVentaData.clienteId)) : DB.find(x=>x.nombre.trim().toUpperCase()===_cvClienteRaw.trim().toUpperCase());
+  // Resolver clienteNombre final con fallback a DB
+  const clienteNombre = _cvClienteRaw || (c ? c.nombre : '');
 
   // Armar registro de cierre
   // _clienteId y _placa usan prefijo _ para ser solo locales (no se envían a SharePoint)
@@ -2572,12 +2574,16 @@ function guardarCotizacion(){
 let _currentFiltroCobranza = 'mes';
 
 // Extrae todas las cuotas de un cierre con su estado actual
+// Normaliza estados legacy → PAGADO / IMPAGO
+function _normEstado(s){ return s==='COBRADO'||s==='PAGADO'?'PAGADO':'IMPAGO'; }
+
 function _getCuotasFromCierre(cierre){
   const fp = cierre.formaPago || {};
   const raw = cierre.cuotasEstado;
-  const estados = Array.isArray(raw) ? raw
+  const estadosRaw = Array.isArray(raw) ? raw
     : (typeof raw === 'string' && raw.startsWith('[')) ? (()=>{try{return JSON.parse(raw);}catch(e){return [];}})()
     : [];
+  const estados = estadosRaw.map(_normEstado);
 
   const cuotas = [];
   const base = {
@@ -2594,7 +2600,7 @@ function _getCuotasFromCierre(cierre){
       cuotas.push({...base,
         idx: i, fecha,
         monto: parseFloat(fp.cuotaMonto)||Math.round((cierre.primaTotal||0)/(fp.calendario.length||1)*100)/100,
-        estado: estados[i] || 'PENDIENTE',
+        estado: estados[i] || 'IMPAGO',
         nCuota: i+1, totalCuotas: fp.calendario.length,
         tipo: 'DÉBITO', banco: fp.banco||'Produbanco', cuenta: fp.cuenta||cierre.cuenta||'',
       });
@@ -2603,7 +2609,6 @@ function _getCuotasFromCierre(cierre){
     const nC = fp.nCuotas || 1;
     const cuotaMonto = parseFloat(fp.cuotaMonto) || Math.round((cierre.primaTotal||0)/nC*100)/100;
     for(let i=0; i<nC; i++){
-      // project dates monthly from fechaContacto
       let fecha = fp.fechaContacto || cierre.vigDesde || '';
       if(fecha && i>0){
         const d = new Date(fecha); d.setMonth(d.getMonth()+i);
@@ -2612,7 +2617,7 @@ function _getCuotasFromCierre(cierre){
       cuotas.push({...base,
         idx: i, fecha,
         monto: cuotaMonto,
-        estado: estados[i] || 'PENDIENTE',
+        estado: estados[i] || 'IMPAGO',
         nCuota: i+1, totalCuotas: nC,
         tipo: 'TC', banco: fp.banco||'',
       });
@@ -2621,14 +2626,14 @@ function _getCuotasFromCierre(cierre){
     cuotas.push({...base,
       idx: 0, fecha: fp.fechaCobro||cierre.vigDesde||'',
       monto: cierre.primaTotal||0,
-      estado: estados[0] || 'PENDIENTE',
+      estado: estados[0] || 'IMPAGO',
       nCuota: 1, totalCuotas: 1, tipo: 'CONTADO',
     });
   } else if(fp.forma === 'MIXTO'){
     cuotas.push({...base,
       idx: 0, fecha: fp.fechaInicial||cierre.vigDesde||'',
       monto: parseFloat(fp.montoInicial)||0,
-      estado: estados[0] || 'PENDIENTE',
+      estado: estados[0] || 'IMPAGO',
       nCuota: 1, totalCuotas: 1+(parseInt(fp.nCuotasResto)||0), tipo: 'MIXTO-INICIAL',
     });
     const nR = parseInt(fp.nCuotasResto||0);
@@ -2639,7 +2644,7 @@ function _getCuotasFromCierre(cierre){
       cuotas.push({...base,
         idx: i+1, fecha,
         monto: montoR,
-        estado: estados[i+1]||'PENDIENTE',
+        estado: estados[i+1]||'IMPAGO',
         nCuota: i+2, totalCuotas: 1+nR, tipo: 'MIXTO',
       });
     }
@@ -2656,7 +2661,8 @@ function _filtrarCuotas(cuotas, filtro){
   switch(filtro){
     case 'mes':    return cuotas.filter(c=>{ const d=new Date(c.fecha); return d>=iniMes&&d<=finMes; });
     case 'semana': return cuotas.filter(c=>{ const d=new Date(c.fecha); return d>=hoy&&d<=finSem; });
-    case 'vencidas': return cuotas.filter(c=>{ const d=new Date(c.fecha); return d<hoy&&c.estado==='PENDIENTE'; });
+    case 'vencidas': return cuotas.filter(c=>{ const d=new Date(c.fecha); return d<hoy&&c.estado==='IMPAGO'; });
+    case 'impago': return cuotas.filter(c=>c.estado==='IMPAGO');
     default: return cuotas;
   }
 }
@@ -2682,34 +2688,33 @@ function renderCobranza(filtro='mes'){
 
   // Aplicar búsqueda
   if(busq) cuotas = cuotas.filter(c=>
-    c.clienteNombre.toLowerCase().includes(busq) ||
-    c.polizaNueva.toLowerCase().includes(busq) ||
-    c.aseguradora.toLowerCase().includes(busq)
+    (c.clienteNombre||'').toLowerCase().includes(busq) ||
+    (c.polizaNueva||'').toLowerCase().includes(busq) ||
+    (c.aseguradora||'').toLowerCase().includes(busq)
   );
 
   // Stats
   const hoy = new Date(); hoy.setHours(0,0,0,0);
-  const pendientes = cuotas.filter(c=>c.estado==='PENDIENTE');
-  const cobradas   = cuotas.filter(c=>c.estado==='COBRADO');
-  const fallidas   = cuotas.filter(c=>c.estado==='FALLIDO');
-  const vencidas   = pendientes.filter(c=>new Date(c.fecha)<hoy);
-  const montoPend  = pendientes.reduce((s,c)=>s+c.monto, 0);
-  const montoCob   = cobradas.reduce((s,c)=>s+c.monto, 0);
+  const pagadas  = cuotas.filter(c=>c.estado==='PAGADO');
+  const impagas  = cuotas.filter(c=>c.estado==='IMPAGO');
+  const vencidas = impagas.filter(c=>new Date(c.fecha)<hoy);
+  const montoPag = pagadas.reduce((s,c)=>s+c.monto, 0);
+  const montoImp = impagas.reduce((s,c)=>s+c.monto, 0);
 
   const statsEl = document.getElementById('cobranza-stats');
   if(statsEl) statsEl.innerHTML = `
     <div class="stat-card"><div class="stat-value">${cuotas.length}</div><div class="stat-label">Total cuotas</div></div>
     <div class="stat-card" style="border-color:var(--red)"><div class="stat-value" style="color:var(--red)">${vencidas.length}</div><div class="stat-label">Vencidas / Urgentes</div></div>
-    <div class="stat-card" style="border-color:var(--green)"><div class="stat-value" style="color:var(--green)">${fmt(montoCob)}</div><div class="stat-label">Monto cobrado</div></div>
-    <div class="stat-card" style="border-color:var(--accent)"><div class="stat-value" style="color:var(--accent)">${fmt(montoPend)}</div><div class="stat-label">Monto pendiente</div></div>
+    <div class="stat-card" style="border-color:var(--green)"><div class="stat-value" style="color:var(--green)">${fmt(montoPag)}</div><div class="stat-label">Monto pagado</div></div>
+    <div class="stat-card" style="border-color:var(--accent)"><div class="stat-value" style="color:var(--accent)">${fmt(montoImp)}</div><div class="stat-label">Monto impago</div></div>
   `;
 
   document.getElementById('cobranza-count').textContent = `${cuotas.length} cuota${cuotas.length!==1?'s':''}`;
 
   // Ordenar: vencidas primero, luego por fecha asc
   cuotas.sort((a,b)=>{
-    const av=new Date(a.fecha)<hoy&&a.estado==='PENDIENTE';
-    const bv=new Date(b.fecha)<hoy&&b.estado==='PENDIENTE';
+    const av=new Date(a.fecha)<hoy&&a.estado==='IMPAGO';
+    const bv=new Date(b.fecha)<hoy&&b.estado==='IMPAGO';
     if(av!==bv) return av?-1:1;
     return (a.fecha||'').localeCompare(b.fecha||'');
   });
@@ -2724,22 +2729,30 @@ function renderCobranza(filtro='mes'){
   }
 
   const estadoBadgeCob = (e, fecha) => {
-    const venc = new Date(fecha) < hoy && e==='PENDIENTE';
-    if(e==='COBRADO')  return `<span class="badge badge-green">✅ Cobrado</span>`;
-    if(e==='FALLIDO')  return `<span class="badge badge-red">❌ Fallido</span>`;
-    if(venc)           return `<span class="badge badge-red">⚠️ Vencida</span>`;
-    return `<span class="badge badge-orange">⏳ Pendiente</span>`;
+    const venc = new Date(fecha) < hoy && e==='IMPAGO';
+    if(e==='PAGADO') return `<span class="badge badge-green">✅ Pagado</span>`;
+    if(venc)         return `<span class="badge badge-red">⚠️ Vencida</span>`;
+    return `<span class="badge badge-orange">⏳ Impago</span>`;
   };
   const tipoBadge = t => {
     const cfg = {DÉBITO:'#1a4c84','TC':'#7c4dff','CONTADO':'#2d6a4f','MIXTO':'#e65100','MIXTO-INICIAL':'#e65100'};
     return `<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;background:${cfg[t]||'#555'}22;color:${cfg[t]||'#555'}">${t}</span>`;
   };
 
-  const rows = cuotas.map(c=>`
-    <tr style="border-bottom:1px solid var(--border)${new Date(c.fecha)<hoy&&c.estado==='PENDIENTE'?';background:#fff3e0':''}">
+  // Contar gestiones por cuota para el badge
+  const allGest = _getGestionCobranza();
+  const gestCount = {};
+  allGest.forEach(g=>{ const k=`${g.cierreId}_${g.cuotaIdx}`; gestCount[k]=(gestCount[k]||0)+1; });
+
+  const rows = cuotas.map(c=>{
+    const gestKey = `${c.cierreId}_${c.idx}`;
+    const nGest = gestCount[gestKey]||0;
+    const venc = new Date(c.fecha)<hoy && c.estado==='IMPAGO';
+    return `
+    <tr style="border-bottom:1px solid var(--border)${venc?';background:#fff3e0':''}">
       <td style="padding:8px 12px;font-size:12px">
-        <div style="font-weight:600">${c.clienteNombre}</div>
-        <div style="color:var(--muted);font-size:11px">${c.aseguradora}</div>
+        <div style="font-weight:600">${c.clienteNombre||'—'}</div>
+        <div style="color:var(--muted);font-size:11px">${c.aseguradora||'—'}</div>
       </td>
       <td style="padding:8px 12px;font-size:11px;font-family:'DM Mono',monospace">${c.polizaNueva||'—'}</td>
       <td style="padding:8px 12px;text-align:center">${tipoBadge(c.tipo)}</td>
@@ -2750,14 +2763,15 @@ function renderCobranza(filtro='mes'){
       <td style="padding:8px 12px;text-align:right;font-weight:700;color:var(--green)">${fmt(c.monto)}</td>
       <td style="padding:8px 12px">${estadoBadgeCob(c.estado, c.fecha)}</td>
       <td style="padding:8px 12px">
-        <div style="display:flex;gap:4px">
-          ${c.estado!=='COBRADO'?`<button class="btn btn-sm btn-green" title="Marcar cobrada" onclick="marcarCuota('${c.cierreId}',${c.idx},'COBRADO')" style="padding:3px 8px;font-size:11px">✅</button>`:''}
-          ${c.estado!=='FALLIDO'?`<button class="btn btn-sm" title="Marcar fallida" onclick="marcarCuota('${c.cierreId}',${c.idx},'FALLIDO')" style="padding:3px 8px;font-size:11px;background:var(--red);color:#fff;border:none">❌</button>`:''}
-          ${c.estado!=='PENDIENTE'?`<button class="btn btn-sm btn-ghost" title="Restablecer" onclick="marcarCuota('${c.cierreId}',${c.idx},'PENDIENTE')" style="padding:3px 8px;font-size:11px">↩</button>`:''}
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          ${c.estado!=='PAGADO'?`<button class="btn btn-sm btn-green" title="Marcar pagada" onclick="marcarCuota('${c.cierreId}',${c.idx},'PAGADO')" style="padding:3px 8px;font-size:11px">✅ Pagado</button>`:''}
+          ${c.estado!=='IMPAGO'?`<button class="btn btn-sm btn-ghost" title="Marcar impago" onclick="marcarCuota('${c.cierreId}',${c.idx},'IMPAGO')" style="padding:3px 8px;font-size:11px">⏳ Impago</button>`:''}
+          <button class="btn btn-sm btn-ghost" title="Gestión / Historial" onclick="abrirGestionCobranza('${c.cierreId}',${c.idx},'${(c.clienteNombre||'').replace(/'/g,"\\'")}')" style="padding:3px 8px;font-size:11px">📝${nGest>0?` <span style="background:var(--accent);color:#fff;border-radius:8px;padding:0 5px;font-size:10px">${nGest}</span>`:''}</button>
           <button class="btn btn-sm btn-ghost" title="Enviar recordatorio WhatsApp" onclick="enviarRecordatorioCobranza('${c.cierreId}',${c.idx})" style="padding:3px 8px;font-size:11px">📲</button>
         </div>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   wrap.innerHTML = `<div class="tbl-wrap"><table>
     <thead><tr>
@@ -2776,16 +2790,15 @@ function marcarCuota(cierreId, cuotaIdx, estado){
   const fp = cierre.formaPago||{};
   const nCuotas = fp.calendario?.length || fp.nCuotas || 1;
   if(!Array.isArray(cierre.cuotasEstado) || cierre.cuotasEstado.length < nCuotas){
-    cierre.cuotasEstado = Array(nCuotas).fill('PENDIENTE');
+    cierre.cuotasEstado = Array(nCuotas).fill('IMPAGO');
   }
   cierre.cuotasEstado[cuotaIdx] = estado;
   cierre._dirty = true;
   _saveCierres(allCierres);
   actualizarBadgeCobranza();
   renderCobranza(_currentFiltroCobranza||'mes');
-  const msgs = {COBRADO:'✅ Cuota cobrada',FALLIDO:'❌ Cuota marcada fallida',PENDIENTE:'↩ Cuota restablecida'};
-  const types = {COBRADO:'success',FALLIDO:'error',PENDIENTE:'info'};
-  showToast(msgs[estado]||estado, types[estado]||'info');
+  const msgs = {PAGADO:'✅ Cuota marcada como PAGADA',IMPAGO:'⏳ Cuota marcada como IMPAGO'};
+  showToast(msgs[estado]||estado, estado==='PAGADO'?'success':'info');
 }
 
 function enviarRecordatorioCobranza(cierreId, cuotaIdx){
@@ -2811,14 +2824,14 @@ function enviarRecordatorioCobranza(cierreId, cuotaIdx){
 function actualizarBadgeCobranza(){
   const allCierres = _getCierres();
   const hoy = new Date(); hoy.setHours(0,0,0,0);
-  let vencidas = 0;
+  let impagasVencidas = 0;
   allCierres.forEach(cierre=>{
     _getCuotasFromCierre(cierre).forEach(c=>{
-      if(c.estado==='PENDIENTE' && new Date(c.fecha)<hoy) vencidas++;
+      if(c.estado==='IMPAGO' && new Date(c.fecha)<hoy) impagasVencidas++;
     });
   });
   const el = document.getElementById('badge-cobranza');
-  if(el){ el.textContent=vencidas; el.style.display=vencidas>0?'':'none'; }
+  if(el){ el.textContent=impagasVencidas; el.style.display=impagasVencidas>0?'':'none'; }
 }
 
 function exportCobranzaExcel(){
@@ -2846,6 +2859,84 @@ function exportCobranzaExcel(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Cobranza');
   XLSX.writeFile(wb, `Cobranza_Reliance_${new Date().toISOString().split('T')[0]}.xlsx`);
+}
+
+// ══════════════════════════════════════════════════════
+//  GESTIÓN DE COBRANZA
+// ══════════════════════════════════════════════════════
+const _GEST_COBR_KEY = '_reliance_gest_cobr';
+function _getGestionCobranza(){ try{ return JSON.parse(localStorage.getItem(_GEST_COBR_KEY)||'[]'); }catch(e){return[];} }
+function _saveGestionCobranza(arr){ localStorage.setItem(_GEST_COBR_KEY, JSON.stringify(arr)); }
+
+let _gestionCobranzaActiva = null; // {cierreId, cuotaIdx, clienteNombre}
+
+function abrirGestionCobranza(cierreId, cuotaIdx, clienteNombre){
+  _gestionCobranzaActiva = {cierreId, cuotaIdx, clienteNombre};
+  document.getElementById('gcobr-titulo').textContent = `📝 Gestión — ${clienteNombre}`;
+  document.getElementById('gcobr-tipo').value = 'LLAMADA';
+  document.getElementById('gcobr-nota').value = '';
+  document.getElementById('gcobr-resultado').value = '';
+  document.getElementById('gcobr-seguimiento').value = '';
+  _renderGestionCobranzaHistorial(cierreId, cuotaIdx);
+  openModal('modal-gestion-cobranza');
+}
+
+function guardarGestionCobranza(){
+  if(!_gestionCobranzaActiva) return;
+  const tipo = document.getElementById('gcobr-tipo').value;
+  const nota = document.getElementById('gcobr-nota').value.trim();
+  const resultado = document.getElementById('gcobr-resultado').value;
+  const seguimiento = document.getElementById('gcobr-seguimiento').value;
+  if(!nota){ showToast('Ingresa una nota de gestión','error'); return; }
+  const all = _getGestionCobranza();
+  const entrada = {
+    id: Date.now(),
+    cierreId: _gestionCobranzaActiva.cierreId,
+    cuotaIdx: _gestionCobranzaActiva.cuotaIdx,
+    fecha: new Date().toISOString().split('T')[0],
+    hora: new Date().toLocaleTimeString('es-EC',{hour:'2-digit',minute:'2-digit'}),
+    tipo, nota, resultado, seguimiento,
+    ejecutivo: currentUser ? (currentUser.name||currentUser.id) : 'Sistema',
+    _dirty: true,
+  };
+  all.unshift(entrada);
+  _saveGestionCobranza(all);
+  // Si se indicó cambio de estado, aplicarlo
+  if(resultado==='PAGADO'||resultado==='IMPAGO'){
+    marcarCuota(_gestionCobranzaActiva.cierreId, _gestionCobranzaActiva.cuotaIdx, resultado);
+  }
+  showToast('✓ Gestión registrada','success');
+  _renderGestionCobranzaHistorial(_gestionCobranzaActiva.cierreId, _gestionCobranzaActiva.cuotaIdx);
+  document.getElementById('gcobr-nota').value = '';
+  document.getElementById('gcobr-resultado').value = '';
+  document.getElementById('gcobr-seguimiento').value = '';
+}
+
+function _renderGestionCobranzaHistorial(cierreId, cuotaIdx){
+  const all = _getGestionCobranza();
+  const entries = all.filter(g=>String(g.cierreId)===String(cierreId)&&g.cuotaIdx===cuotaIdx);
+  const wrap = document.getElementById('gcobr-historial');
+  if(!wrap) return;
+  if(!entries.length){
+    wrap.innerHTML='<div style="padding:16px;text-align:center;color:var(--muted);font-size:12px">Sin gestiones registradas aún</div>';
+    return;
+  }
+  const tipoIcon = {LLAMADA:'📞',WHATSAPP:'💬',EMAIL:'📧',VISITA:'🚗',NOTA:'📝'};
+  const resClr = {PAGADO:'var(--green)',IMPAGO:'var(--accent)'};
+  wrap.innerHTML = entries.map(g=>`
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div>
+          <span style="font-size:13px">${tipoIcon[g.tipo]||'•'}</span>
+          <strong style="margin-left:4px">${g.tipo}</strong>
+          ${g.resultado?`<span style="margin-left:8px;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700;background:${resClr[g.resultado]||'#888'}22;color:${resClr[g.resultado]||'#888'}">${g.resultado}</span>`:''}
+        </div>
+        <div style="color:var(--muted);font-size:11px;white-space:nowrap">${g.fecha} ${g.hora||''}</div>
+      </div>
+      <div style="margin-top:4px;color:var(--text)">${g.nota}</div>
+      ${g.seguimiento?`<div style="margin-top:3px;font-size:11px;color:var(--accent)">📅 Seguimiento: ${g.seguimiento}</div>`:''}
+      <div style="margin-top:3px;font-size:10px;color:var(--muted)">👤 ${g.ejecutivo||'—'}</div>
+    </div>`).join('');
 }
 
 // ══════════════════════════════════════════════════════
