@@ -782,7 +782,7 @@ async function spAsegurarColumnas(logCol){
       {name:'obs',text:{}},{name:'color',text:{}},
       {name:'motor',text:{}},{name:'chasis',text:{}},
       {name:'dep',number:{}},{name:'tasa',number:{}},
-      {name:'axavd',text:{}},{name:'formaPago',text:{}},
+      {name:'axavd',text:{}},{name:'formaPago',text:{allowMultipleLines:true}},
       {name:'historialWa',text:{allowMultipleLines:true}},
       {name:'bitacora',text:{allowMultipleLines:true}},
       {name:'crm_id',text:{}},
@@ -845,7 +845,7 @@ async function spAsegurarColumnas(logCol){
       {name:'clienteNombre',text:{}},{name:'aseguradora',text:{}},
       {name:'primaTotal',number:{}},{name:'primaNeta',number:{}},
       {name:'vigDesde',text:{}},{name:'vigHasta',text:{}},
-      {name:'formaPago',text:{}},{name:'facturaAseg',text:{}},
+      {name:'formaPago',text:{allowMultipleLines:true}},{name:'facturaAseg',text:{}},
       {name:'ejecutivo',text:{}},{name:'fechaRegistro',text:{}},
       {name:'observacion',text:{allowMultipleLines:true}},
       {name:'axavd',text:{}},{name:'polizaNueva',text:{}},
@@ -889,6 +889,33 @@ async function spAsegurarColumnas(logCol){
       {name:'cuotaIdx',number:{}},  // Índice de la cuota (0-based)
     ],
   };
+
+  // ── Paso 0: Eliminar columnas con tipo incorrecto para recrearlas ──────────
+  // formaPago fue creada como single-line (máx 255 chars) pero necesita multi-line
+  // porque almacena un JSON completo del plan de pago (>255 chars → 400 Bad Request)
+  const columnasParaRecrear = {
+    'CRM_Cierres':  ['formaPago'],
+    'CRM_Clientes': ['formaPago'],
+  };
+  for(const [listNameR, colsR] of Object.entries(columnasParaRecrear)){
+    const listIdR = await spGetListId(listNameR);
+    if(!listIdR){ continue; }
+    try{
+      const resp = await spGraph(`sites/${_siteId}/lists/${listIdR}/columns?$select=id,name&$top=200`);
+      for(const colName of colsR){
+        const colMeta = (resp.value||[]).find(c => c.name === colName);
+        if(colMeta && colMeta.id){
+          try{
+            await spGraph(`sites/${_siteId}/lists/${listIdR}/columns/${colMeta.id}`, 'DELETE');
+            logCol(`✓ Columna ${colName} eliminada de ${listNameR} (será recreada como multi-line)`);
+          }catch(eDel){
+            logCol(`⚠ No se pudo eliminar ${colName} de ${listNameR}: ${eDel.message||eDel}`);
+          }
+        }
+      }
+    }catch(eGet){ logCol(`⚠ Error al obtener columnas de ${listNameR}`); }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   for(const [listName, cols] of Object.entries(colsDef)){
     logCol(`Configurando ${listName}...`);
@@ -1007,7 +1034,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(colsDone !== '11'){
+      if(colsDone !== '12'){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -1029,7 +1056,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','11');
+        localStorage.setItem('sp_cols_done','12');
         if(setupEl) setupEl.style.display='none';
       }
     }
