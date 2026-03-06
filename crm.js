@@ -43,10 +43,15 @@ async function _flushComisiones(){
     const cache = Array.isArray(_cache.comisiones) ? [..._cache.comisiones] : [];
     for(const aseg of todasAseg){
       const existing = cache.find(x => x.Title === aseg || x.crm_id === aseg);
+      const t = tasas[aseg] || TASAS_RANGOS_DEFAULT[aseg] || [0,0,0,0,0];
       const data = {
         Title:       aseg,
         comisionPct: comis[aseg] !== undefined ? comis[aseg] : (COMISIONES_DEFAULT[aseg] || 0),
-        tasas:       JSON.stringify(tasas[aseg] || TASAS_RANGOS_DEFAULT[aseg] || []),
+        tasa_r1:     t[0] || 0,  // Hasta $10k
+        tasa_r2:     t[1] || 0,  // $10k–$20k
+        tasa_r3:     t[2] || 0,  // $20k–$30k
+        tasa_r4:     t[3] || 0,  // $30k–$50k
+        tasa_r5:     t[4] || 0,  // Más de $50k
         crm_id:      aseg,
       };
       try{
@@ -4033,7 +4038,7 @@ async function reconfigurarColumnasSP(){
   try{
     const logs = [];
     await spAsegurarColumnas(msg => { logs.push(msg); console.log('[SP cols]', msg); });
-    localStorage.setItem('sp_cols_done','16');
+    localStorage.setItem('sp_cols_done','17');
     showToast('✅ Listas y columnas configuradas — recargando…', 'success');
     console.log('[SP setup]', logs.join('\n'));
     setTimeout(()=>location.reload(), 1500);
@@ -6415,7 +6420,7 @@ async function _syncFromSP(){
         if(!item.Title) return;
         if(item.comisionPct !== undefined && item.comisionPct !== null)
           newComisObj[item.Title] = item.comisionPct;
-        try{ const t=JSON.parse(item.tasas||'[]'); if(t.length) newTasasObj[item.Title]=t; }catch(e){}
+        const t=[item.tasa_r1,item.tasa_r2,item.tasa_r3,item.tasa_r4,item.tasa_r5].map(v=>parseFloat(v)||0); if(t.some(v=>v>0)) newTasasObj[item.Title]=t;
       });
       const newComisStr = JSON.stringify(newComisObj);
       if(newComisStr !== prevComisStr){
@@ -6535,7 +6540,7 @@ async function initApp(){
       if(!item.Title) return;
       if(item.comisionPct !== undefined && item.comisionPct !== null)
         comisObj[item.Title] = item.comisionPct;
-      try{ const t=JSON.parse(item.tasas||'[]'); if(t.length) tasasObj[item.Title]=t; }catch(e){}
+      const t=[item.tasa_r1,item.tasa_r2,item.tasa_r3,item.tasa_r4,item.tasa_r5].map(v=>parseFloat(v)||0); if(t.some(v=>v>0)) tasasObj[item.Title]=t;
     });
     if(Object.keys(comisObj).length) localStorage.setItem('reliance_comisiones', JSON.stringify(comisObj));
     if(Object.keys(tasasObj).length) localStorage.setItem('_reliance_tasas_rangos', JSON.stringify(tasasObj));

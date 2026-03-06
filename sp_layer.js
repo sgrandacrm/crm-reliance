@@ -437,7 +437,9 @@ function spToFields(listKey, data){
       'cierreId','cuotaIdx',
     ]),
     comisiones: new Set([
-      'Title','comisionPct','tasas','crm_id',
+      'Title','comisionPct',
+      'tasa_r1','tasa_r2','tasa_r3','tasa_r4','tasa_r5', // una columna por rango de VA
+      'crm_id',
     ]),
   };
   const permitidos = validos[listKey] || new Set();
@@ -452,6 +454,8 @@ function spToFields(listKey, data){
     // Fase 1 — cierres desglose
     'derechosEmision','segCampesino','supBancos','iva',
     'vidaPrima','axaPrima','cuotaInicial','numCuotas','valorCuota','tasaAplicada',
+    // Comisiones — tasas por rango (5 rangos de VA)
+    'tasa_r1','tasa_r2','tasa_r3','tasa_r4','tasa_r5',
     // Cobranzas gestión
     'cuotaIdx',
   ]);
@@ -561,11 +565,15 @@ async function spSetupLists(onProgress){
       {name:'seguimiento',type:'Text'},{name:'crm_id',type:'Text'},
       {name:'cierreId',type:'Text'},{name:'cuotaIdx',type:'Number'},
     ],
-    // Configuración centralizada: una fila por aseguradora
+    // Configuración centralizada: una fila por aseguradora, una columna por rango
     CRM_Comisiones: [
-      {name:'comisionPct',type:'Number'},   // % comisión (ej: 15)
-      {name:'tasas',type:'Note'},           // JSON: [r1,r2,r3,r4,r5] tasas por rango VA
-      {name:'crm_id',type:'Text'},          // = nombre aseguradora (clave única)
+      {name:'comisionPct',type:'Number'},  // % comisión (ej: 15)
+      {name:'tasa_r1',type:'Number'},      // Tasa rango 1: Hasta $10k
+      {name:'tasa_r2',type:'Number'},      // Tasa rango 2: $10k–$20k
+      {name:'tasa_r3',type:'Number'},      // Tasa rango 3: $20k–$30k
+      {name:'tasa_r4',type:'Number'},      // Tasa rango 4: $30k–$50k
+      {name:'tasa_r5',type:'Number'},      // Tasa rango 5: Más de $50k
+      {name:'crm_id',type:'Text'},         // = nombre aseguradora
     ],
   };
 
@@ -915,9 +923,13 @@ async function spAsegurarColumnas(logCol){
     // Configuración centralizada de comisiones y tasas por aseguradora
     // Una fila por aseguradora — compartida entre todos los usuarios
     CRM_Comisiones: [
-      {name:'comisionPct',number:{}},                   // % comisión (ej: 15 para 15%)
-      {name:'tasas',text:{allowMultipleLines:true}},    // JSON: array de 5 tasas por rango de VA
-      {name:'crm_id',text:{}},                          // = nombre aseguradora (clave única)
+      {name:'comisionPct',number:{}},  // % comisión (ej: 15 para 15%)
+      {name:'tasa_r1',number:{}},      // Tasa rango 1: Hasta $10k  (decimal, ej: 0.043)
+      {name:'tasa_r2',number:{}},      // Tasa rango 2: $10k–$20k
+      {name:'tasa_r3',number:{}},      // Tasa rango 3: $20k–$30k
+      {name:'tasa_r4',number:{}},      // Tasa rango 4: $30k–$50k
+      {name:'tasa_r5',number:{}},      // Tasa rango 5: Más de $50k
+      {name:'crm_id',text:{}},         // = nombre aseguradora (clave única)
     ],
   };
 
@@ -1065,7 +1077,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(colsDone !== '16'){
+      if(colsDone !== '17'){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -1087,7 +1099,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','16');
+        localStorage.setItem('sp_cols_done','17');
         if(setupEl) setupEl.style.display='none';
       }
     }
