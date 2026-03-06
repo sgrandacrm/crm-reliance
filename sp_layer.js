@@ -780,7 +780,7 @@ async function spAsegurarColumnas(logCol){
       {name:'nota',text:{allowMultipleLines:true}},
       {name:'ultimoContacto',text:{}},
       {name:'factura',text:{}},{name:'poliza',text:{}},
-      {name:'polizaNueva',text:{}},{name:'aseguradoraAnterior',text:{}},
+      {name:'polizaNueva',text:{}},{name:'polizaAnterior',text:{}},{name:'aseguradoraAnterior',text:{}},
       {name:'obs',text:{}},{name:'color',text:{}},
       {name:'motor',text:{}},{name:'chasis',text:{}},
       {name:'dep',number:{}},{name:'tasa',number:{}},
@@ -1042,7 +1042,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(colsDone !== '13'){
+      if(colsDone !== '14'){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -1064,7 +1064,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','13');
+        localStorage.setItem('sp_cols_done','14');
         if(setupEl) setupEl.style.display='none';
       }
     }

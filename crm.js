@@ -3933,7 +3933,7 @@ async function reconfigurarColumnasSP(){
   try{
     const logs = [];
     await spAsegurarColumnas(msg => { logs.push(msg); console.log('[SP cols]', msg); });
-    localStorage.setItem('sp_cols_done','13');
+    localStorage.setItem('sp_cols_done','14');
     showToast('✅ Listas y columnas configuradas — recargando…', 'success');
     console.log('[SP setup]', logs.join('\n'));
     setTimeout(()=>location.reload(), 1500);
