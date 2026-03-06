@@ -636,6 +636,7 @@ function showClienteModal(id){
         <div class="detail-section">
           <div class="detail-section-title">Póliza</div>
           <div class="detail-row"><span class="detail-key">Tipo</span><span class="detail-val"><span class="badge ${c.tipo==='NUEVO'?'badge-blue':'badge-gold'}">${c.tipo}</span></span></div>
+          ${c.ramo?`<div class="detail-row"><span class="detail-key">Ramo</span><span class="detail-val">${c.ramo}</span></div>`:''}
           <div class="detail-row"><span class="detail-key">Aseguradora</span><span class="detail-val font-bold">${c.aseguradora||'—'}</span></div>
           <div class="detail-row"><span class="detail-key">Nº Póliza</span><span class="detail-val mono">${c.poliza||'—'}</span></div>
           <div class="detail-row"><span class="detail-key">OBS</span><span class="detail-val">${c.obs||'—'}</span></div>
@@ -653,6 +654,18 @@ function showClienteModal(id){
           })()}
         </div>
         ${c.comentario?`<div style="padding:10px 14px;background:var(--warm);border-radius:8px;font-size:12px;color:var(--muted)">💬 ${c.comentario}</div>`:''}
+        ${(c.garantia||c.cuentaBanc||c.prestamo||c.saldo||c.monto||c.estadoCredito||c.fechaDesembolso||c.fechaVtoCred)?`
+        <div class="detail-section" style="margin-top:10px">
+          <div class="detail-section-title">Crédito Produbanco</div>
+          ${c.garantia?`<div class="detail-row"><span class="detail-key">Garantía</span><span class="detail-val mono" style="font-size:10px">${c.garantia}</span></div>`:''}
+          ${c.cuentaBanc?`<div class="detail-row"><span class="detail-key">Cuenta</span><span class="detail-val mono">${c.cuentaBanc}</span></div>`:''}
+          ${c.prestamo?`<div class="detail-row"><span class="detail-key">N° Préstamo</span><span class="detail-val mono" style="font-size:10px">${c.prestamo}</span></div>`:''}
+          ${c.monto?`<div class="detail-row"><span class="detail-key">Monto</span><span class="detail-val">${fmt(c.monto)}</span></div>`:''}
+          ${c.saldo?`<div class="detail-row"><span class="detail-key">Saldo</span><span class="detail-val font-bold">${fmt(c.saldo)}</span></div>`:''}
+          ${c.estadoCredito?`<div class="detail-row"><span class="detail-key">Estado</span><span class="detail-val">${c.estadoCredito}</span></div>`:''}
+          ${c.fechaDesembolso?`<div class="detail-row"><span class="detail-key">Desembolso</span><span class="detail-val mono">${c.fechaDesembolso}</span></div>`:''}
+          ${c.fechaVtoCred?`<div class="detail-row"><span class="detail-key">Vto. Crédito</span><span class="detail-val mono">${c.fechaVtoCred}</span></div>`:''}
+        </div>`:''}
       </div></div>
     </div>
     ${(()=>{
@@ -3920,7 +3933,7 @@ async function reconfigurarColumnasSP(){
   try{
     const logs = [];
     await spAsegurarColumnas(msg => { logs.push(msg); console.log('[SP cols]', msg); });
-    localStorage.setItem('sp_cols_done','10');
+    localStorage.setItem('sp_cols_done','13');
     showToast('✅ Listas y columnas configuradas — recargando…', 'success');
     console.log('[SP setup]', logs.join('\n'));
     setTimeout(()=>location.reload(), 1500);
@@ -4439,6 +4452,12 @@ function confirmImport(){
           // Tipo cliente (solo si auto-detectado y el existente no tiene)
           tipoCliente: DB[idx].tipoCliente || m.tipoCliente,
           tasaAnterior: m.tasaAnterior || DB[idx].tasaAnterior,
+          // Fase 3 — Datos adicionales Produbanco
+          garantia:       m.garantia       || DB[idx].garantia,
+          ramo:           m.ramo           || DB[idx].ramo,
+          estadoCredito:  m.estadoCredito  || DB[idx].estadoCredito,
+          fechaDesembolso:m.fechaDesembolso|| DB[idx].fechaDesembolso,
+          monto:          m.monto          || DB[idx].monto,
           _dirty: true,
         };
         updated++;
@@ -4491,6 +4510,12 @@ function confirmImport(){
       desde: m.desde, hasta: m.hasta,
       // Financiero
       va: m.va, dep: m.dep, tasa: m.tasa, pn: m.pn,
+      // Fase 3 — Datos adicionales Produbanco
+      garantia:       m.garantia,
+      ramo:           m.ramo,
+      estadoCredito:  m.estadoCredito,
+      fechaDesembolso:m.fechaDesembolso,
+      monto:          m.monto||null,
       _dirty: true,
     };
     DB.push(nuevo);
@@ -4623,6 +4648,13 @@ function _mapExcelRowToCliente(row){
   // Estado de gestión
   const estadoGest = str('Estado Gestion','ESTADO GESTION','Estado','ESTADO GESTION','estadoGest','K');
 
+  // Datos adicionales Produbanco (Fase 3 — Excel: PRODU VH)
+  const garantia        = str('Garantia','GARANTIA','garantia');                             // col C
+  const ramo            = str('RAMO','Ramo','ramo');                                         // col AD
+  const estadoCredito   = str('Estado','ESTADO','estadoCredito');                            // col AW
+  const fechaDesembolso = date('Fecha Desembolso','FECHA DESEMBOLSO','fechaDesembolso');     // col AX
+  const monto           = num('Monto','MONTO','monto');                                      // col AY
+
   // Auto-detectar tipoCliente
   let tipoCliente = str('Tipo Cliente','TIPO CLIENTE','tipoCliente');
   if(!tipoCliente){
@@ -4644,6 +4676,9 @@ function _mapExcelRowToCliente(row){
     desde, hasta,
     va, dep, tasa: tasa||null, pn,
     obs,
+    // Fase 3 — Datos adicionales Produbanco
+    garantia, ramo, estadoCredito, fechaDesembolso,
+    monto: monto||null,
   };
 }
 

@@ -391,6 +391,8 @@ function spToFields(listKey, data){
       'prestamo','saldo','fechaVtoCred','cuentaBanc',
       'fechaNac','genero','estadoCivil','profesion',
       'estadoGest','tasaAnterior',
+      // Fase 3 — Datos adicionales Produbanco
+      'garantia','ramo','estadoCredito','fechaDesembolso','monto',
     ]),
     tareas: new Set([
       'Title','titulo','descripcion','clienteId','clienteNombre',
@@ -437,7 +439,7 @@ function spToFields(listKey, data){
     'anio','va','pn','primaTotal','dep','tasa','version','primaNeta',
     'cuotasTc','cuotasDeb','comision','comisionPct',
     // Fase 2 — clientes
-    'saldo','tasaAnterior',
+    'saldo','tasaAnterior','monto',
     // Fase 1 — cotizaciones
     'extras','vidaLatina','vidaSweaden','vidaMapfre','vidaAlianza',
     // Fase 1 — cierres desglose
@@ -801,6 +803,12 @@ async function spAsegurarColumnas(logCol){
       {name:'profesion',text:{}},                         // Profesión (BN)
       {name:'estadoGest',text:{}},                        // Estado de gestión (K)
       {name:'tasaAnterior',number:{}},                    // Tasa vigencia anterior (AM)
+      // Fase 3 — Datos adicionales Produbanco (Excel: PRODU VH)
+      {name:'garantia',text:{}},                          // Garantía Produbanco (col C)
+      {name:'ramo',text:{}},                              // Ramo seguro (col AD)
+      {name:'estadoCredito',text:{}},                     // Estado crédito (col AW)
+      {name:'fechaDesembolso',text:{}},                   // Fecha desembolso crédito (col AX)
+      {name:'monto',number:{}},                           // Monto original crédito (col AY)
     ],
     CRM_Tareas: [
       {name:'titulo',text:{}},{name:'descripcion',text:{allowMultipleLines:true}},
@@ -1034,7 +1042,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(colsDone !== '12'){
+      if(colsDone !== '13'){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -1056,7 +1064,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','12');
+        localStorage.setItem('sp_cols_done','13');
         if(setupEl) setupEl.style.display='none';
       }
     }
