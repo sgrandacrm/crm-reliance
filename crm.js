@@ -1385,12 +1385,10 @@ function prefillCotizador(c){
   if(document.getElementById('cot-poliza-anterior')) document.getElementById('cot-poliza-anterior').value=c.polizaAnterior||c.polizaNueva||c.poliza||'';
   if(document.getElementById('cot-aseg-anterior'))   document.getElementById('cot-aseg-anterior').value=c.aseguradoraAnterior||c.aseguradora||'';
 
-  // — Vigencia nueva: pre-llenar desde = c.hasta + 1 día (inicio natural de la renovación) —
+  // — Vigencia nueva: pre-llenar desde = c.hasta (nueva póliza arranca el mismo día que vence la anterior) —
   const desdeEl = document.getElementById('cot-desde');
   if(desdeEl && c.hasta){
-    const nextDay = new Date(c.hasta + 'T00:00:00');
-    nextDay.setDate(nextDay.getDate() + 1);
-    desdeEl.value = nextDay.toISOString().split('T')[0];
+    desdeEl.value = c.hasta;
     cotActualizarHasta(); // actualiza el display de "Vence:"
   }
 
