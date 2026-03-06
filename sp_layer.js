@@ -16,6 +16,7 @@ const SP_CONFIG = {
     cierres:       'CRM_Cierres',
     usuarios:      'CRM_Usuarios',
     cobranzas:     'CRM_Cobranzas',
+    comisiones:    'CRM_Comisiones',
   }
 };
 
@@ -35,6 +36,7 @@ const _cache = {
   usuarios:     null,
   tareas:       null,
   cobranzas:    null, // gestiones de cobranza (CRM_Cobranzas)
+  comisiones:   null, // configuración de comisiones y tasas (CRM_Comisiones)
 };
 
 // ── Inicializar MSAL ─────────────────────────────────────────
@@ -433,6 +435,9 @@ function spToFields(listKey, data){
       'Title','clienteId','clienteNombre','ejecutivo',
       'fecha','hora','tipo','resultado','nota','seguimiento','crm_id',
       'cierreId','cuotaIdx',
+    ]),
+    comisiones: new Set([
+      'Title','comisionPct','tasas','crm_id',
     ]),
   };
   const permitidos = validos[listKey] || new Set();
@@ -901,6 +906,13 @@ async function spAsegurarColumnas(logCol){
       {name:'cierreId',text:{}},    // ID del cierre al que pertenece esta gestión
       {name:'cuotaIdx',number:{}},  // Índice de la cuota (0-based)
     ],
+    // Configuración centralizada de comisiones y tasas por aseguradora
+    // Una fila por aseguradora — compartida entre todos los usuarios
+    CRM_Comisiones: [
+      {name:'comisionPct',number:{}},                   // % comisión (ej: 15 para 15%)
+      {name:'tasas',text:{allowMultipleLines:true}},    // JSON: array de 5 tasas por rango de VA
+      {name:'crm_id',text:{}},                          // = nombre aseguradora (clave única)
+    ],
   };
 
   // ── Paso 0: Eliminar columnas con tipo incorrecto para recrearlas ──────────
@@ -1047,7 +1059,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(colsDone !== '15'){
+      if(colsDone !== '16'){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -1069,7 +1081,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','15');
+        localStorage.setItem('sp_cols_done','16');
         if(setupEl) setupEl.style.display='none';
       }
     }

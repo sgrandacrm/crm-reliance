@@ -22,7 +22,45 @@ function _getComisiones(){
   try{ return Object.assign({...COMISIONES_DEFAULT}, JSON.parse(localStorage.getItem('reliance_comisiones')||'{}')); }
   catch(e){ return {...COMISIONES_DEFAULT}; }
 }
-function _saveComisiones(obj){ localStorage.setItem('reliance_comisiones',JSON.stringify(obj)); }
+function _saveComisiones(obj){
+  localStorage.setItem('reliance_comisiones', JSON.stringify(obj));
+  _flushComisiones(); // sincronizar a SP
+}
+
+// Sube comisiones Y tasas a CRM_Comisiones (una fila por aseguradora)
+async function _flushComisiones(){
+  if(!_spReady) return;
+  const comis = _getComisiones();
+  const tasas = _getTasasRangos();
+  // Universo de aseguradoras: unión de defaults + lo que haya guardado
+  const todasAseg = [...new Set([
+    ...Object.keys(COMISIONES_DEFAULT),
+    ...Object.keys(TASAS_RANGOS_DEFAULT),
+    ...Object.keys(comis),
+    ...Object.keys(tasas),
+  ])];
+  const cache = Array.isArray(_cache.comisiones) ? _cache.comisiones : [];
+  for(const aseg of todasAseg){
+    const existing = cache.find(x => x.Title === aseg || x.crm_id === aseg);
+    const data = {
+      Title:       aseg,
+      comisionPct: comis[aseg] !== undefined ? comis[aseg] : (COMISIONES_DEFAULT[aseg] || 0),
+      tasas:       JSON.stringify(tasas[aseg] || TASAS_RANGOS_DEFAULT[aseg] || []),
+      crm_id:      aseg,
+    };
+    if(existing && existing._spId){
+      await spUpdate('comisiones', existing._spId, data);
+    } else {
+      const id = await spCreate('comisiones', data);
+      if(id){
+        const newItem = {...data, _spId: id};
+        const idx = cache.findIndex(x => x.Title === aseg || x.crm_id === aseg);
+        if(idx >= 0) cache[idx] = newItem; else cache.push(newItem);
+      }
+    }
+  }
+  _cache.comisiones = cache;
+}
 
 // ── Tasas por aseguradora con rangos de suma asegurada ───────────────────────
 // Breakpoints: límite SUPERIOR de cada rango (Infinity = sin límite)
@@ -130,7 +168,10 @@ function _getTasasRangos(){
   try{ return Object.assign({...TASAS_RANGOS_DEFAULT}, JSON.parse(localStorage.getItem('_reliance_tasas_rangos')||'{}')); }
   catch(e){ return {...TASAS_RANGOS_DEFAULT}; }
 }
-function _saveTasasRangos(obj){ localStorage.setItem('_reliance_tasas_rangos', JSON.stringify(obj)); }
+function _saveTasasRangos(obj){
+  localStorage.setItem('_reliance_tasas_rangos', JSON.stringify(obj));
+  _flushComisiones(); // tasas y comisiones viven en la misma lista SP
+}
 // Devuelve la tasa correspondiente al valor asegurado para una aseguradora
 function _getTasaRango(name, va){
   const rangos = _getTasasRangos()[name];
@@ -3986,7 +4027,7 @@ async function reconfigurarColumnasSP(){
   try{
     const logs = [];
     await spAsegurarColumnas(msg => { logs.push(msg); console.log('[SP cols]', msg); });
-    localStorage.setItem('sp_cols_done','15');
+    localStorage.setItem('sp_cols_done','16');
     showToast('✅ Listas y columnas configuradas — recargando…', 'success');
     console.log('[SP setup]', logs.join('\n'));
     setTimeout(()=>location.reload(), 1500);
@@ -6303,12 +6344,13 @@ async function _syncFromSP(){
     const prevHashT   = prevT.length   + '|' + (prevT[prevT.length-1]?._spId||'');
 
     // Cargar las listas en paralelo (spGetAll actualiza _cache internamente)
-    const [clientes, cotizaciones, cierres, tareas, gestCobr] = await Promise.all([
+    const [clientes, cotizaciones, cierres, tareas, gestCobr, comisiones] = await Promise.all([
       spGetAll('clientes'),
       spGetAll('cotizaciones'),
       spGetAll('cierres'),
       spGetAll('tareas'),
       spGetAll('cobranzas'),
+      spGetAll('comisiones'),
     ]);
 
     // Una sola query al DOM para toda la función
@@ -6357,6 +6399,24 @@ async function _syncFromSP(){
         localG.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
         _saveGestionCobranza(localG);
         if(pg==='page-cobranza') renderCobranza(_currentFiltroCobranza||'mes');
+      }
+    }
+    // Comisiones y tasas — actualizar localStorage si SP cambió (admin modificó en otro equipo)
+    if(comisiones && comisiones.length){
+      const prevComisStr = localStorage.getItem('reliance_comisiones') || '{}';
+      const newComisObj = {}, newTasasObj = {};
+      comisiones.forEach(item=>{
+        if(!item.Title) return;
+        if(item.comisionPct !== undefined && item.comisionPct !== null)
+          newComisObj[item.Title] = item.comisionPct;
+        try{ const t=JSON.parse(item.tasas||'[]'); if(t.length) newTasasObj[item.Title]=t; }catch(e){}
+      });
+      const newComisStr = JSON.stringify(newComisObj);
+      if(newComisStr !== prevComisStr){
+        _cache.comisiones = comisiones;
+        localStorage.setItem('reliance_comisiones', newComisStr);
+        if(Object.keys(newTasasObj).length) localStorage.setItem('_reliance_tasas_rangos', JSON.stringify(newTasasObj));
+        if(pg==='page-admin') { renderComisionesAdmin(); renderTasasAdmin(); }
       }
     }
   }catch(e){ /* sync silencioso — no mostrar error */ }
@@ -6426,12 +6486,13 @@ function _resetearCicloRenovacion(){
 
 async function initApp(){
   // Cargar todos los datos desde SharePoint en paralelo
-  const [cotiz, cierres, spUsers, spTareas, spGestCobr] = await Promise.all([
+  const [cotiz, cierres, spUsers, spTareas, spGestCobr, spComisiones] = await Promise.all([
     spGetAll('cotizaciones'),
     spGetAll('cierres'),
     spGetAll('usuarios'),
     spGetAll('tareas'),
     spGetAll('cobranzas'),
+    spGetAll('comisiones'),
   ]);
   await loadDBAsync();
   _cache.cotizaciones = cotiz;
@@ -6457,6 +6518,20 @@ async function initApp(){
       else merged.push(st);
     });
     _saveTareas(merged);
+  }
+
+  // Comisiones y tasas desde SP → localStorage (SP es la fuente de verdad)
+  if(spComisiones && spComisiones.length){
+    _cache.comisiones = spComisiones;
+    const comisObj = {}, tasasObj = {};
+    spComisiones.forEach(item=>{
+      if(!item.Title) return;
+      if(item.comisionPct !== undefined && item.comisionPct !== null)
+        comisObj[item.Title] = item.comisionPct;
+      try{ const t=JSON.parse(item.tasas||'[]'); if(t.length) tasasObj[item.Title]=t; }catch(e){}
+    });
+    if(Object.keys(comisObj).length) localStorage.setItem('reliance_comisiones', JSON.stringify(comisObj));
+    if(Object.keys(tasasObj).length) localStorage.setItem('_reliance_tasas_rangos', JSON.stringify(tasasObj));
   }
 
   // Mezclar usuarios SP con los hardcodeados (SP tiene prioridad)
