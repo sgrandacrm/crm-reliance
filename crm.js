@@ -590,6 +590,7 @@ function showClienteModal(id){
           <div class="detail-row"><span class="detail-key">Celular</span><span class="detail-val mono">${c.celular||'—'}</span></div>
           <div class="detail-row"><span class="detail-key">Correo</span><span class="detail-val" style="font-size:11px">${c.correo||'—'}</span></div>
           <div class="detail-row"><span class="detail-key">Ciudad</span><span class="detail-val">${c.ciudad||'—'}</span></div>
+          ${c.direccionOfi?`<div class="detail-row"><span class="detail-key">Dir. Oficina</span><span class="detail-val" style="font-size:11px">${c.direccionOfi}</span></div>`:''}
           <div class="detail-row"><span class="detail-key">Ejecutivo</span><span class="detail-val">${exec?exec.name:'—'}</span></div>
         </div>
         <div class="detail-section">
@@ -643,6 +644,8 @@ function showClienteModal(id){
           <div class="detail-row"><span class="detail-key">Vigencia Desde</span><span class="detail-val mono">${c.desde||'—'}</span></div>
           <div class="detail-row"><span class="detail-key">Vigencia Hasta</span><span class="detail-val mono">${c.hasta||'—'}</span></div>
           ${c.tasa?`<div class="detail-row"><span class="detail-key">Tasa</span><span class="detail-val mono">${c.tasa}%</span></div>`:''}
+          ${c.tasaAnterior?`<div class="detail-row"><span class="detail-key">Tasa ant.</span><span class="detail-val mono">${c.tasaAnterior}%</span></div>`:''}
+          ${c.tasaRenov?`<div class="detail-row"><span class="detail-key">Tasa renov. actual</span><span class="detail-val mono">${c.tasaRenov}%</span></div>`:''}
           ${c.pn?`<div class="detail-row"><span class="detail-key">Prima Neta</span><span class="detail-val mono">${fmt(c.pn)}</span></div>`:''}
         </div>
         <div class="detail-section">
@@ -1366,6 +1369,19 @@ function prefillCotizador(c){
   // — Póliza anterior (para renovación) —
   if(document.getElementById('cot-poliza-anterior')) document.getElementById('cot-poliza-anterior').value=c.polizaAnterior||c.polizaNueva||c.poliza||'';
   if(document.getElementById('cot-aseg-anterior'))   document.getElementById('cot-aseg-anterior').value=c.aseguradoraAnterior||c.aseguradora||'';
+  // Hint de tasas de referencia para el ejecutivo
+  const tasaHintEl=document.getElementById('cot-tasa-hint');
+  if(tasaHintEl){
+    if(c.tasaAnterior||c.tasaRenov){
+      const parts=[];
+      if(c.tasaAnterior) parts.push(`Tasa ant.: ${c.tasaAnterior}%`);
+      if(c.tasaRenov)    parts.push(`Tasa renov. actual: ${c.tasaRenov}%`);
+      tasaHintEl.textContent=`📊 Referencia: ${parts.join(' · ')}`;
+      tasaHintEl.style.display='block';
+    } else {
+      tasaHintEl.style.display='none';
+    }
+  }
 }
 function prefillCotizador_show(id){
   const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
@@ -3933,7 +3949,7 @@ async function reconfigurarColumnasSP(){
   try{
     const logs = [];
     await spAsegurarColumnas(msg => { logs.push(msg); console.log('[SP cols]', msg); });
-    localStorage.setItem('sp_cols_done','14');
+    localStorage.setItem('sp_cols_done','15');
     showToast('✅ Listas y columnas configuradas — recargando…', 'success');
     console.log('[SP setup]', logs.join('\n'));
     setTimeout(()=>location.reload(), 1500);
@@ -4458,6 +4474,9 @@ function confirmImport(){
           estadoCredito:  m.estadoCredito  || DB[idx].estadoCredito,
           fechaDesembolso:m.fechaDesembolso|| DB[idx].fechaDesembolso,
           monto:          m.monto          || DB[idx].monto,
+          // Renovación
+          tasaRenov:      m.tasaRenov      || DB[idx].tasaRenov,
+          direccionOfi:   m.direccionOfi   || DB[idx].direccionOfi,
           _dirty: true,
         };
         updated++;
@@ -4516,6 +4535,9 @@ function confirmImport(){
       estadoCredito:  m.estadoCredito,
       fechaDesembolso:m.fechaDesembolso,
       monto:          m.monto||null,
+      // Renovación
+      tasaRenov:      m.tasaRenov||null,
+      direccionOfi:   m.direccionOfi,
       _dirty: true,
     };
     DB.push(nuevo);
@@ -4654,6 +4676,9 @@ function _mapExcelRowToCliente(row){
   const estadoCredito   = str('Estado','ESTADO','estadoCredito');                            // col AW
   const fechaDesembolso = date('Fecha Desembolso','FECHA DESEMBOLSO','fechaDesembolso');     // col AX
   const monto           = num('Monto','MONTO','monto');                                      // col AY
+  // Renovación — tasas de referencia y dirección oficina
+  const tasaRenov       = num('tasa renov aseg actual','TASA RENOV ASEG ACTUAL','tasaRenov'); // col AN
+  const direccionOfi    = str('Direccion Ofi','Dirección Ofi','DIRECCION OFI','direccionOfi');// col BD
 
   // Auto-detectar tipoCliente
   let tipoCliente = str('Tipo Cliente','TIPO CLIENTE','tipoCliente');
@@ -4679,6 +4704,9 @@ function _mapExcelRowToCliente(row){
     // Fase 3 — Datos adicionales Produbanco
     garantia, ramo, estadoCredito, fechaDesembolso,
     monto: monto||null,
+    // Renovación
+    tasaRenov: tasaRenov||null,
+    direccionOfi,
   };
 }
 

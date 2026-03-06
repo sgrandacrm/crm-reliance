@@ -393,6 +393,8 @@ function spToFields(listKey, data){
       'estadoGest','tasaAnterior',
       // Fase 3 — Datos adicionales Produbanco
       'garantia','ramo','estadoCredito','fechaDesembolso','monto',
+      // Renovación
+      'tasaRenov','direccionOfi',
     ]),
     tareas: new Set([
       'Title','titulo','descripcion','clienteId','clienteNombre',
@@ -439,7 +441,7 @@ function spToFields(listKey, data){
     'anio','va','pn','primaTotal','dep','tasa','version','primaNeta',
     'cuotasTc','cuotasDeb','comision','comisionPct',
     // Fase 2 — clientes
-    'saldo','tasaAnterior','monto',
+    'saldo','tasaAnterior','monto','tasaRenov',
     // Fase 1 — cotizaciones
     'extras','vidaLatina','vidaSweaden','vidaMapfre','vidaAlianza',
     // Fase 1 — cierres desglose
@@ -809,6 +811,9 @@ async function spAsegurarColumnas(logCol){
       {name:'estadoCredito',text:{}},                     // Estado crédito (col AW)
       {name:'fechaDesembolso',text:{}},                   // Fecha desembolso crédito (col AX)
       {name:'monto',number:{}},                           // Monto original crédito (col AY)
+      // Renovación — tasas de referencia y dirección oficina
+      {name:'tasaRenov',number:{}},                       // Tasa renov aseg actual (col AN)
+      {name:'direccionOfi',text:{allowMultipleLines:true}},// Dirección oficina (col BD)
     ],
     CRM_Tareas: [
       {name:'titulo',text:{}},{name:'descripcion',text:{allowMultipleLines:true}},
@@ -1042,7 +1047,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(colsDone !== '14'){
+      if(colsDone !== '15'){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -1064,7 +1069,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','14');
+        localStorage.setItem('sp_cols_done','15');
         if(setupEl) setupEl.style.display='none';
       }
     }
