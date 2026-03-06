@@ -30,36 +30,42 @@ function _saveComisiones(obj){
 // Sube comisiones Y tasas a CRM_Comisiones (una fila por aseguradora)
 async function _flushComisiones(){
   if(!_spReady) return;
-  const comis = _getComisiones();
-  const tasas = _getTasasRangos();
-  // Universo de aseguradoras: unión de defaults + lo que haya guardado
-  const todasAseg = [...new Set([
-    ...Object.keys(COMISIONES_DEFAULT),
-    ...Object.keys(TASAS_RANGOS_DEFAULT),
-    ...Object.keys(comis),
-    ...Object.keys(tasas),
-  ])];
-  const cache = Array.isArray(_cache.comisiones) ? _cache.comisiones : [];
-  for(const aseg of todasAseg){
-    const existing = cache.find(x => x.Title === aseg || x.crm_id === aseg);
-    const data = {
-      Title:       aseg,
-      comisionPct: comis[aseg] !== undefined ? comis[aseg] : (COMISIONES_DEFAULT[aseg] || 0),
-      tasas:       JSON.stringify(tasas[aseg] || TASAS_RANGOS_DEFAULT[aseg] || []),
-      crm_id:      aseg,
-    };
-    if(existing && existing._spId){
-      await spUpdate('comisiones', existing._spId, data);
-    } else {
-      const id = await spCreate('comisiones', data);
-      if(id){
-        const newItem = {...data, _spId: id};
-        const idx = cache.findIndex(x => x.Title === aseg || x.crm_id === aseg);
-        if(idx >= 0) cache[idx] = newItem; else cache.push(newItem);
-      }
+  try{
+    const comis = _getComisiones();
+    const tasas = _getTasasRangos();
+    // Universo de aseguradoras: unión de defaults + lo que haya guardado
+    const todasAseg = [...new Set([
+      ...Object.keys(COMISIONES_DEFAULT),
+      ...Object.keys(TASAS_RANGOS_DEFAULT),
+      ...Object.keys(comis),
+      ...Object.keys(tasas),
+    ])];
+    const cache = Array.isArray(_cache.comisiones) ? [..._cache.comisiones] : [];
+    for(const aseg of todasAseg){
+      const existing = cache.find(x => x.Title === aseg || x.crm_id === aseg);
+      const data = {
+        Title:       aseg,
+        comisionPct: comis[aseg] !== undefined ? comis[aseg] : (COMISIONES_DEFAULT[aseg] || 0),
+        tasas:       JSON.stringify(tasas[aseg] || TASAS_RANGOS_DEFAULT[aseg] || []),
+        crm_id:      aseg,
+      };
+      try{
+        if(existing && existing._spId){
+          await spUpdate('comisiones', existing._spId, data);
+          const idx = cache.findIndex(x => x.Title === aseg || x.crm_id === aseg);
+          if(idx >= 0) cache[idx] = {...cache[idx], ...data};
+        } else {
+          const id = await spCreate('comisiones', data);
+          if(id){
+            const newItem = {...data, _spId: id};
+            const idx = cache.findIndex(x => x.Title === aseg || x.crm_id === aseg);
+            if(idx >= 0) cache[idx] = newItem; else cache.push(newItem);
+          }
+        }
+      }catch(eItem){ console.warn('[comisiones] Error sync aseg', aseg, eItem.message); }
     }
-  }
-  _cache.comisiones = cache;
+    _cache.comisiones = cache;
+  }catch(e){ console.warn('[comisiones] _flushComisiones error:', e.message); }
 }
 
 // ── Tasas por aseguradora con rangos de suma asegurada ───────────────────────
@@ -6522,6 +6528,7 @@ async function initApp(){
 
   // Comisiones y tasas desde SP → localStorage (SP es la fuente de verdad)
   if(spComisiones && spComisiones.length){
+    // SP tiene datos → actualizar localStorage con los valores centralizados
     _cache.comisiones = spComisiones;
     const comisObj = {}, tasasObj = {};
     spComisiones.forEach(item=>{
@@ -6532,6 +6539,9 @@ async function initApp(){
     });
     if(Object.keys(comisObj).length) localStorage.setItem('reliance_comisiones', JSON.stringify(comisObj));
     if(Object.keys(tasasObj).length) localStorage.setItem('_reliance_tasas_rangos', JSON.stringify(tasasObj));
+  } else {
+    // SP vacío (lista recién creada) → subir los valores actuales como datos iniciales
+    _flushComisiones();
   }
 
   // Mezclar usuarios SP con los hardcodeados (SP tiene prioridad)

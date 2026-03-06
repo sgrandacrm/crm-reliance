@@ -561,6 +561,12 @@ async function spSetupLists(onProgress){
       {name:'seguimiento',type:'Text'},{name:'crm_id',type:'Text'},
       {name:'cierreId',type:'Text'},{name:'cuotaIdx',type:'Number'},
     ],
+    // Configuración centralizada: una fila por aseguradora
+    CRM_Comisiones: [
+      {name:'comisionPct',type:'Number'},   // % comisión (ej: 15)
+      {name:'tasas',type:'Note'},           // JSON: [r1,r2,r3,r4,r5] tasas por rango VA
+      {name:'crm_id',type:'Text'},          // = nombre aseguradora (clave única)
+    ],
   };
 
   for(const [listName, columns] of Object.entries(listDefs)){
