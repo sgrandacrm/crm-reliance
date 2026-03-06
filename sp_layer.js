@@ -437,8 +437,9 @@ function spToFields(listKey, data){
       'cierreId','cuotaIdx',
     ]),
     comisiones: new Set([
-      'Title','comisionPct',
-      'tasa_r1','tasa_r2','tasa_r3','tasa_r4','tasa_r5', // una columna por rango de VA
+      'Title','comisionPct','region',
+      'tasa_r1','tasa_r2','tasa_r3','tasa_r4','tasa_r5', // tasas por rango de VA (decimal)
+      'limite_r1','limite_r2','limite_r3',               // límites superiores de rango (USD)
       'crm_id',
     ]),
   };
@@ -454,8 +455,9 @@ function spToFields(listKey, data){
     // Fase 1 — cierres desglose
     'derechosEmision','segCampesino','supBancos','iva',
     'vidaPrima','axaPrima','cuotaInicial','numCuotas','valorCuota','tasaAplicada',
-    // Comisiones — tasas por rango (5 rangos de VA)
+    // Comisiones — tasas por rango de VA y límites de rango
     'tasa_r1','tasa_r2','tasa_r3','tasa_r4','tasa_r5',
+    'limite_r1','limite_r2','limite_r3',
     // Cobranzas gestión
     'cuotaIdx',
   ]);
@@ -565,15 +567,19 @@ async function spSetupLists(onProgress){
       {name:'seguimiento',type:'Text'},{name:'crm_id',type:'Text'},
       {name:'cierreId',type:'Text'},{name:'cuotaIdx',type:'Number'},
     ],
-    // Configuración centralizada: una fila por aseguradora, una columna por rango
+    // Configuración centralizada: una fila por Aseguradora + Región + Tipo
     CRM_Comisiones: [
       {name:'comisionPct',type:'Number'},  // % comisión (ej: 15)
-      {name:'tasa_r1',type:'Number'},      // Tasa rango 1: Hasta $10k
-      {name:'tasa_r2',type:'Number'},      // Tasa rango 2: $10k–$20k
-      {name:'tasa_r3',type:'Number'},      // Tasa rango 3: $20k–$30k
-      {name:'tasa_r4',type:'Number'},      // Tasa rango 4: $30k–$50k
-      {name:'tasa_r5',type:'Number'},      // Tasa rango 5: Más de $50k
-      {name:'crm_id',type:'Text'},         // = nombre aseguradora
+      {name:'region',    type:'Text'},     // SIERRA / COSTA / '' (vacío = Nacional)
+      {name:'tasa_r1',   type:'Number'},   // Tasa rango 1 (decimal, ej: 0.035)
+      {name:'tasa_r2',   type:'Number'},   // Tasa rango 2
+      {name:'tasa_r3',   type:'Number'},   // Tasa rango 3
+      {name:'tasa_r4',   type:'Number'},   // Tasa rango 4
+      {name:'tasa_r5',   type:'Number'},   // Tasa rango 5 (reservado)
+      {name:'limite_r1', type:'Number'},   // Límite superior rango 1 (USD)
+      {name:'limite_r2', type:'Number'},   // Límite superior rango 2 (USD)
+      {name:'limite_r3', type:'Number'},   // Límite superior rango 3 (USD, 0 = no aplica)
+      {name:'crm_id',    type:'Text'},     // Clave única (ej: SWEADEN_Sierra, MAPFRE_Renov)
     ],
   };
 
@@ -920,16 +926,20 @@ async function spAsegurarColumnas(logCol){
       {name:'cierreId',text:{}},    // ID del cierre al que pertenece esta gestión
       {name:'cuotaIdx',number:{}},  // Índice de la cuota (0-based)
     ],
-    // Configuración centralizada de comisiones y tasas por aseguradora
-    // Una fila por aseguradora — compartida entre todos los usuarios
+    // Configuración centralizada: una fila por Aseguradora + Región + Tipo
+    // crm_id es la clave única (ej: SWEADEN_Sierra, MAPFRE_Renov, ALIANZA)
     CRM_Comisiones: [
       {name:'comisionPct',number:{}},  // % comisión (ej: 15 para 15%)
-      {name:'tasa_r1',number:{}},      // Tasa rango 1: Hasta $10k  (decimal, ej: 0.043)
-      {name:'tasa_r2',number:{}},      // Tasa rango 2: $10k–$20k
-      {name:'tasa_r3',number:{}},      // Tasa rango 3: $20k–$30k
-      {name:'tasa_r4',number:{}},      // Tasa rango 4: $30k–$50k
-      {name:'tasa_r5',number:{}},      // Tasa rango 5: Más de $50k
-      {name:'crm_id',text:{}},         // = nombre aseguradora (clave única)
+      {name:'region',text:{}},         // SIERRA / COSTA / '' (vacío = Nacional)
+      {name:'tasa_r1',number:{}},      // Tasa rango 1 (decimal, ej: 0.035 = 3.5%)
+      {name:'tasa_r2',number:{}},      // Tasa rango 2
+      {name:'tasa_r3',number:{}},      // Tasa rango 3
+      {name:'tasa_r4',number:{}},      // Tasa rango 4
+      {name:'tasa_r5',number:{}},      // Tasa rango 5 (reservado)
+      {name:'limite_r1',number:{}},    // Límite superior rango 1 (USD, ej: 20000)
+      {name:'limite_r2',number:{}},    // Límite superior rango 2 (USD, ej: 30000)
+      {name:'limite_r3',number:{}},    // Límite superior rango 3 (USD, 0 = no aplica)
+      {name:'crm_id',text:{}},         // Clave única (ej: SWEADEN_Sierra, MAPFRE_Renov)
     ],
   };
 
@@ -1077,7 +1087,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(colsDone !== '17'){
+      if(colsDone !== '18'){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -1099,7 +1109,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','17');
+        localStorage.setItem('sp_cols_done','18');
         if(setupEl) setupEl.style.display='none';
       }
     }

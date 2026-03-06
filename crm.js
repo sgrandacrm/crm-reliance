@@ -31,43 +31,61 @@ function _saveComisiones(obj){
 async function _flushComisiones(){
   if(!_spReady) return;
   try{
+    const v2    = _getTasasV2();
     const comis = _getComisiones();
-    const tasas = _getTasasRangos();
-    // Universo de aseguradoras: unión de defaults + lo que haya guardado
-    const todasAseg = [...new Set([
-      ...Object.keys(COMISIONES_DEFAULT),
-      ...Object.keys(TASAS_RANGOS_DEFAULT),
-      ...Object.keys(comis),
-      ...Object.keys(tasas),
-    ])];
     const cache = Array.isArray(_cache.comisiones) ? [..._cache.comisiones] : [];
-    for(const aseg of todasAseg){
-      const existing = cache.find(x => x.Title === aseg || x.crm_id === aseg);
-      const t = tasas[aseg] || TASAS_RANGOS_DEFAULT[aseg] || [0,0,0,0,0];
+
+    // ── 1. Filas V2: una por aseguradora+región+tipo ──────────────────────────
+    for(const [crmId, row] of Object.entries(v2)){
+      const existing  = cache.find(x => x.crm_id === crmId);
+      const comPct    = row.comisionPct !== undefined ? row.comisionPct
+                      : (comis[row.aseg] !== undefined ? comis[row.aseg] : (COMISIONES_DEFAULT[row.aseg]||0));
+      const lbl = [row.aseg, row.region, row.tipo].filter(Boolean).join(' ');
       const data = {
-        Title:       aseg,
-        comisionPct: comis[aseg] !== undefined ? comis[aseg] : (COMISIONES_DEFAULT[aseg] || 0),
-        tasa_r1:     t[0] || 0,  // Hasta $10k
-        tasa_r2:     t[1] || 0,  // $10k–$20k
-        tasa_r3:     t[2] || 0,  // $20k–$30k
-        tasa_r4:     t[3] || 0,  // $30k–$50k
-        tasa_r5:     t[4] || 0,  // Más de $50k
-        crm_id:      aseg,
+        Title:      lbl,
+        region:     row.region   || '',
+        comisionPct: comPct,
+        tasa_r1:    row.tasas[0] || 0,
+        tasa_r2:    row.tasas[1] || 0,
+        tasa_r3:    row.tasas[2] || 0,
+        tasa_r4:    row.tasas[3] || 0,
+        tasa_r5:    row.tasas[4] || 0,
+        limite_r1:  row.limites[0] || 0,
+        limite_r2:  row.limites[1] || 0,
+        limite_r3:  row.limites[2] || 0,
+        crm_id:     crmId,
       };
       try{
         if(existing && existing._spId){
           await spUpdate('comisiones', existing._spId, data);
-          const idx = cache.findIndex(x => x.Title === aseg || x.crm_id === aseg);
+          const idx = cache.findIndex(x => x.crm_id === crmId);
           if(idx >= 0) cache[idx] = {...cache[idx], ...data};
         } else {
           const id = await spCreate('comisiones', data);
-          if(id){
-            const newItem = {...data, _spId: id};
-            const idx = cache.findIndex(x => x.Title === aseg || x.crm_id === aseg);
-            if(idx >= 0) cache[idx] = newItem; else cache.push(newItem);
-          }
+          if(id){ const ni={...data,_spId:id}; const idx=cache.findIndex(x=>x.crm_id===crmId); if(idx>=0) cache[idx]=ni; else cache.push(ni); }
         }
-      }catch(eItem){ console.warn('[comisiones] Error sync aseg', aseg, eItem.message); }
+      }catch(eItem){ console.warn('[comisiones] Error sync V2', crmId, eItem.message); }
+    }
+
+    // ── 2. Aseguradoras sin fila V2 (sólo comisión, sin tasas) ───────────────
+    const asegConV2 = new Set(Object.values(v2).map(r => r.aseg));
+    const sinV2 = Object.keys(COMISIONES_DEFAULT).filter(a => !asegConV2.has(a));
+    for(const aseg of sinV2){
+      const existing = cache.find(x => x.crm_id === aseg || x.Title === aseg);
+      const data = {
+        Title: aseg, region: '',
+        comisionPct: comis[aseg] !== undefined ? comis[aseg] : (COMISIONES_DEFAULT[aseg]||0),
+        tasa_r1:0, tasa_r2:0, tasa_r3:0, tasa_r4:0, tasa_r5:0,
+        limite_r1:0, limite_r2:0, limite_r3:0, crm_id: aseg,
+      };
+      try{
+        if(existing && existing._spId){
+          await spUpdate('comisiones', existing._spId, data);
+          const idx=cache.findIndex(x=>x.crm_id===aseg||x.Title===aseg); if(idx>=0) cache[idx]={...cache[idx],...data};
+        } else {
+          const id=await spCreate('comisiones',data); if(id){ cache.push({...data,_spId:id}); }
+        }
+      }catch(eItem){ console.warn('[comisiones] Error sync legacy', aseg, eItem.message); }
     }
     _cache.comisiones = cache;
   }catch(e){ console.warn('[comisiones] _flushComisiones error:', e.message); }
@@ -91,6 +109,22 @@ const TASAS_RANGOS_DEFAULT = {
   EQUINOCCIAL:     [0.034, 0.034, 0.034, 0.034, 0.034],
   ATLANTIDA:       [0.036, 0.036, 0.036, 0.036, 0.036],
   AIG:             [0.038, 0.038, 0.038, 0.038, 0.038],
+};
+// ── Tasas V2: por Aseguradora + Región + Tipo + Rangos Dinámicos ─────────────
+// Fuente: archivo "TASAS SEG VH MASIVOS". crm_id = clave única en SP.
+// tasas[]: decimal (0.035 = 3.5%)  |  limites[]: USD techo de cada rango
+// Para N tasas → N-1 límites: va<=limites[0]→tasas[0], …, último→tasas[N-1]
+const TASAS_V2_DEFAULT = {
+  'SWEADEN_Sierra': {aseg:'SWEADEN',       region:'SIERRA', tipo:'',           tasas:[0.035,0.028,0.025],       limites:[20000,30000],       comisionPct:15},
+  'SWEADEN_Costa':  {aseg:'SWEADEN',       region:'COSTA',  tipo:'',           tasas:[0.035,0.030,0.028],       limites:[20000,30000],       comisionPct:15},
+  'MAPFRE_Renov':   {aseg:'MAPFRE',        region:'',       tipo:'RENOVACION', tasas:[0.035,0.028,0.025],       limites:[20000,30000],       comisionPct:12},
+  'MAPFRE_Nuevo':   {aseg:'MAPFRE',        region:'',       tipo:'NUEVO',      tasas:[0.049,0.032,0.025],       limites:[20000,30000],       comisionPct:12},
+  'ALIANZA':        {aseg:'ALIANZA',       region:'',       tipo:'',           tasas:[0.030,0.025,0.022],       limites:[20000,30000],       comisionPct:15},
+  'ZURICH':         {aseg:'ZURICH',        region:'',       tipo:'',           tasas:[0.043,0.025,0.022],       limites:[30000,40000],       comisionPct:14},
+  'LATINA':         {aseg:'LATINA',        region:'',       tipo:'',           tasas:[0.035,0.028,0.025],       limites:[20000,30000],       comisionPct:15},
+  'ADS_UIO':        {aseg:'ASEG. DEL SUR', region:'SIERRA', tipo:'',           tasas:[0.045,0.031,0.022,0.020], limites:[20000,30000,40000], comisionPct:13},
+  'ADS_GYE':        {aseg:'ASEG. DEL SUR', region:'COSTA',  tipo:'',           tasas:[0.055,0.034,0.022,0.020], limites:[20000,30000,40000], comisionPct:13},
+  'GENERALI':       {aseg:'GENERALI',      region:'',       tipo:'',           tasas:[0.035,0.035,0.035],       limites:[20000,30000],       comisionPct:12},
 };
 // ── Planes de Vida / Asistencia Médica por aseguradora ───────────────────────
 // Costo en decimal y coberturas para mostrar en PDF (sin precio)
@@ -183,7 +217,16 @@ function _saveTasasRangos(obj){
   localStorage.setItem('_reliance_tasas_rangos', JSON.stringify(obj));
   _flushComisiones(); // tasas y comisiones viven en la misma lista SP
 }
-// Devuelve la tasa correspondiente al valor asegurado para una aseguradora
+// ── API V2: tasas con región + tipo + límites dinámicos ──────────────────────
+function _getTasasV2(){
+  try{ return Object.assign({...TASAS_V2_DEFAULT}, JSON.parse(localStorage.getItem('_reliance_tasas_v2')||'{}')); }
+  catch(e){ return {...TASAS_V2_DEFAULT}; }
+}
+function _saveTasasV2(obj){
+  localStorage.setItem('_reliance_tasas_v2', JSON.stringify(obj));
+  _flushComisiones();
+}
+// Devuelve la tasa correspondiente al valor asegurado para una aseguradora (legacy)
 function _getTasaRango(name, va){
   const rangos = _getTasasRangos()[name];
   if(!rangos || !rangos.length) return ASEGURADORAS[name]?.tasa || 0.035;
@@ -192,16 +235,41 @@ function _getTasaRango(name, va){
   }
   return rangos[rangos.length - 1];
 }
+// Devuelve la tasa usando la estructura V2 (región + tipo + límites dinámicos)
+// region: 'SIERRA'|'COSTA'  —  tipo: 'NUEVO'|'RENOVACION'
+// Sistema de puntuación: región exacta +2, tipo exacto +1, distinto -10
+function _getTasaRangoV2(asegName, va, region, tipo){
+  const all    = _getTasasV2();
+  region       = (region||'').toUpperCase();
+  tipo         = (tipo||'').toUpperCase();
+  const filas  = Object.values(all).filter(r => r.aseg === asegName);
+  if(!filas.length) return _getTasaRango(asegName, va); // fallback legacy
+  const score  = r => {
+    let s = 0;
+    if(region){ if(r.region === region) s += 2; else if(r.region) s -= 10; }
+    if(tipo){   if(r.tipo   === tipo)   s += 1; else if(r.tipo)   s -= 10; }
+    return s;
+  };
+  const fila   = [...filas].sort((a,b) => score(b)-score(a))[0];
+  const {tasas, limites} = fila;
+  for(let i = 0; i < limites.length; i++){
+    if(va <= limites[i]) return tasas[i];
+  }
+  return tasas[tasas.length - 1];
+}
 // Sanitiza el nombre de aseguradora para usarlo como sufijo de ID en el DOM
 function _safeName(n){ return n.replace(/[^a-zA-Z0-9]/g,'_'); }
-// Lee la tasa del input de la tarjeta (si ejecutivo la modificó); sino usa el rango correspondiente
+// Lee la tasa del input de la tarjeta (si ejecutivo la modificó);
+// si no, usa tasas V2 considerando región y tipo de póliza del cotizador
 function _getTasaFromCard(name){
   const s = _safeName(name);
   const input = document.getElementById('aseg-tasa-input-'+s);
   if(input){ const v=parseFloat(input.value); if(!isNaN(v)&&v>0) return v/100; }
-  const va  = parseFloat(document.getElementById('cot-va')?.value)||0;
-  const ext = parseFloat(document.getElementById('cot-extras')?.value)||0;
-  return _getTasaRango(name, va + ext);
+  const va     = parseFloat(document.getElementById('cot-va')?.value)||0;
+  const ext    = parseFloat(document.getElementById('cot-extras')?.value)||0;
+  const region = document.getElementById('cot-region')?.value || '';
+  const tipo   = document.getElementById('cot-tipo')?.value   || '';
+  return _getTasaRangoV2(name, va + ext, region, tipo);
 }
 
 let currentUser = null;
@@ -6533,17 +6601,34 @@ async function initApp(){
 
   // Comisiones y tasas desde SP → localStorage (SP es la fuente de verdad)
   if(spComisiones && spComisiones.length){
-    // SP tiene datos → actualizar localStorage con los valores centralizados
     _cache.comisiones = spComisiones;
-    const comisObj = {}, tasasObj = {};
+    // Comisiones planas (por aseg) para _getComisiones()
+    const comisObj = {};
+    // Estructura V2 (comienza con los defaults y SP los sobreescribe)
+    const tasasV2 = {...TASAS_V2_DEFAULT};
     spComisiones.forEach(item=>{
-      if(!item.Title) return;
+      if(!item.crm_id && !item.Title) return;
+      const key = item.crm_id || item.Title;
       if(item.comisionPct !== undefined && item.comisionPct !== null)
-        comisObj[item.Title] = item.comisionPct;
-      const t=[item.tasa_r1,item.tasa_r2,item.tasa_r3,item.tasa_r4,item.tasa_r5].map(v=>parseFloat(v)||0); if(t.some(v=>v>0)) tasasObj[item.Title]=t;
+        comisObj[key] = parseFloat(item.comisionPct)||0;
+      // Reconstruir fila V2 sólo si tiene tasas configuradas
+      const t   = [item.tasa_r1,item.tasa_r2,item.tasa_r3,item.tasa_r4].map(v=>parseFloat(v)||0);
+      const lim = [item.limite_r1,item.limite_r2,item.limite_r3].map(v=>parseFloat(v)||0).filter(v=>v>0);
+      const tasasActivas = lim.length ? t.slice(0, lim.length+1) : t.filter(v=>v>0);
+      if(tasasActivas.some(v=>v>0) && item.crm_id){
+        const base = TASAS_V2_DEFAULT[item.crm_id] || {};
+        tasasV2[item.crm_id] = {
+          ...base,
+          region:     ((item.region||base.region)||'').toUpperCase(),
+          tipo:       base.tipo || '',
+          tasas:      tasasActivas,
+          limites:    lim.length ? lim : (base.limites||[]),
+          comisionPct: parseFloat(item.comisionPct)||base.comisionPct||0,
+        };
+      }
     });
-    if(Object.keys(comisObj).length) localStorage.setItem('reliance_comisiones', JSON.stringify(comisObj));
-    if(Object.keys(tasasObj).length) localStorage.setItem('_reliance_tasas_rangos', JSON.stringify(tasasObj));
+    if(Object.keys(comisObj).length) localStorage.setItem('reliance_comisiones',  JSON.stringify(comisObj));
+    if(Object.keys(tasasV2).length)  localStorage.setItem('_reliance_tasas_v2',   JSON.stringify(tasasV2));
   } else {
     // SP vacío (lista recién creada) → subir los valores actuales como datos iniciales
     _flushComisiones();
