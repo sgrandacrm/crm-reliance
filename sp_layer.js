@@ -385,7 +385,7 @@ function spToFields(listKey, data){
       'placa','marca','modelo','anio','va','pn','primaTotal','desde','hasta',
       'celular','correo','nota','ultimoContacto','factura','poliza','obs',
       'color','motor','chasis','dep','tasa','axavd','formaPago','crm_id',
-      'polizaNueva','aseguradoraAnterior','historialWa','bitacora',
+      'polizaNueva','polizaAnterior','aseguradoraAnterior','historialWa','bitacora',
       // Fase 2 — datos completos del cliente (Excel: PRODU VH)
       'tipoCliente','celular2','telFijo','direccionDom',
       'prestamo','saldo','fechaVtoCred','cuentaBanc',
