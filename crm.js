@@ -1321,6 +1321,21 @@ function calcCuotasDeb(total, nCuotas, piso=0){
   return { n, cuota: Math.round(total/n*100)/100 };
 }
 
+// Calcula y muestra la fecha "Vigencia Hasta" (desde + 1 año - 1 día) en el cotizador
+function cotActualizarHasta(){
+  const desdeVal = document.getElementById('cot-desde')?.value;
+  const hastaEl  = document.getElementById('cot-hasta-display');
+  if(!hastaEl) return;
+  if(!desdeVal){ hastaEl.style.display='none'; return; }
+  const h = new Date(desdeVal + 'T00:00:00');
+  h.setFullYear(h.getFullYear() + 1);
+  h.setDate(h.getDate() - 1);
+  const hastaISO = h.toISOString().split('T')[0];
+  const [y,m,d] = hastaISO.split('-');
+  hastaEl.textContent = `Vence: ${d}/${m}/${y}`;
+  hastaEl.style.display = 'block';
+}
+
 function prefillCotizador(c){
   // — Datos del cliente —
   document.getElementById('cot-nombre').value=c.nombre||'';
@@ -1369,6 +1384,29 @@ function prefillCotizador(c){
   // — Póliza anterior (para renovación) —
   if(document.getElementById('cot-poliza-anterior')) document.getElementById('cot-poliza-anterior').value=c.polizaAnterior||c.polizaNueva||c.poliza||'';
   if(document.getElementById('cot-aseg-anterior'))   document.getElementById('cot-aseg-anterior').value=c.aseguradoraAnterior||c.aseguradora||'';
+
+  // — Vigencia nueva: pre-llenar desde = c.hasta + 1 día (inicio natural de la renovación) —
+  const desdeEl = document.getElementById('cot-desde');
+  if(desdeEl && c.hasta){
+    const nextDay = new Date(c.hasta + 'T00:00:00');
+    nextDay.setDate(nextDay.getDate() + 1);
+    desdeEl.value = nextDay.toISOString().split('T')[0];
+    cotActualizarHasta(); // actualiza el display de "Vence:"
+  }
+
+  // — Hint de vencimiento póliza anterior —
+  const venceHintEl = document.getElementById('cot-vence-hint');
+  if(venceHintEl){
+    if(c.hasta){
+      const [y,m,d] = c.hasta.split('-');
+      const desdeRef = c.desde ? (()=>{ const [dy,dm,dd]=c.desde.split('-'); return `${dd}/${dm}/${dy} → `; })() : '';
+      venceHintEl.textContent = `⚠️ Póliza anterior vence: ${desdeRef}${d}/${m}/${y}`;
+      venceHintEl.style.display = 'block';
+    } else {
+      venceHintEl.style.display = 'none';
+    }
+  }
+
   // Hint de tasas de referencia para el ejecutivo
   const tasaHintEl=document.getElementById('cot-tasa-hint');
   if(tasaHintEl){
@@ -1437,6 +1475,7 @@ function limpiarCotizador(){
 }
 
 function calcCotizacion(){
+  cotActualizarHasta(); // mantener fecha Vence actualizada
   const va  = parseFloat(document.getElementById('cot-va')?.value)||0;
   const ext = parseFloat(document.getElementById('cot-extras')?.value)||0;
   const vaT = va + ext;

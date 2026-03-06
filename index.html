@@ -264,7 +264,7 @@
             <div class="form-group"><label class="form-label">Ciudad</label><select class="form-select" id="cot-ciudad"><option>QUITO</option><option>GUAYAQUIL</option><option>CUENCA</option><option>SALINAS</option><option>PORTOVIEJO</option><option>AMBATO</option></select></div>
             <div class="form-group"><label class="form-label">Región</label><select class="form-select" id="cot-region"><option value="SIERRA">SIERRA</option><option value="COSTA">COSTA</option></select></div>
             <div class="form-group"><label class="form-label">Tipo de Póliza</label><select class="form-select" id="cot-tipo"><option value="NUEVO">NUEVA</option><option value="RENOVACION">RENOVACIÓN</option></select></div>
-            <div class="form-group"><label class="form-label">Vigencia Desde</label><input class="form-input" type="date" id="cot-desde"></div>
+            <div class="form-group"><label class="form-label">Vigencia Nueva Desde</label><input class="form-input" type="date" id="cot-desde" oninput="cotActualizarHasta()"><div id="cot-hasta-display" style="display:none;font-size:11px;color:var(--muted);margin-top:3px;font-family:'DM Mono',monospace;padding:2px 0"></div></div>
           </div>
         </div>
       </div>
@@ -291,6 +291,7 @@
               <div class="form-group"><label class="form-label">N° Póliza Anterior</label><input class="form-input" id="cot-poliza-anterior" placeholder="000000-000000" style="font-family:'DM Mono',monospace"></div>
             </div>
             <div id="cot-tasa-hint" style="display:none;font-size:11px;color:var(--primary);margin-top:6px;padding:4px 8px;background:var(--primary-light,#eef3ff);border-radius:4px"></div>
+            <div id="cot-vence-hint" style="display:none;font-size:11px;color:#b45309;margin-top:6px;padding:4px 8px;background:#fffbeb;border-radius:4px"></div>
           </div>
           <div style="margin-top:16px">
             <!-- Selector de aseguradoras -->
