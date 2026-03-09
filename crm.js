@@ -6629,6 +6629,10 @@ async function initApp(){
     });
     if(Object.keys(comisObj).length) localStorage.setItem('reliance_comisiones',  JSON.stringify(comisObj));
     if(Object.keys(tasasV2).length)  localStorage.setItem('_reliance_tasas_v2',   JSON.stringify(tasasV2));
+    // Migración automática: si faltan filas V2 en SP (formato antiguo), crearlas en background
+    const crmIdsEnSP = new Set(spComisiones.map(x=>x.crm_id).filter(Boolean));
+    const faltanFilasV2 = Object.keys(TASAS_V2_DEFAULT).some(k => !crmIdsEnSP.has(k));
+    if(faltanFilasV2) _flushComisiones();
   } else {
     // SP vacío (lista recién creada) → subir los valores actuales como datos iniciales
     _flushComisiones();
