@@ -2094,14 +2094,18 @@ function renderCvExtras(){
         </span>
         <span style="font-weight:700;color:var(--green)">$${pnAxa.toFixed(2)}</span>
       </div>`);
-    if(tieneVida) items.push(`
+    if(tieneVida){
+      const planNombre = _getPlanVidaNombre('SWEADEN', pnVida);
+      const vidaLabel  = planNombre ? `Vida ${planNombre}` : 'Vida';
+      items.push(`
       <div style="display:flex;justify-content:space-between;align-items:center;
                   padding:8px 12px;background:var(--warm);border-radius:6px;font-size:13px">
-        <span>❤️ <b>Vida Desgravamen</b>
+        <span><b>${vidaLabel}</b>
           <span style="font-size:11px;color:var(--muted);margin-left:6px">incluido en póliza del vehículo</span>
         </span>
         <span style="font-weight:700;color:var(--green)">$${pnVida.toFixed(2)}</span>
       </div>`);
+    }
     wrap.innerHTML = `
       <div style="border:2px solid var(--accent2);border-radius:8px;padding:14px;background:#f0f4ff">
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;
