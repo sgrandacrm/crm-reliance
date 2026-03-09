@@ -301,6 +301,30 @@ function _ciudadToRegion(ciudad){
   if(SIERRA.some(x => c===x || c.startsWith(x) || x.startsWith(c.slice(0,5)))) return 'SIERRA';
   return '';
 }
+// Asigna marca en #cot-marca; si no está en la lista la inserta dinámicamente
+// para que cualquier marca del Excel quede visible (no se pierda en 'OTRO')
+function _setMarcaSelect(el, marca){
+  if(!el || !marca) return;
+  const mu = marca.toUpperCase().trim();
+  // 1. Coincidencia exacta (sin importar mayúsculas)
+  let opt = [...el.options].find(o => o.value.toUpperCase() === mu);
+  // 2. Coincidencia parcial por primeras letras (ej: "VW"→VOLKSWAGEN, "GREAT-WALL"→GREAT WALL)
+  if(!opt && mu.length >= 3)
+    opt = [...el.options].find(o => {
+      const ov = o.value.toUpperCase();
+      return ov !== 'OTRO' && (ov.startsWith(mu.slice(0,5)) || mu.startsWith(ov.slice(0,5)));
+    });
+  if(opt){ el.value = opt.value; return; }
+  // 3. Marca no reconocida → agregar como opción dinámica (antes de OTRO)
+  if(![...el.options].find(o => o.value === mu)){
+    const newOpt = document.createElement('option');
+    newOpt.value = mu; newOpt.textContent = mu;
+    const otroOpt = [...el.options].find(o => o.value === 'OTRO');
+    if(otroOpt) el.insertBefore(newOpt, otroOpt); else el.appendChild(newOpt);
+  }
+  el.value = mu;
+}
+
 // Lee la tasa del input de la tarjeta (si ejecutivo la modificó);
 // si no, usa tasas V2 considerando región y tipo de póliza del cotizador
 function _getTasaFromCard(name){
@@ -1531,11 +1555,7 @@ function prefillCotizador(c){
   if(tipoEl) tipoEl.value=(c.polizaNueva||c.poliza||c.polizaAnterior)?'RENOVACION':'NUEVO';
 
   // — Datos del vehículo —
-  const marcaEl=document.getElementById('cot-marca');
-  if(marcaEl && c.marca){
-    const opt=[...marcaEl.options].find(o=>o.value.toUpperCase()===c.marca.toUpperCase());
-    marcaEl.value = opt ? opt.value : 'OTRO';
-  }
+  _setMarcaSelect(document.getElementById('cot-marca'), c.marca);
   document.getElementById('cot-anio').value=c.anio||(new Date().getFullYear());
   document.getElementById('cot-modelo').value=c.modelo||'';
   document.getElementById('cot-placa').value=c.placa||'';
@@ -3553,7 +3573,7 @@ function nuevaVersionCotiz(id){
     const anioV = original.anio || (()=>{ const p=(original.vehiculo||'').split(' '); return p.length>0&&/^\d{4}$/.test(p[p.length-1])?p[p.length-1]:''; })();
     const marcaV = original.marca || (original.vehiculo||'').split(' ')[0] || '';
     const modeloV = original.modelo || (()=>{ const p=(original.vehiculo||'').split(' ').filter(x=>!/^\d{4}$/.test(x)); return p.slice(1).join(' '); })();
-    const mEl=document.getElementById('cot-marca');   if(mEl) mEl.value=marcaV;
+    _setMarcaSelect(document.getElementById('cot-marca'), marcaV);
     const moEl=document.getElementById('cot-modelo'); if(moEl) moEl.value=modeloV;
     const aEl=document.getElementById('cot-anio');    if(aEl) aEl.value=anioV;
     const vaEl=document.getElementById('cot-va');     if(vaEl) vaEl.value=original.va||'';
@@ -3601,7 +3621,7 @@ function editarCotizacion(id){
     const anioV = original.anio || (()=>{ const p=(original.vehiculo||'').split(' '); return p.length>0&&/^\d{4}$/.test(p[p.length-1])?p[p.length-1]:''; })();
     const marcaV = original.marca || (original.vehiculo||'').split(' ')[0] || '';
     const modeloV = original.modelo || (()=>{ const p=(original.vehiculo||'').split(' ').filter(x=>!/^\d{4}$/.test(x)); return p.slice(1).join(' '); })();
-    const mEl=document.getElementById('cot-marca');   if(mEl) mEl.value=marcaV;
+    _setMarcaSelect(document.getElementById('cot-marca'), marcaV);
     const moEl=document.getElementById('cot-modelo'); if(moEl) moEl.value=modeloV;
     const aEl=document.getElementById('cot-anio');    if(aEl) aEl.value=anioV;
     const vaEl=document.getElementById('cot-va');     if(vaEl) vaEl.value=original.va||'';
