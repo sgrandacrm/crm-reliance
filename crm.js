@@ -91,6 +91,31 @@ async function _flushComisiones(){
   }catch(e){ console.warn('[comisiones] _flushComisiones error:', e.message); }
 }
 
+// Elimina filas SP de formato antiguo (crm_id no reconocido en V2 ni en sinV2)
+async function _cleanupComisionesLegacy(){
+  if(!_spReady) return;
+  try{
+    const v2 = _getTasasV2();
+    const asegConV2  = new Set(Object.values(v2).map(r => r.aseg));
+    const sinV2Names = new Set(Object.keys(COMISIONES_DEFAULT).filter(a => !asegConV2.has(a)));
+    const validIds   = new Set([...Object.keys(TASAS_V2_DEFAULT), ...sinV2Names]);
+    const cache      = Array.isArray(_cache.comisiones) ? [..._cache.comisiones] : [];
+    let deleted = 0;
+    for(const row of cache){
+      if(!row._spId) continue;
+      const cid = row.crm_id || '';
+      if(!cid || !validIds.has(cid)){
+        try{ await spDelete('comisiones', row._spId); deleted++; }
+        catch(e2){ console.warn('[comisiones] cleanup delete error:', cid, e2.message); }
+      }
+    }
+    if(deleted > 0){
+      _cache.comisiones = cache.filter(r => r.crm_id && validIds.has(r.crm_id));
+      console.log('[comisiones] Limpieza SP: eliminadas', deleted, 'filas obsoletas');
+    }
+  }catch(e){ console.warn('[comisiones] _cleanupComisionesLegacy error:', e.message); }
+}
+
 // ── Tasas por aseguradora con rangos de suma asegurada ───────────────────────
 // Breakpoints: límite SUPERIOR de cada rango (Infinity = sin límite)
 const RANGOS_VA    = [10000, 20000, 30000, 50000, Infinity];
@@ -281,7 +306,7 @@ function _ciudadToRegion(ciudad){
 function _getTasaFromCard(name){
   const s = _safeName(name);
   const input = document.getElementById('aseg-tasa-input-'+s);
-  if(input){ const v=parseFloat(input.value); if(!isNaN(v)&&v>0) return v/100; }
+  if(input && !input.dataset.computed){ const v=parseFloat(input.value); if(!isNaN(v)&&v>0) return v/100; }
   const va     = parseFloat(document.getElementById('cot-va')?.value)||0;
   const ext    = parseFloat(document.getElementById('cot-extras')?.value)||0;
   const region = document.getElementById('cot-region')?.value || '';
@@ -1690,10 +1715,11 @@ function calcCotizacion(){
         <span class="aseg-val" style="display:flex;align-items:center;gap:3px">
           <input type="number" id="aseg-tasa-input-${s}"
                  value="${(r.tasa*100).toFixed(2)}"
+                 data-computed="1"
                  min="0.01" max="20" step="0.01"
                  title="Editar tasa para esta cotización"
                  style="width:58px;border:1px solid #ccc;border-radius:4px;padding:2px 4px;font-size:12px;font-family:inherit;text-align:right;background:var(--bg,#fff);color:inherit"
-                 onchange="recalcCard('${r.name}',this.value)"> %
+                 onchange="this.removeAttribute('data-computed');recalcCard('${r.name}',this.value)"> %
         </span>
       </div>
       <div class="aseg-row"><span class="aseg-key">Prima Neta</span><span class="aseg-val" id="aseg-pn-${s}">${fmt(r.pn)}</span></div>
@@ -6705,6 +6731,8 @@ async function initApp(){
     const crmIdsEnSP = new Set(spComisiones.map(x=>x.crm_id).filter(Boolean));
     const faltanFilasV2 = Object.keys(TASAS_V2_DEFAULT).some(k => !crmIdsEnSP.has(k));
     if(faltanFilasV2) _flushComisiones();
+    // Limpiar filas obsoletas (crm_id de formato antiguo que ya no corresponden a V2)
+    _cleanupComisionesLegacy();
   } else {
     // SP vacío (lista recién creada) → subir los valores actuales como datos iniciales
     _flushComisiones();
