@@ -1877,8 +1877,36 @@ function _cotizParaCierre(clienteId, ci, nombre){
   return {cotiz, vencida:dias>30};
 }
 
+// Limpia TODOS los campos del modal de cierre antes de cada apertura nueva.
+// Evita que valores de un cierre anterior queden visibles en el siguiente.
+function _resetCierreModal(){
+  // Campos estáticos que pueden quedar sucios entre cierres
+  ['cv-factura','cv-poliza','cv-observacion','cv-tipo-pago',
+   'cv-vida-prima','cv-fecha-cobro-inicial']
+    .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  // Campos dinámicos de Vida/AP (generados por renderCvExtras — su presencia en DOM
+  // hace que renderCvExtras los "preserve" si no se limpian aquí primero)
+  ['cv-poliza-vida','cv-factura-vida','cv-total-vida']
+    .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  // Secciones dinámicas: limpiar innerHTML para que siempre partan de cero
+  const extras=document.getElementById('cv-extras-section');
+  if(extras) extras.innerHTML='';
+  const panel=document.getElementById('cv-desglose-panel');
+  if(panel) panel.innerHTML='';
+  // Campos hidden del desglose
+  ['cv-der-emision','cv-seg-camp','cv-sup-bancos','cv-axa-prima-val','cv-iva-val']
+    .forEach(id=>{ const el=document.getElementById(id); if(el) el.value='0'; });
+  // Ocultar fila de vida-prima (recalcDesglose la mostrará si corresponde)
+  const vidaWrap=document.getElementById('cv-vida-prima-wrap');
+  if(vidaWrap) vidaWrap.style.display='none';
+  // Limpiar mensaje de error de factura
+  const factErr=document.getElementById('cv-factura-error');
+  if(factErr){ factErr.style.display='none'; factErr.textContent=''; }
+}
+
 // Pre-rellena y abre el formulario de cierre usando datos del cliente (sin cotización)
 function _abrirCierreDirecto(id){
+  _resetCierreModal();
   const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
   currentSegIdx=id;
   const aseg=c.aseguradora||'';
@@ -1917,6 +1945,8 @@ function _abrirCierreDirecto(id){
   if(vaDirectEl) vaDirectEl.value=c.va||'';
   if(vaDirectDisplay) vaDirectDisplay.textContent=(c.va||0)>0?`VA: ${fmt(c.va)}`:'';
   document.getElementById('cv-forma-pago').value='DEBITO_BANCARIO';
+  recalcDesglose();
+  renderCvExtras();
   renderCvFormaPago();
   openModal('modal-cierre-venta');
 }
@@ -1968,6 +1998,7 @@ function abrirCierreDesdeCliente(id, skipEstadoCheck=false){
 }
 
 function abrirCierreVenta(asegNombre, total, pn, cuotaTc, cuotaDeb, nTc, nDeb){
+  _resetCierreModal();
   const clienteNombre=document.getElementById('cot-nombre').value||'';
   // Buscar cliente en DB para obtener ID y cuenta
   const cMatch=DB.find(x=>x.nombre.trim().toUpperCase()===clienteNombre.trim().toUpperCase());
@@ -4201,6 +4232,7 @@ function confirmarAceptacion(){
 
 // ── Ir a emisión (abre cierre de venta pre-llenado) ──────
 function irAEmision(id){
+  _resetCierreModal();
   const idStr = String(id);
   const all = _getCotizaciones();
   const cotiz = all.find(c=>String(c.id)===idStr);
