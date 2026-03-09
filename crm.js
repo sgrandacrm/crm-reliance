@@ -1984,6 +1984,7 @@ function abrirCierreVenta(asegNombre, total, pn, cuotaTc, cuotaDeb, nTc, nDeb){
   ['cv-factura','cv-poliza','cv-fecha-cobro-inicial','cv-observacion'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('cv-forma-pago').value='DEBITO_BANCARIO';
   renderCvFormaPago();
+  renderCvExtras();
   openModal('modal-cierre-venta');
 }
 function getTotal(){ return parseFloat(document.getElementById('cv-total-val')?.value)||cierreVentaData.total||0; }
@@ -2064,6 +2065,90 @@ function recalcDesglose(){
   cierreVentaData.total=total;
   cierreVentaData.pn=pn;
   renderCvFormaPago();
+}
+
+// Muestra sección de extras según aseguradora + axavd seleccionados:
+//   SWEADEN + AXA/VD → resumen de productos incluidos (solo lectura, para que el ejecutivo vea qué vendió)
+//   MAPFRE/LATINA/ALIANZA + VD → campos póliza/factura/total Vida-AP (documento separado, obligatorio)
+function renderCvExtras(){
+  const wrap = document.getElementById('cv-extras-section');
+  if(!wrap) return;
+  const aseg  = (document.getElementById('cv-nueva-aseg')?.value||'').toUpperCase();
+  const axavd = document.getElementById('cv-axavd')?.value||'';
+  const pnAxa  = parseFloat(document.getElementById('cv-axa-prima-val')?.value)||0;
+  const pnVida = parseFloat(document.getElementById('cv-vida-prima')?.value)||0;
+
+  const esSweaden    = aseg.includes('SWEADEN');
+  const esConDocVida = aseg.includes('MAPFRE') || aseg.includes('LATINA') || aseg.includes('ALIANZA');
+  const tieneAxa     = axavd.includes('AXA');
+  const tieneVida    = axavd.includes('VD');
+
+  if(esSweaden && (tieneAxa || tieneVida)){
+    // Sección informativa — sin documentos separados
+    const items = [];
+    if(tieneAxa)  items.push(`
+      <div style="display:flex;justify-content:space-between;align-items:center;
+                  padding:8px 12px;background:var(--warm);border-radius:6px;font-size:13px">
+        <span>🚗 <b>Auto Sustituto AXA</b>
+          <span style="font-size:11px;color:var(--muted);margin-left:6px">incluido en póliza del vehículo</span>
+        </span>
+        <span style="font-weight:700;color:var(--green)">$${pnAxa.toFixed(2)}</span>
+      </div>`);
+    if(tieneVida) items.push(`
+      <div style="display:flex;justify-content:space-between;align-items:center;
+                  padding:8px 12px;background:var(--warm);border-radius:6px;font-size:13px">
+        <span>❤️ <b>Vida Desgravamen</b>
+          <span style="font-size:11px;color:var(--muted);margin-left:6px">incluido en póliza del vehículo</span>
+        </span>
+        <span style="font-weight:700;color:var(--green)">$${pnVida.toFixed(2)}</span>
+      </div>`);
+    wrap.innerHTML = `
+      <div style="border:2px solid var(--accent2);border-radius:8px;padding:14px;background:#f0f4ff">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;
+                    letter-spacing:.6px;color:var(--accent2);margin-bottom:10px">
+          📦 Productos incluidos en esta póliza
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">${items.join('')}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:8px">
+          Costos registrados para reportería. No generan póliza ni factura adicional.
+        </div>
+      </div>`;
+  } else if(esConDocVida && tieneVida){
+    // Sección con campos obligatorios — documento separado
+    const polizaVal  = document.getElementById('cv-poliza-vida')?.value  || '';
+    const facturaVal = document.getElementById('cv-factura-vida')?.value || '';
+    const totalVida  = document.getElementById('cv-total-vida')?.value   || '';
+    wrap.innerHTML = `
+      <div style="border:2px solid #e67e22;border-radius:8px;padding:14px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;
+                    letter-spacing:.6px;color:#e67e22;margin-bottom:6px">
+          📋 Póliza Vida/AP — Documento Separado
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+          Prima referencia (cotización): <b>$${pnVida.toFixed(2)}</b>
+          · La vigencia es la misma que el vehículo
+        </div>
+        <div class="form-grid form-grid-2" style="gap:12px">
+          <div class="form-group">
+            <label class="form-label">N° Póliza Vida/AP <span style="color:var(--red)">*</span></label>
+            <input class="form-input" id="cv-poliza-vida" value="${polizaVal}"
+                   placeholder="000000-000000" style="font-family:'DM Mono',monospace">
+          </div>
+          <div class="form-group">
+            <label class="form-label">N° Factura Vida/AP <span style="color:var(--red)">*</span></label>
+            <input class="form-input" id="cv-factura-vida" value="${facturaVal}"
+                   placeholder="001-001-000000000" style="font-family:'DM Mono',monospace">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Total Vida/AP <span style="color:var(--red)">*</span></label>
+            <input class="form-input" id="cv-total-vida" value="${totalVida}"
+                   type="number" step="0.01" placeholder="0.00">
+          </div>
+        </div>
+      </div>`;
+  } else {
+    wrap.innerHTML = '';
+  }
 }
 
 // Sync tipoPago dropdown → forma de pago pill
@@ -2291,6 +2376,15 @@ function guardarCierreVenta(){
   if(!aseg) errors.push('Aseguradora');
   if(!fp) errors.push('Forma de pago');
   if(totalVal<=0) errors.push('Prima Total (debe ser mayor a 0)');
+  // Validar póliza Vida/AP adicional (MAPFRE/LATINA/ALIANZA con VD)
+  const _asegUpper = aseg.toUpperCase();
+  const _axavd = document.getElementById('cv-axavd')?.value||'';
+  const _esConDocVida = (_asegUpper.includes('MAPFRE')||_asegUpper.includes('LATINA')||_asegUpper.includes('ALIANZA')) && _axavd.includes('VD');
+  if(_esConDocVida){
+    if(!(document.getElementById('cv-poliza-vida')?.value||'').trim())  errors.push('N° Póliza Vida/AP');
+    if(!(document.getElementById('cv-factura-vida')?.value||'').trim()) errors.push('N° Factura Vida/AP');
+    if(!(parseFloat(document.getElementById('cv-total-vida')?.value)||0)) errors.push('Total Vida/AP');
+  }
   // Validar campos de forma de pago
   if(fp==='CONTADO'){
     if(!document.getElementById('cv-fecha-cobro-total')?.value) errors.push('Fecha de cobro de contado');
@@ -2369,6 +2463,10 @@ function guardarCierreVenta(){
     iva:             _g('cv-iva-val'),
     vidaPrima:       _g('cv-vida-prima'),
     axaPrima:        _g('cv-axa-prima-val'),
+    // Extras Vida/AP
+    poliza_vida:     _gs('cv-poliza-vida'),
+    factura_vida:    _gs('cv-factura-vida'),
+    total_vida:      _g('cv-total-vida'),
     // Pago detallado
     tipoPago:        _gs('cv-tipo-pago'),
     polizaAnterior:  _gs('cv-poliza-anterior'),
@@ -4132,6 +4230,7 @@ function irAEmision(id){
       cierreVentaData.nDeb = cotiz.nCuotasElegidas;
   }
   recalcDesglose();
+  renderCvExtras();
   renderCvFormaPago();
   autocalcHasta();
 
@@ -5281,6 +5380,14 @@ function editarCierre(cierreId){
   if(document.getElementById('cv-cuenta')) document.getElementById('cv-cuenta').value=c.cuenta||fp.cuenta||'';
   if(document.getElementById('cv-axavd')) document.getElementById('cv-axavd').value=c.axavd||'';
   document.getElementById('cv-observacion').value=c.observacion||'';
+  // Pre-llenar datos Vida/AP si existen
+  recalcDesglose();
+  renderCvExtras();
+  setTimeout(()=>{
+    if(document.getElementById('cv-poliza-vida'))  document.getElementById('cv-poliza-vida').value  = c.poliza_vida  || '';
+    if(document.getElementById('cv-factura-vida')) document.getElementById('cv-factura-vida').value = c.factura_vida || '';
+    if(document.getElementById('cv-total-vida'))   document.getElementById('cv-total-vida').value   = c.total_vida   || '';
+  }, 50);
   // Forma de pago
   document.getElementById('cv-forma-pago').value=fp.forma||'DEBITO_BANCARIO';
   // Marcar pill activa

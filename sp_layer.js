@@ -423,6 +423,7 @@ function spToFields(listKey, data){
       // Fase 1 — desglose real de cargos (del Excel)
       'derechosEmision','segCampesino','supBancos','iva',
       'vidaPrima','axaPrima',
+      'poliza_vida','factura_vida','total_vida',
       'cuotaInicial','numCuotas','valorCuota','tipoPago',
       'tasaAplicada','polizaAnterior','asegAnterior',
       // Fase 3 — cobranza (estado de cada cuota)
@@ -895,16 +896,23 @@ async function spAsegurarColumnas(logCol){
       {name:'segCampesino',number:{}},    // Prima Neta × 0.5% (fila 16)
       {name:'supBancos',number:{}},       // Prima Neta × 3.5% (fila 17)
       {name:'iva',number:{}},             // Subtotal × 15% (fila 21)
-      {name:'vidaPrima',number:{}},       // Prima vida pagada (fila 19)
-      {name:'axaPrima',number:{}},        // AXA $52.17 neto (fila 18)
+      {name:'vidaPrima',number:{}},        // Prima vida pagada (fila 19)
+      {name:'axaPrima',number:{}},         // AXA $52.17 neto (fila 18)
+      // Extras Vida/AP — doc. separado (MAPFRE/LATINA/ALIANZA) o costo para reporte (SWEADEN)
+      {name:'poliza_vida',text:{}},        // N° póliza Vida/AP adicional
+      {name:'factura_vida',text:{}},       // N° factura Vida/AP adicional
+      {name:'total_vida',number:{}},       // Total Vida/AP documento separado
       {name:'cuotaInicial',number:{}},    // Cuota inicial (Excel: col Z)
       {name:'numCuotas',number:{}},       // # cuotas (Excel: col AB)
       {name:'valorCuota',number:{}},      // Valor por cuota (filas 23-24)
       {name:'tipoPago',text:{}},          // TC / DÉBITO / CONTADO / CHEQUES (Hoja1)
       {name:'tasaAplicada',number:{}},    // Tasa % usada (Excel: fila 9)
-      {name:'polizaAnterior',text:{}},    // Póliza anterior (renovaciones)
-      {name:'asegAnterior',text:{}},      // Aseguradora anterior
+      {name:'polizaAnterior',text:{}},     // Póliza anterior (renovaciones)
+      {name:'asegAnterior',text:{}},       // Aseguradora anterior
       {name:'cuotasEstado',text:{allowMultipleLines:true}}, // JSON array: ['PENDIENTE','COBRADO',...]
+      {name:'poliza_vida',text:{}},        // N° póliza Vida/AP adicional
+      {name:'factura_vida',text:{}},       // N° factura Vida/AP adicional
+      {name:'total_vida',number:{}},       // Total Vida/AP documento separado
     ],
     CRM_Usuarios: [
       {name:'userId',text:{}},{name:'rol',text:{}},
@@ -1040,6 +1048,8 @@ async function _spAsegurarColumnas_UNUSED(logCol){
       {name:'ejecutivo',type:'text'},{name:'fechaRegistro',type:'text'},
       {name:'observacion',type:'note'},{name:'axavd',type:'text'},
       {name:'crmid',type:'text'},{name:'polizaNueva',type:'text'},
+      {name:'poliza_vida',type:'text'},{name:'factura_vida',type:'text'},
+      {name:'total_vida',type:'number'},
     ],
     CRM_Usuarios: [
       {name:'userId',type:'text'},{name:'rol',type:'text'},
@@ -1087,7 +1097,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(colsDone !== '18'){
+      if(colsDone !== '19'){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -1109,7 +1119,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','18');
+        localStorage.setItem('sp_cols_done','19');
         if(setupEl) setupEl.style.display='none';
       }
     }
