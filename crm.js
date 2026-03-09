@@ -372,6 +372,7 @@ function _countDirty(){
   (_getCotizaciones()||[]).forEach(c=>{ if(c._dirty) n++; });
   (_getCierres()||[]).forEach(c=>{ if(c._dirty) n++; });
   (_getTareas()||[]).forEach(t=>{ if(t._dirty) n++; });
+  (_getGestionCobranza()||[]).forEach(g=>{ if(g._dirty) n++; });
   return n;
 }
 function _forceSync(){
@@ -380,6 +381,7 @@ function _forceSync(){
   saveDB();
   const allC=_getCotizaciones(); if(allC.some(x=>x._dirty)) _flushCotizaciones(allC);
   const allCi=_getCierres();     if(allCi.some(x=>x._dirty)) _flushCierres(allCi);
+  const allG=_getGestionCobranza(); if(allG.some(x=>x._dirty)) _flushGestionCobranza();
 }
 
 async function _flushDB(){
@@ -607,7 +609,7 @@ function openModal(id){document.getElementById(id).classList.add('open')}
 // ══════════════════════════════════════════════════════
 //  NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles={dashboard:'Dashboard',cierres:'Cierres de Venta',clientes:'Cartera de Clientes',vencimientos:'Vencimientos de Pólizas',calendario:'Calendario de Vencimientos',seguimiento:'Seguimiento de Clientes',cotizador:'Cotizador de Primas',comparativo:'Comparativo de Coberturas',tasas:'Tabla de Tasas',admin:'Panel de Administración','nuevo-cliente':'Registrar Cliente',cobranza:'Módulo de Cobranza',bitacora:'Bitácora de Gestión'};
+const pageTitles={dashboard:'Dashboard',cierres:'Cierres de Venta',clientes:'Cartera de Clientes',vencimientos:'Vencimientos de Pólizas',calendario:'Calendario de Vencimientos',seguimiento:'Seguimiento de Clientes',cotizador:'Cotizador de Primas',comparativo:'Comparativo de Coberturas',tasas:'Tabla de Tasas',admin:'Panel de Administración','nuevo-cliente':'Registrar Cliente',cobranza:'Módulo de Cobranza'};
 function showPage(id){
   // Cerrar cualquier modal abierto al cambiar de módulo
   document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));
@@ -891,17 +893,6 @@ function showClienteModal(id){
   document.getElementById('modal-btn-cotizar').onclick=()=>{ closeModal('modal-cliente'); prefillCotizador(c); showPage('cotizador'); setTimeout(calcCotizacion,200); };
   document.getElementById('modal-btn-editar').onclick=()=>{ closeModal('modal-cliente'); openEditar(id); };
   document.getElementById('modal-btn-eliminar').onclick=()=>{ if(confirm(`¿Eliminar a ${c.nombre}?`)){ const cliToDel=DB.find(x=>String(x.id)===String(id)); if(cliToDel?._spId && _spReady) spDelete('clientes', cliToDel._spId); DB=DB.filter(x=>String(x.id)!==String(id)); saveDB(); closeModal('modal-cliente'); renderClientes(); renderDashboard(); showToast('Cliente eliminado','error'); }};
-  // Botón rápido de gestión (si no existe, agrégar dinámicamente)
-  let btnGest = document.getElementById('modal-btn-gestion');
-  if(!btnGest){
-    btnGest = document.createElement('button');
-    btnGest.id='modal-btn-gestion';
-    btnGest.className='btn btn-sm';
-    btnGest.style.cssText='background:#2d6a4f;color:#fff;border:none';
-    btnGest.textContent='📓 Gestión';
-    document.querySelector('#modal-cliente .modal-footer').prepend(btnGest);
-  }
-  btnGest.onclick=()=>{ closeModal('modal-cliente'); abrirModalGestion(c.id, c.nombre); };
   openModal('modal-cliente');
 }
 
@@ -3368,8 +3359,16 @@ function guardarGestionCobranza(){
   };
   all.unshift(entrada);
   _saveGestionCobranza(all);
-  // Sincronizar con SharePoint (fire-and-forget)
-  if(typeof spCreate === 'function') spCreate('cobranzas', entrada).catch(e=>console.warn('SP gest cobr:', e));
+  // Sync SP — guardar _spId igual que el resto de entidades para permitir reintentos
+  if(_spReady && typeof spCreate === 'function'){
+    spCreate('cobranzas', entrada).then(spId=>{
+      if(spId){
+        const stored = _getGestionCobranza();
+        const idx = stored.findIndex(x=>String(x.id)===String(entrada.id));
+        if(idx>=0){ delete stored[idx]._dirty; stored[idx]._spId = spId; _saveGestionCobranza(stored); }
+      }
+    }).catch(e=>console.warn('SP gest cobr:', e));
+  }
   // Si se indicó cambio de estado, aplicarlo
   if(resultado==='PAGADO'||resultado==='IMPAGO'){
     marcarCuota(_gestionCobranzaActiva.cierreId, _gestionCobranzaActiva.cuotaIdx, resultado);
@@ -3379,6 +3378,27 @@ function guardarGestionCobranza(){
   document.getElementById('gcobr-nota').value = '';
   document.getElementById('gcobr-resultado').value = '';
   document.getElementById('gcobr-seguimiento').value = '';
+}
+
+// Flush pendientes de cobranza — reintenta las gestiones con _dirty=true que no llegaron a SP
+async function _flushGestionCobranza(){
+  if(!_spReady) return;
+  const all = _getGestionCobranza();
+  let changed = false;
+  for(const g of all){
+    if(!g._dirty) continue;
+    try{
+      if(g._spId){
+        await spUpdate('cobranzas', g._spId, g);
+      } else {
+        const spId = await spCreate('cobranzas', g);
+        if(spId) g._spId = spId;
+      }
+      delete g._dirty;
+      changed = true;
+    }catch(e){ /* mantener _dirty para próximo intento */ }
+  }
+  if(changed) _saveGestionCobranza(all);
 }
 
 function _renderGestionCobranzaHistorial(cierreId, cuotaIdx){
@@ -3408,206 +3428,6 @@ function _renderGestionCobranzaHistorial(cierreId, cuotaIdx){
     </div>`).join('');
 }
 
-// ══════════════════════════════════════════════════════
-//  BITÁCORA DE GESTIÓN
-// ══════════════════════════════════════════════════════
-const _BITACORA_KEY = '_reliance_bitacora';
-let _currentFiltroBitacora = 'semana';
-
-function _getBitacora(){ try{ return JSON.parse(localStorage.getItem(_BITACORA_KEY)||'[]'); }catch(e){return[];} }
-function _saveBitacora(arr){ localStorage.setItem(_BITACORA_KEY, JSON.stringify(arr)); }
-
-function filtrarBitacora(filtro, btn){
-  _currentFiltroBitacora = filtro;
-  document.querySelectorAll('#page-bitacora .pill').forEach(p=>p.classList.remove('active'));
-  if(btn) btn.classList.add('active');
-  renderBitacora(filtro);
-}
-
-function renderBitacora(filtro='semana'){
-  const all = _getBitacora();
-  const hoy = new Date(); hoy.setHours(0,0,0,0);
-  const todayStr = hoy.toISOString().split('T')[0];
-  const semStr   = new Date(hoy.getTime()-6*86400000).toISOString().split('T')[0];
-  const mesStr   = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
-  const tipoFiltro = document.getElementById('bitacora-filtro-tipo')?.value||'';
-  const busq = (document.getElementById('bitacora-search')?.value||'').toLowerCase();
-  const isAdmin = currentUser?.rol==='admin'||currentUser?.rol==='jefe';
-
-  let items = all.filter(g=>{
-    if(filtro==='hoy'   && g.fecha!==todayStr)  return false;
-    if(filtro==='semana'&& g.fecha<semStr)       return false;
-    if(filtro==='mes'   && g.fecha<mesStr)       return false;
-    if(tipoFiltro && g.tipo!==tipoFiltro)        return false;
-    if(!isAdmin){
-      if(g.ejecutivo && g.ejecutivo!==currentUser?.id) return false;
-    }
-    if(busq && !(g.clienteNombre||'').toLowerCase().includes(busq)) return false;
-    return true;
-  }).sort((a,b)=>b.fecha.localeCompare(a.fecha)||(b.hora||'').localeCompare(a.hora||''));
-
-  // Stats
-  const hoyItems  = all.filter(g=>g.fecha===todayStr);
-  const semItems  = all.filter(g=>g.fecha>=semStr);
-  const seguims   = all.filter(g=>g.seguimiento&&g.seguimiento>=todayStr&&g.seguimiento<=new Date(hoy.getTime()+7*86400000).toISOString().split('T')[0]);
-  const statsEl   = document.getElementById('bitacora-stats');
-  if(statsEl) statsEl.innerHTML=`
-    <div class="stat-card"><div class="stat-label">Gestiones hoy</div><div class="stat-value" style="color:var(--accent2)">${hoyItems.length}</div></div>
-    <div class="stat-card"><div class="stat-label">Esta semana</div><div class="stat-value" style="color:var(--green)">${semItems.length}</div></div>
-    <div class="stat-card"><div class="stat-label">Total registros</div><div class="stat-value">${all.length}</div></div>
-    <div class="stat-card"><div class="stat-label">Seguimientos 7d</div><div class="stat-value" style="color:var(--accent)">${seguims.length}</div></div>`;
-
-  const countEl = document.getElementById('bitacora-count');
-  if(countEl) countEl.textContent = items.length+' registros';
-
-  const TIPO_ICON  ={LLAMADA:'📞',WHATSAPP:'💬',EMAIL:'📧',VISITA:'🚗',COBRO:'💰',OTRO:'•'};
-  const RES_COLOR  ={CONTACTADO:'var(--green)',NO_CONTESTA:'var(--muted)',BUZON:'var(--muted)',PROMESA_PAGO:'var(--accent)',PAGO_REALIZADO:'var(--green)',NO_INTERESADO:'var(--red)',OTRO:'var(--text)'};
-  const RES_LABEL  ={CONTACTADO:'Contactado',NO_CONTESTA:'No contesta',BUZON:'Buzón de voz',PROMESA_PAGO:'Promesa de pago',PAGO_REALIZADO:'Pago realizado',NO_INTERESADO:'No interesado',OTRO:'Otro'};
-
-  const tabla = document.getElementById('bitacora-tabla');
-  if(!tabla) return;
-  if(!items.length){
-    tabla.innerHTML='<div class="empty-state"><div class="empty-icon">📓</div><p>Sin registros en este período</p></div>'; return;
-  }
-  tabla.innerHTML=`<div class="tbl-wrap"><table>
-    <thead><tr><th>Fecha</th><th>Cliente</th><th>Tipo</th><th>Resultado</th><th>Nota</th><th>Seguimiento</th><th>Ejecutivo</th><th></th></tr></thead>
-    <tbody>${items.map(g=>{
-      const exec=USERS.find(u=>u.id===g.ejecutivo);
-      const esSeguim=g.seguimiento&&g.seguimiento===todayStr;
-      return`<tr style="${esSeguim?'background:var(--warm2,#fffde7)':''}">
-        <td><span class="mono" style="font-size:11px">${g.fecha||'—'}</span><br><span style="color:var(--muted);font-size:10px">${g.hora||''}</span></td>
-        <td style="font-weight:500;font-size:12px">${g.clienteNombre||'—'}</td>
-        <td style="font-size:12px">${TIPO_ICON[g.tipo]||'•'} ${g.tipo||''}</td>
-        <td><span style="color:${RES_COLOR[g.resultado]||'var(--text)'};font-size:12px;font-weight:500">${RES_LABEL[g.resultado]||g.resultado||'—'}</span></td>
-        <td style="font-size:11px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(g.nota||'').replace(/"/g,"'")}">${g.nota||'—'}</td>
-        <td style="text-align:center">${g.seguimiento?`<span class="badge ${esSeguim?'badge-gold':'badge-blue'}" style="font-size:10px">${g.seguimiento}</span>`:'—'}</td>
-        <td style="font-size:11px">${exec?exec.name:'—'}</td>
-        <td><button class="btn btn-sm" style="padding:2px 8px;font-size:11px;background:var(--accent);color:#fff;border:none" onclick="eliminarGestion('${g.id}')">✕</button></td>
-      </tr>`;
-    }).join('')}</tbody>
-  </table></div>`;
-}
-
-function actualizarBadgeBitacora(){
-  const all = _getBitacora();
-  const hoy = new Date().toISOString().split('T')[0];
-  const seguim = all.filter(g=>g.seguimiento===hoy).length;
-  const badge = document.getElementById('badge-bitacora');
-  if(badge){ badge.textContent=seguim; badge.style.display=seguim?'inline':'none'; }
-}
-
-function abrirModalGestion(clienteId=null, clienteNombre=null){
-  document.getElementById('gest-fecha').value = new Date().toISOString().split('T')[0];
-  document.getElementById('gest-seguimiento').value = '';
-  document.getElementById('gest-nota').value = '';
-  document.getElementById('gest-tipo').value = 'LLAMADA';
-  document.getElementById('gest-resultado').value = 'CONTACTADO';
-  if(clienteId){
-    document.getElementById('gest-cliente-id').value = clienteId;
-    document.getElementById('gest-cliente-nombre').value = clienteNombre||'';
-    document.getElementById('gest-cliente-search').value = clienteNombre||'';
-  } else {
-    document.getElementById('gest-cliente-id').value = '';
-    document.getElementById('gest-cliente-nombre').value = '';
-    document.getElementById('gest-cliente-search').value = '';
-  }
-  openModal('modal-gestion');
-}
-
-function buscarClienteGestion(q){
-  const res = document.getElementById('gest-cliente-results');
-  if(!res) return;
-  if(q.length < 2){ res.style.display='none'; return; }
-  const matches = myClientes().filter(c=>(c.nombre||'').toLowerCase().includes(q.toLowerCase())).slice(0,8);
-  if(!matches.length){ res.style.display='none'; return; }
-  res.style.display='block';
-  res.innerHTML = matches.map(c=>`
-    <div style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--warm)"
-         onmousedown="seleccionarClienteGestion(${c.id},'${(c.nombre||'').replace(/'/g,"\\'")}')">
-      <b>${c.nombre||'—'}</b> <span style="color:var(--muted)">${c.ci||''}</span>
-    </div>`).join('');
-}
-
-function seleccionarClienteGestion(id, nombre){
-  document.getElementById('gest-cliente-id').value = id;
-  document.getElementById('gest-cliente-nombre').value = nombre;
-  document.getElementById('gest-cliente-search').value = nombre;
-  document.getElementById('gest-cliente-results').style.display='none';
-}
-
-function guardarGestion(){
-  const clienteId   = document.getElementById('gest-cliente-id').value;
-  const clienteNom  = document.getElementById('gest-cliente-nombre').value||document.getElementById('gest-cliente-search').value;
-  const fecha       = document.getElementById('gest-fecha').value;
-  const tipo        = document.getElementById('gest-tipo').value;
-  const resultado   = document.getElementById('gest-resultado').value;
-  const nota        = document.getElementById('gest-nota').value.trim();
-  const seguimiento = document.getElementById('gest-seguimiento').value;
-  if(!fecha){ showToast('Selecciona una fecha','error'); return; }
-  if(!clienteNom){ showToast('Selecciona un cliente','error'); return; }
-
-  const all = _getBitacora();
-  const maxId = all.length ? Math.max(...all.map(g=>parseInt(g.id)||0)) : 0;
-  const g = {
-    id: String(maxId+1),
-    clienteId: clienteId||'',
-    clienteNombre: clienteNom.toUpperCase(),
-    ejecutivo: currentUser?.id||'',
-    fecha,
-    hora: new Date().toTimeString().slice(0,5),
-    tipo, resultado, nota, seguimiento,
-  };
-  all.push(g);
-  _saveBitacora(all);
-
-  // Sync SP — guardar _spId devuelto para poder eliminar después
-  if(_spReady){
-    spCreate('cobranzas', g).then(spId=>{
-      if(spId){
-        const stored = _getBitacora();
-        const idx = stored.findIndex(x=>x.id===g.id);
-        if(idx>=0){ stored[idx]._spId = spId; _saveBitacora(stored); }
-      }
-    });
-  }
-
-  actualizarBadgeBitacora();
-  closeModal('modal-gestion');
-  renderBitacora(_currentFiltroBitacora||'semana');
-  showToast('Gestión registrada','success');
-}
-
-function eliminarGestion(id){
-  if(!confirm('¿Eliminar este registro de gestión?')) return;
-  const all = _getBitacora();
-  const toDelete = all.find(g=>g.id===id);
-  const filtered = all.filter(g=>g.id!==id);
-  _saveBitacora(filtered);
-  // Sincronizar eliminación con SharePoint si el registro ya fue creado en SP
-  if(_spReady && toDelete?._spId) spDelete('cobranzas', toDelete._spId);
-  actualizarBadgeBitacora();
-  renderBitacora(_currentFiltroBitacora||'semana');
-  showToast('Registro eliminado');
-}
-
-function exportBitacoraExcel(){
-  const all = _getBitacora();
-  const TIPO_LABEL={LLAMADA:'Llamada',WHATSAPP:'WhatsApp',EMAIL:'Email',VISITA:'Visita',COBRO:'Cobro',OTRO:'Otro'};
-  const RES_LABEL={CONTACTADO:'Contactado',NO_CONTESTA:'No contesta',BUZON:'Buzón',PROMESA_PAGO:'Promesa de pago',PAGO_REALIZADO:'Pago realizado',NO_INTERESADO:'No interesado',OTRO:'Otro'};
-  const rows = all.map(g=>{
-    const exec = USERS.find(u=>u.id===g.ejecutivo);
-    return {
-      'Fecha':g.fecha,'Hora':g.hora,'Cliente':g.clienteNombre,
-      'Tipo':TIPO_LABEL[g.tipo]||g.tipo,'Resultado':RES_LABEL[g.resultado]||g.resultado,
-      'Nota':g.nota,'Seguimiento':g.seguimiento||'','Ejecutivo':exec?exec.name:''
-    };
-  });
-  const ws=XLSX.utils.json_to_sheet(rows);
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'Bitácora');
-  XLSX.writeFile(wb,`Bitacora_Reliance_${new Date().toISOString().split('T')[0]}.xlsx`);
-  showToast('Bitácora exportada');
-}
 
 function actualizarBadgeCotizaciones(){
   const all = _getCotizaciones();
@@ -6857,12 +6677,17 @@ async function _syncFromSP(){
       if(pg==='page-calendario') renderCalendario();
     }
     // Gestiones de cobranza (append-only: solo agregar las que no existen localmente)
+    // Solo se procesan entradas con cierreId — evita contaminar con entradas huérfanas antiguas
     if(gestCobr && gestCobr.length){
       const localG = _getGestionCobranza();
       let changed = false;
       gestCobr.forEach(sg=>{
-        if(!localG.find(lg=>String(lg.id)===String(sg.id||sg.crm_id))){
-          localG.unshift(sg); changed=true;
+        if(!sg.cierreId) return; // ignorar entradas sin cierreId (no son gestiones de cobranza)
+        const localId = String(sg.id||sg.crm_id||'');
+        if(localId && !localG.find(lg=>String(lg.id)===localId)){
+          // Marcar como sincronizado (tiene _spId desde SP)
+          localG.unshift({...sg, _spId: sg._spId||sg._spId, _dirty: false});
+          changed=true;
         }
       });
       if(changed){

@@ -972,68 +972,6 @@
   </div>
 </div>
 
-<!-- Modal Nueva Gestión -->
-<div class="modal-overlay" id="modal-gestion">
-  <div class="modal" style="max-width:520px">
-    <div class="modal-header">
-      <div class="modal-title" id="modal-gestion-title">📓 Registrar Gestión</div>
-      <button class="modal-close" onclick="closeModal('modal-gestion')">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="grid-2" style="gap:12px;margin-bottom:12px">
-        <div>
-          <label class="form-label">Cliente *</label>
-          <input class="form-input" id="gest-cliente-search" placeholder="Buscar cliente…" oninput="buscarClienteGestion(this.value)" autocomplete="off">
-          <div id="gest-cliente-results" style="position:absolute;background:#fff;border:1px solid var(--warm);border-radius:8px;max-height:180px;overflow-y:auto;z-index:9999;width:220px;display:none"></div>
-          <input type="hidden" id="gest-cliente-id">
-          <input type="hidden" id="gest-cliente-nombre">
-        </div>
-        <div>
-          <label class="form-label">Fecha *</label>
-          <input class="form-input" type="date" id="gest-fecha">
-        </div>
-      </div>
-      <div class="grid-2" style="gap:12px;margin-bottom:12px">
-        <div>
-          <label class="form-label">Tipo de gestión *</label>
-          <select class="form-select" id="gest-tipo">
-            <option value="LLAMADA">📞 Llamada telefónica</option>
-            <option value="WHATSAPP">💬 WhatsApp</option>
-            <option value="EMAIL">📧 Email</option>
-            <option value="VISITA">🚗 Visita presencial</option>
-            <option value="COBRO">💰 Cobro</option>
-            <option value="OTRO">• Otro</option>
-          </select>
-        </div>
-        <div>
-          <label class="form-label">Resultado *</label>
-          <select class="form-select" id="gest-resultado">
-            <option value="CONTACTADO">✅ Contactado</option>
-            <option value="NO_CONTESTA">📵 No contesta</option>
-            <option value="BUZON">📬 Buzón de voz</option>
-            <option value="PROMESA_PAGO">🤝 Promesa de pago</option>
-            <option value="PAGO_REALIZADO">💵 Pago realizado</option>
-            <option value="NO_INTERESADO">❌ No interesado</option>
-            <option value="OTRO">• Otro</option>
-          </select>
-        </div>
-      </div>
-      <div style="margin-bottom:12px">
-        <label class="form-label">Nota / Observación</label>
-        <textarea class="form-input" id="gest-nota" rows="3" placeholder="Detalle de la gestión realizada…" style="resize:vertical"></textarea>
-      </div>
-      <div>
-        <label class="form-label">Próximo seguimiento (opcional)</label>
-        <input class="form-input" type="date" id="gest-seguimiento">
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('modal-gestion')">Cancelar</button>
-      <button class="btn btn-primary" onclick="guardarGestion()">Guardar Gestión</button>
-    </div>
-  </div>
-</div>
-
 <!-- ══════════ MODALS ══════════ -->
 <!-- Modal Detalle Cliente -->
 <div class="modal-overlay" id="modal-cliente">
