@@ -115,16 +115,23 @@ const TASAS_RANGOS_DEFAULT = {
 // tasas[]: decimal (0.035 = 3.5%)  |  limites[]: USD techo de cada rango
 // Para N tasas → N-1 límites: va<=limites[0]→tasas[0], …, último→tasas[N-1]
 const TASAS_V2_DEFAULT = {
-  'SWEADEN_Sierra': {aseg:'SWEADEN',       region:'SIERRA', tipo:'',           tasas:[0.035,0.028,0.025],       limites:[20000,30000],       comisionPct:15},
-  'SWEADEN_Costa':  {aseg:'SWEADEN',       region:'COSTA',  tipo:'',           tasas:[0.035,0.030,0.028],       limites:[20000,30000],       comisionPct:15},
-  'MAPFRE_Renov':   {aseg:'MAPFRE',        region:'',       tipo:'RENOVACION', tasas:[0.035,0.028,0.025],       limites:[20000,30000],       comisionPct:12},
-  'MAPFRE_Nuevo':   {aseg:'MAPFRE',        region:'',       tipo:'NUEVO',      tasas:[0.049,0.032,0.025],       limites:[20000,30000],       comisionPct:12},
-  'ALIANZA':        {aseg:'ALIANZA',       region:'',       tipo:'',           tasas:[0.030,0.025,0.022],       limites:[20000,30000],       comisionPct:15},
-  'ZURICH':         {aseg:'ZURICH',        region:'',       tipo:'',           tasas:[0.043,0.025,0.022],       limites:[30000,40000],       comisionPct:14},
-  'LATINA':         {aseg:'LATINA',        region:'',       tipo:'',           tasas:[0.035,0.028,0.025],       limites:[20000,30000],       comisionPct:15},
-  'ADS_UIO':        {aseg:'ASEG. DEL SUR', region:'SIERRA', tipo:'',           tasas:[0.045,0.031,0.022,0.020], limites:[20000,30000,40000], comisionPct:13},
-  'ADS_GYE':        {aseg:'ASEG. DEL SUR', region:'COSTA',  tipo:'',           tasas:[0.055,0.034,0.022,0.020], limites:[20000,30000,40000], comisionPct:13},
-  'GENERALI':       {aseg:'GENERALI',      region:'',       tipo:'',           tasas:[0.035,0.035,0.035],       limites:[20000,30000],       comisionPct:12},
+  // ── SWEADEN: diferencia Sierra vs Costa ─────────────────────────────────────
+  'SWEADEN_Sierra':   {aseg:'SWEADEN',        region:'SIERRA', tipo:'',           tasas:[0.035,0.028,0.025],       limites:[20000,30000],       comisionPct:15},
+  'SWEADEN_Costa':    {aseg:'SWEADEN',        region:'COSTA',  tipo:'',           tasas:[0.035,0.030,0.028],       limites:[20000,30000],       comisionPct:15},
+  // ── MAPFRE: diferencia Renovación vs Nuevo ───────────────────────────────────
+  'MAPFRE_Renov':     {aseg:'MAPFRE',         region:'',       tipo:'RENOVACION', tasas:[0.035,0.028,0.025],       limites:[20000,30000],       comisionPct:12},
+  'MAPFRE_Nuevo':     {aseg:'MAPFRE',         region:'',       tipo:'NUEVO',      tasas:[0.049,0.032,0.025],       limites:[20000,30000],       comisionPct:12},
+  // ── Nacionales (sin diferencia regional) ─────────────────────────────────────
+  'ALIANZA':          {aseg:'ALIANZA',        region:'',       tipo:'',           tasas:[0.030,0.025,0.022],       limites:[20000,30000],       comisionPct:15},
+  'ZURICH':           {aseg:'ZURICH',         region:'',       tipo:'',           tasas:[0.043,0.025,0.022],       limites:[30000,40000],       comisionPct:14},
+  'LATINA':           {aseg:'LATINA',         region:'',       tipo:'',           tasas:[0.035,0.028,0.025],       limites:[20000,30000],       comisionPct:15},
+  'GENERALI':         {aseg:'GENERALI',       region:'',       tipo:'',           tasas:[0.035,0.035,0.035],       limites:[20000,30000],       comisionPct:12},
+  // ── ASEG. DEL SUR (clave "ASEG. DEL SUR" en cotizador — estándar) ────────────
+  'ADS_UIO':          {aseg:'ASEG. DEL SUR',  region:'SIERRA', tipo:'',           tasas:[0.045,0.031,0.022,0.020], limites:[20000,30000,40000], comisionPct:13},
+  'ADS_GYE':          {aseg:'ASEG. DEL SUR',  region:'COSTA',  tipo:'',           tasas:[0.055,0.034,0.022,0.020], limites:[20000,30000,40000], comisionPct:13},
+  // ── ADS (clave "ADS" en cotizador — masivos, cargo adicional $80) ────────────
+  'ADS_MAS_UIO':      {aseg:'ADS',            region:'SIERRA', tipo:'',           tasas:[0.045,0.031,0.022,0.020], limites:[20000,30000,40000], comisionPct:13},
+  'ADS_MAS_GYE':      {aseg:'ADS',            region:'COSTA',  tipo:'',           tasas:[0.055,0.034,0.022,0.020], limites:[20000,30000,40000], comisionPct:13},
 };
 // ── Planes de Vida / Asistencia Médica por aseguradora ───────────────────────
 // Costo en decimal y coberturas para mostrar en PDF (sin precio)
