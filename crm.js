@@ -1910,7 +1910,12 @@ function _abrirCierreDirecto(id){
   const polAntDirEl=document.getElementById('cv-poliza-anterior');
   if(polAntDirEl) polAntDirEl.value=c.polizaAnterior||c.polizaNueva||c.poliza||'';
   const asegAntDirEl=document.getElementById('cv-aseg-anterior');
-  if(asegAntDirEl) asegAntDirEl.value=c.aseguradora||'';
+  if(asegAntDirEl) asegAntDirEl.value=c.aseguradoraAnterior||c.aseguradora||'';
+  // Pre-fill Valor Asegurado desde el cliente
+  const vaDirectEl=document.getElementById('cv-va-cierre');
+  const vaDirectDisplay=document.getElementById('cv-va-display');
+  if(vaDirectEl) vaDirectEl.value=c.va||'';
+  if(vaDirectDisplay) vaDirectDisplay.textContent=(c.va||0)>0?`VA: ${fmt(c.va)}`:'';
   document.getElementById('cv-forma-pago').value='DEBITO_BANCARIO';
   renderCvFormaPago();
   openModal('modal-cierre-venta');
@@ -2141,7 +2146,9 @@ function renderCvExtras(){
           <div class="form-group">
             <label class="form-label">N° Factura Vida/AP <span style="color:var(--red)">*</span></label>
             <input class="form-input" id="cv-factura-vida" value="${facturaVal}"
-                   placeholder="001-001-000000000" style="font-family:'DM Mono',monospace">
+                   placeholder="001-001-000000000" maxlength="17"
+                   oninput="maskFactura(this)" onkeydown="return allowFacturaKey(event)"
+                   style="font-family:'DM Mono',monospace;letter-spacing:1px">
           </div>
           <div class="form-group">
             <label class="form-label">Total Vida/AP <span style="color:var(--red)">*</span></label>
@@ -2161,7 +2168,7 @@ function syncTipoPagoToFormaPago(){
   let fp='DEBITO_BANCARIO';
   if(tp.startsWith('CONTADO')) fp='CONTADO';
   else if(tp.startsWith('TC ')) fp='TARJETA_CREDITO';
-  else if(tp.includes('RECURRENTES TC')) fp='TARJETA_CREDITO';
+  else if(tp.includes('RECURRENTES TC')) fp='DEBITO_RECURRENTE_TC';
   else if(tp.includes('CHEQUES')) fp='CONTADO';
   else if(tp.includes('DIRECTO')) fp='CONTADO';
   const fpEl=document.getElementById('cv-forma-pago');
@@ -2252,6 +2259,36 @@ function renderCvFormaPago(){
       </div>
     </div>
     ${advertencia}`;
+  } else if(fp==='DEBITO_RECURRENTE_TC'){
+    // Débito recurrente mensual en TC — genera calendario igual que débito bancario
+    const tpVal=document.getElementById('cv-tipo-pago')?.value||'';
+    const nRec=parseInt(tpVal.split(' ')[0])||2;
+    const cuotasValidas=[2,3,4,5,6,7,8,9,10,11,12].filter(n=>total/n>=50||n<=2);
+    const cuotasOpts=cuotasValidas.map(n=>`<option value="${n}"${n===nRec?' selected':''}>${n} cuota${n>1?'s':''} — ${fmt(total/n)}/mes</option>`).join('');
+    wrap.innerHTML=`
+    <div class="highlight-card" style="background:#e8f0fb;border-color:#1a4c84;margin-bottom:10px">
+      <div style="font-size:12px;color:var(--accent2)">💳 Débitos Recurrentes TC — cargo mensual automático en tarjeta de crédito</div>
+    </div>
+    <div class="form-grid form-grid-2" style="gap:12px">
+      <div class="form-group"><label class="form-label">Banco / Emisor TC <span style="color:var(--red)">*</span></label>
+        <select class="form-select" id="cv-banco-tc">
+          <option>Produbanco</option><option>Pichincha</option><option>Guayaquil</option>
+          <option>Pacífico</option><option>Internacional</option><option>Bolivariano</option>
+          <option>Austro</option><option>Diners</option><option>Otro</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Últimos 4 dígitos (opcional)</label>
+        <input class="form-input" id="cv-tc-digits" placeholder="XXXX" maxlength="4" style="font-family:'DM Mono',monospace">
+      </div>
+      <div class="form-group"><label class="form-label">Número de cuotas <span style="color:var(--red)">*</span></label>
+        <select class="form-select" id="cv-n-cuotas" onchange="renderCvDebCalendar()">${cuotasOpts}</select>
+      </div>
+      <div class="form-group"><label class="form-label">Fecha de 1ª cuota <span style="color:var(--red)">*</span></label>
+        <input class="form-input" type="date" id="cv-fecha-primera" onchange="renderCvDebCalendar()" required>
+      </div>
+    </div>
+    <div id="cv-deb-calendar" style="margin-top:12px"></div>`;
+    setTimeout(()=>renderCvDebCalendar(),100);
   } else if(fp==='MIXTO'){
     // Para MIXTO: si el resto va a TC, respetar máximo de la aseguradora
     wrap.innerHTML=`
@@ -2330,11 +2367,14 @@ function renderCvDebCalendar(){
   if(!fechaStr||!n){wrap.innerHTML='';return;}
   const total=getTotal();
   const cuota=total/n;
-  const banco=document.getElementById('cv-banco-deb')?.value||'—';
-  const cuenta=document.getElementById('cv-cuenta-deb')?.value||'—';
+  const fp=document.getElementById('cv-forma-pago')?.value||'';
+  const esTC=fp==='DEBITO_RECURRENTE_TC';
+  const banco=esTC?(document.getElementById('cv-banco-tc')?.value||'—'):(document.getElementById('cv-banco-deb')?.value||'—');
+  const cuenta=esTC?('TC ****'+(document.getElementById('cv-tc-digits')?.value||'')):(document.getElementById('cv-cuenta-deb')?.value||'—');
+  const labelCal=esTC?'Calendario TC recurrente':'Calendario de débitos';
   // Validar cuota mínima $50
   const aviso=cuota<50?`<div style="margin-bottom:8px;padding:6px 10px;background:#fde8e0;border-radius:6px;font-size:11px;color:var(--accent)">⚠ Cuota menor a $50 — considere reducir el número de cuotas</div>`:'';
-  let html=`${aviso}<div class="section-divider">Calendario de débitos — ${banco} · Cta: ${cuenta}</div>
+  let html=`${aviso}<div class="section-divider">${labelCal} — ${banco} · ${cuenta}</div>
   <div style="font-size:12px;margin-bottom:8px;color:var(--muted)">${n} cuotas de <b style="color:var(--ink)">${fmt(cuota)}</b>/mes · Total: <b style="color:var(--accent)">${fmt(total)}</b></div>
   <table style="width:100%;font-size:12px"><thead><tr>
     <th style="padding:6px 10px;text-align:left;color:var(--muted);font-size:10px;background:var(--paper)">Cuota</th>
@@ -2385,8 +2425,10 @@ function guardarCierreVenta(){
   const _axavd = document.getElementById('cv-axavd')?.value||'';
   const _esConDocVida = (_asegUpper.includes('MAPFRE')||_asegUpper.includes('LATINA')||_asegUpper.includes('ALIANZA')) && _axavd.includes('VD');
   if(_esConDocVida){
-    if(!(document.getElementById('cv-poliza-vida')?.value||'').trim())  errors.push('N° Póliza Vida/AP');
-    if(!(document.getElementById('cv-factura-vida')?.value||'').trim()) errors.push('N° Factura Vida/AP');
+    if(!(document.getElementById('cv-poliza-vida')?.value||'').trim()) errors.push('N° Póliza Vida/AP');
+    const _factVida=(document.getElementById('cv-factura-vida')?.value||'').trim();
+    if(!_factVida) errors.push('N° Factura Vida/AP');
+    else if(!validarFactura(_factVida)) errors.push('N° Factura Vida/AP (formato inválido — debe ser 001-001-000000000)');
     if(!(parseFloat(document.getElementById('cv-total-vida')?.value)||0)) errors.push('Total Vida/AP');
   }
   // Validar campos de forma de pago
@@ -2398,6 +2440,9 @@ function guardarCierreVenta(){
   } else if(fp==='TARJETA_CREDITO'){
     if(!document.getElementById('cv-n-cuotas-tc')?.value) errors.push('N° cuotas TC');
     if(!document.getElementById('cv-fecha-contacto-tc')?.value) errors.push('Fecha contacto TC');
+  } else if(fp==='DEBITO_RECURRENTE_TC'){
+    if(!document.getElementById('cv-n-cuotas')?.value) errors.push('N° de cuotas TC recurrentes');
+    if(!document.getElementById('cv-fecha-primera')?.value) errors.push('Fecha 1ª cuota TC recurrente');
   } else if(fp==='MIXTO'){
     if(!document.getElementById('cv-monto-inicial')?.value) errors.push('Monto cuota inicial');
     if(!document.getElementById('cv-fecha-mixto-inicial')?.value) errors.push('Fecha cuota inicial');
@@ -2428,6 +2473,17 @@ function guardarCierreVenta(){
     pago.banco=document.getElementById('cv-banco-tc').value;
     pago.digitos=document.getElementById('cv-tc-digits').value;
     pago.cuotaMonto=(total/pago.nCuotas).toFixed(2);
+  } else if(fp==='DEBITO_RECURRENTE_TC'){
+    const n=parseInt(document.getElementById('cv-n-cuotas').value);
+    const fecha=document.getElementById('cv-fecha-primera').value;
+    pago.banco=document.getElementById('cv-banco-tc')?.value||'';
+    pago.digitos=document.getElementById('cv-tc-digits')?.value||'';
+    pago.nCuotas=n; pago.fechaPrimera=fecha;
+    pago.cuotaMonto=(total/n).toFixed(2);
+    pago.calendario=Array.from({length:n},(_,i)=>{
+      const d=new Date(fecha); d.setMonth(d.getMonth()+i);
+      return d.toISOString().split('T')[0];
+    });
   } else if(fp==='MIXTO'){
     pago.montoInicial=document.getElementById('cv-monto-inicial').value;
     pago.fechaInicial=document.getElementById('cv-fecha-mixto-inicial').value;
@@ -2476,6 +2532,7 @@ function guardarCierreVenta(){
     polizaAnterior:  _gs('cv-poliza-anterior'),
     asegAnterior:    _gs('cv-aseg-anterior'),
     tasaAplicada:    cierreVentaData.tasa||0,
+    valorAsegurado:  parseFloat(document.getElementById('cv-va-cierre')?.value)||0,
     _clienteId: c ? String(c.id) : '',
     _placa: c?.placa||'',
   };
@@ -4216,7 +4273,13 @@ function irAEmision(id){
   const asegAntEl=document.getElementById('cv-aseg-anterior');
   const clienteData=cotiz.clienteId?DB.find(x=>String(x.id)===String(cotiz.clienteId)):null;
   if(polAntEl&&clienteData) polAntEl.value=clienteData.polizaAnterior||clienteData.polizaNueva||clienteData.poliza||'';
-  if(asegAntEl&&clienteData) asegAntEl.value=clienteData.aseguradora||'';
+  if(asegAntEl&&clienteData) asegAntEl.value=clienteData.aseguradoraAnterior||clienteData.aseguradora||'';
+  // Pre-fill Valor Asegurado from cotización / cliente
+  const vaVal=cotiz.va||(clienteData?clienteData.va:0)||0;
+  const vaEl=document.getElementById('cv-va-cierre');
+  const vaDisplayEl=document.getElementById('cv-va-display');
+  if(vaEl) vaEl.value=vaVal||'';
+  if(vaDisplayEl) vaDisplayEl.textContent=vaVal>0?`VA: ${fmt(vaVal)}`:'';
   // Pre-fill cuenta Produbanco desde el cliente
   const cuentaEl=document.getElementById('cv-cuenta');
   if(cuentaEl&&clienteData) cuentaEl.value=clienteData.cuentaBanc||clienteData.cuenta||'';

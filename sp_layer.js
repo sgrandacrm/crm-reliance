@@ -426,6 +426,7 @@ function spToFields(listKey, data){
       'poliza_vida','factura_vida','total_vida',
       'cuotaInicial','numCuotas','valorCuota','tipoPago',
       'tasaAplicada','polizaAnterior','asegAnterior',
+      'valorAsegurado',
       // Fase 3 — cobranza (estado de cada cuota)
       'cuotasEstado',
     ]),
@@ -455,7 +456,7 @@ function spToFields(listKey, data){
     'extras','vidaLatina','vidaSweaden','vidaMapfre','vidaAlianza',
     // Fase 1 — cierres desglose
     'derechosEmision','segCampesino','supBancos','iva',
-    'vidaPrima','axaPrima','cuotaInicial','numCuotas','valorCuota','tasaAplicada',
+    'vidaPrima','axaPrima','cuotaInicial','numCuotas','valorCuota','tasaAplicada','valorAsegurado',
     // Comisiones — tasas por rango de VA y límites de rango
     'tasa_r1','tasa_r2','tasa_r3','tasa_r4','tasa_r5',
     'limite_r1','limite_r2','limite_r3',
@@ -909,10 +910,8 @@ async function spAsegurarColumnas(logCol){
       {name:'tasaAplicada',number:{}},    // Tasa % usada (Excel: fila 9)
       {name:'polizaAnterior',text:{}},     // Póliza anterior (renovaciones)
       {name:'asegAnterior',text:{}},       // Aseguradora anterior
+      {name:'valorAsegurado',number:{}},   // Valor asegurado del vehículo
       {name:'cuotasEstado',text:{allowMultipleLines:true}}, // JSON array: ['PENDIENTE','COBRADO',...]
-      {name:'poliza_vida',text:{}},        // N° póliza Vida/AP adicional
-      {name:'factura_vida',text:{}},       // N° factura Vida/AP adicional
-      {name:'total_vida',number:{}},       // Total Vida/AP documento separado
     ],
     CRM_Usuarios: [
       {name:'userId',text:{}},{name:'rol',text:{}},
@@ -1049,7 +1048,7 @@ async function _spAsegurarColumnas_UNUSED(logCol){
       {name:'observacion',type:'note'},{name:'axavd',type:'text'},
       {name:'crmid',type:'text'},{name:'polizaNueva',type:'text'},
       {name:'poliza_vida',type:'text'},{name:'factura_vida',type:'text'},
-      {name:'total_vida',type:'number'},
+      {name:'total_vida',type:'number'},{name:'valorAsegurado',type:'number'},
     ],
     CRM_Usuarios: [
       {name:'userId',type:'text'},{name:'rol',type:'text'},
@@ -1097,7 +1096,7 @@ async function bootApp(){
     if(listasOk){
       // Verificar si ya se crearon columnas antes
       const colsDone = localStorage.getItem('sp_cols_done');
-      if(colsDone !== '19'){
+      if(colsDone !== '20'){
         hideLoader();
         const setupEl = document.getElementById('sp-setup');
         if(setupEl){
@@ -1119,7 +1118,7 @@ async function bootApp(){
         };
         await spAsegurarColumnas(logCol);
         logCol('✅ Columnas configuradas');
-        localStorage.setItem('sp_cols_done','19');
+        localStorage.setItem('sp_cols_done','20');
         if(setupEl) setupEl.style.display='none';
       }
     }
