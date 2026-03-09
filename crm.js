@@ -4158,64 +4158,96 @@ function guardarComisionesAdmin(){
 // ══════════════════════════════════════════════════════
 function renderTasasAdmin(){
   const el = document.getElementById('admin-tasas-body'); if(!el) return;
-  const tasas = _getTasasRangos();
-  const defs  = TASAS_RANGOS_DEFAULT;
+  const v2   = _getTasasV2();
+  const filas = Object.entries(v2).filter(([,row])=>row.aseg); // solo filas V2 válidas
+  const th  = (txt,extra='') => `<th style="padding:6px 8px;border:1px solid var(--border,#ddd);white-space:nowrap;${extra}">${txt}</th>`;
+  const inp = (val, id) =>
+    `<input type="number" id="${id}" value="${val||''}" min="0" max="20" step="0.01"
+       style="width:56px;border:1px solid #ccc;border-radius:4px;padding:2px 4px;font-size:12px;
+              font-family:'DM Mono',monospace;text-align:right;font-weight:600">`;
+  const inpL = (val, id) =>
+    `<input type="number" id="${id}" value="${val||''}" placeholder="—" min="0" step="1000"
+       style="width:68px;border:1px solid #ccc;border-radius:4px;padding:2px 4px;font-size:11px;
+              font-family:'DM Mono',monospace;text-align:right;color:var(--muted)">`;
   el.innerHTML = `
     <p style="font-size:12px;color:var(--muted);margin-bottom:14px">
-      Tasa por <b>rango de suma asegurada</b>. El cotizador aplica automáticamente la tasa
-      del rango que corresponde al valor del vehículo ingresado.
+      Tasa por <b>aseguradora · región · tipo de póliza</b> con rangos de VA dinámicos.
+      Cada fila define hasta 4 tasas y hasta 3 límites (en USD). El último rango no tiene techo.
     </p>
     <div style="overflow-x:auto;margin-bottom:16px">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:780px">
         <thead>
-          <tr style="background:var(--bg2,#f5f5f5)">
-            <th style="text-align:left;padding:8px 10px;border:1px solid var(--border,#ddd);white-space:nowrap">Aseguradora</th>
-            ${RANGOS_LABEL.map(l=>`<th style="text-align:center;padding:8px 10px;border:1px solid var(--border,#ddd);white-space:nowrap;font-size:11px">${l}</th>`).join('')}
+          <tr style="background:var(--bg2,#f5f5f5);text-align:center">
+            ${th('Aseguradora','text-align:left')}
+            ${th('Región','font-size:11px')}
+            ${th('Tipo','font-size:11px')}
+            ${th('Rango 1','background:#e8f0fe;font-size:11px')}
+            ${th('Hasta $1','background:#e8f0fe;font-size:11px')}
+            ${th('Rango 2','background:#e8f0fe;font-size:11px')}
+            ${th('Hasta $2','background:#e8f0fe;font-size:11px')}
+            ${th('Rango 3','background:#e8f0fe;font-size:11px')}
+            ${th('Hasta $3','background:#e8f0fe;font-size:11px')}
+            ${th('Rango 4','background:#e8f0fe;font-size:11px')}
+          </tr>
+          <tr style="background:var(--bg2,#f5f5f5);font-size:10px;color:var(--muted);text-align:center">
+            <td colspan="3" style="border:1px solid var(--border,#ddd)"></td>
+            <td style="padding:2px 8px;border:1px solid var(--border,#ddd);background:#e8f0fe">%</td>
+            <td style="padding:2px 8px;border:1px solid var(--border,#ddd);background:#e8f0fe">USD techo</td>
+            <td style="padding:2px 8px;border:1px solid var(--border,#ddd);background:#e8f0fe">%</td>
+            <td style="padding:2px 8px;border:1px solid var(--border,#ddd);background:#e8f0fe">USD techo</td>
+            <td style="padding:2px 8px;border:1px solid var(--border,#ddd);background:#e8f0fe">%</td>
+            <td style="padding:2px 8px;border:1px solid var(--border,#ddd);background:#e8f0fe">USD techo</td>
+            <td style="padding:2px 8px;border:1px solid var(--border,#ddd);background:#e8f0fe">%</td>
           </tr>
         </thead>
         <tbody>
-          ${Object.keys(ASEGURADORAS).map(name=>{
-            const cfg = ASEGURADORAS[name]||{};
-            const r   = tasas[name] || defs[name] || [];
-            const d   = defs[name]  || [];
-            const mod = r.some((t,i)=>Math.abs(t-(d[i]||t))>0.00001);
+          ${filas.map(([crmId, row])=>{
+            const cfg = ASEGURADORAS[row.aseg]||{};
+            const def = TASAS_V2_DEFAULT[crmId]||row;
+            const t   = row.tasas  || [];
+            const l   = row.limites|| [];
+            const dt  = def.tasas  || [];
+            const dl  = def.limites|| [];
+            const s   = _safeName(crmId);
+            const mod = t.some((v,i)=>Math.abs(v-(dt[i]||v))>0.00001) || l.some((v,i)=>Math.abs(v-(dl[i]||v))>0.00001);
+            const td  = (content,bg='') => `<td style="padding:4px 6px;border:1px solid var(--border,#ddd);text-align:center${bg?';background:'+bg:''}">${content}</td>`;
             return `<tr${mod?' style="background:#fff8f0"':''}>
-              <td style="padding:7px 10px;border:1px solid var(--border,#ddd);font-weight:700;color:${cfg.color||'var(--ink)'};white-space:nowrap">
-                ${name}${mod?` <span style="font-size:9px;color:var(--accent,#c84b1a)">●</span>`:''}
+              <td style="padding:6px 10px;border:1px solid var(--border,#ddd);font-weight:700;color:${cfg.color||'var(--ink)'}">
+                ${row.aseg}${mod?` <span style="font-size:9px;color:var(--accent,#c84b1a)">●</span>`:''}
               </td>
-              ${RANGOS_VA.map((_,i)=>`
-                <td style="padding:4px 6px;border:1px solid var(--border,#ddd)">
-                  <div style="display:flex;align-items:center;justify-content:center;gap:2px">
-                    <input type="number" id="adm-tr-${_safeName(name)}-${i}"
-                           value="${((r[i]??d[i]??0.035)*100).toFixed(2)}"
-                           min="0.01" max="20" step="0.01"
-                           style="width:58px;border:1px solid #ccc;border-radius:4px;padding:3px 4px;font-size:12px;font-family:'DM Mono',monospace;text-align:right;font-weight:600">
-                    <span style="font-size:11px;color:var(--muted)">%</span>
-                  </div>
-                </td>`).join('')}
+              <td style="padding:4px 6px;border:1px solid var(--border,#ddd);text-align:center;font-size:11px;color:var(--muted)">${row.region||'—'}</td>
+              <td style="padding:4px 6px;border:1px solid var(--border,#ddd);text-align:center;font-size:11px;color:var(--muted)">${row.tipo||'—'}</td>
+              ${td(`${inp(((t[0]||0)*100).toFixed(2), `adm-v2-${s}-t0`)} %`,'#e8f0fe')}
+              ${td(inpL(l[0]||'', `adm-v2-${s}-l0`),'#e8f0fe')}
+              ${td(`${inp(((t[1]||0)*100||''), `adm-v2-${s}-t1`)} %`,'#e8f0fe')}
+              ${td(inpL(l[1]||'', `adm-v2-${s}-l1`),'#e8f0fe')}
+              ${td(`${inp(((t[2]||0)*100||''), `adm-v2-${s}-t2`)} %`,'#e8f0fe')}
+              ${td(inpL(l[2]||'', `adm-v2-${s}-l2`),'#e8f0fe')}
+              ${td(`${inp(((t[3]||0)*100||''), `adm-v2-${s}-t3`)} %`,'#e8f0fe')}
             </tr>`;
           }).join('')}
         </tbody>
       </table>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button class="btn btn-ghost" onclick="restaurarTasasDefault()" title="Volver a los valores por defecto">↺ Restaurar defaults</button>
+      <button class="btn btn-ghost" onclick="restaurarTasasDefault()">↺ Restaurar defaults</button>
       <button class="btn btn-primary" onclick="guardarTasasAdmin()">💾 Guardar tasas</button>
     </div>`;
 }
 
 function guardarTasasAdmin(){
+  const v2     = _getTasasV2();
   const nuevas = {};
-  Object.keys(ASEGURADORAS).forEach(name=>{
-    const s = _safeName(name);
-    nuevas[name] = RANGOS_VA.map((_,i)=>{
-      const inp = document.getElementById(`adm-tr-${s}-${i}`);
-      const v = parseFloat(inp?.value)||0;
-      return v > 0 ? v/100 : (TASAS_RANGOS_DEFAULT[name]?.[i] || 0.035);
-    });
+  Object.entries(v2).filter(([,row])=>row.aseg).forEach(([crmId, row])=>{
+    const s  = _safeName(crmId);
+    const gT = i => { const e=document.getElementById(`adm-v2-${s}-t${i}`); return e?(parseFloat(e.value)||0)/100:0; };
+    const gL = i => { const e=document.getElementById(`adm-v2-${s}-l${i}`); return e?(parseFloat(e.value)||0):0; };
+    const limites = [gL(0),gL(1),gL(2)].filter(v=>v>0);
+    const tasas   = [gT(0),gT(1),gT(2),gT(3)].slice(0, limites.length+1).filter(v=>v>0);
+    nuevas[crmId] = {...row, tasas, limites};
   });
-  _saveTasasRangos(nuevas);
-  showToast('✅ Tasas por rango actualizadas','success');
+  _saveTasasV2(nuevas);
+  showToast('✅ Tasas actualizadas','success');
   renderTasasAdmin();
   if(document.getElementById('page-tasas')?.classList.contains('active')) renderTasas();
 }
@@ -4223,36 +4255,48 @@ function guardarTasasAdmin(){
 function restaurarTasasDefault(){
   if(!confirm('¿Restaurar todas las tasas a los valores por defecto del sistema?')) return;
   localStorage.removeItem('_reliance_tasas_rangos');
+  localStorage.removeItem('_reliance_tasas_v2');
   showToast('↺ Tasas restauradas a valores por defecto','info');
   renderTasasAdmin();
   if(document.getElementById('page-tasas')?.classList.contains('active')) renderTasas();
 }
 
-// ── Página "Tabla de Tasas" — muestra rangos de tasas actuales ────────────────
+// ── Página "Tabla de Tasas" — muestra rangos V2 por aseguradora ──────────────
 function renderTasas(){
   const el = document.getElementById('tasas-dinamicas'); if(!el) return;
-  const tasas = _getTasasRangos();
-  const principales = ['SWEADEN','MAPFRE','ALIANZA','ZURICH','LATINA','GENERALI','ADS'];
-  el.innerHTML = principales.map(name=>{
+  const v2 = _getTasasV2();
+  // Agrupar filas por aseguradora
+  const porAseg = {};
+  Object.entries(v2).filter(([,r])=>r.aseg).forEach(([crmId,row])=>{
+    if(!porAseg[row.aseg]) porAseg[row.aseg] = [];
+    porAseg[row.aseg].push({crmId, ...row});
+  });
+  const principales = ['SWEADEN','MAPFRE','ALIANZA','ZURICH','LATINA','ASEG. DEL SUR','GENERALI'];
+  el.innerHTML = principales.filter(n=>porAseg[n]).map(name=>{
     const cfg  = ASEGURADORAS[name]||{};
-    const r    = tasas[name] || TASAS_RANGOS_DEFAULT[name] || [];
-    const d    = TASAS_RANGOS_DEFAULT[name] || [];
-    const mod  = r.some((t,i)=>Math.abs(t-(d[i]||t))>0.00001);
+    const filas = porAseg[name];
     return `<div class="card">
       <div class="card-header" style="background:${cfg.color||'#1a4c84'}18">
         <div class="card-title" style="color:${cfg.color||'var(--ink)'}">${name}</div>
-        ${mod?`<span style="font-size:10px;color:var(--accent);font-weight:600">● Actualizada</span>`:''}
       </div>
       <div class="card-body" style="padding:10px 12px">
-        <table style="width:100%;border-collapse:collapse;font-size:11px">
-          ${RANGOS_LABEL.map((label,i)=>`
-            <tr>
-              <td style="padding:3px 0;color:var(--muted)">${label}</td>
+        ${filas.map(row=>{
+          const label = [row.region, row.tipo].filter(Boolean).join(' · ') || 'Nacional';
+          const rangos = row.tasas.map((t,i)=>{
+            const desde = i===0 ? '$0' : `$${(row.limites[i-1]||0).toLocaleString()}`;
+            const hasta = row.limites[i] ? `$${row.limites[i].toLocaleString()}` : '∞';
+            return `<tr>
+              <td style="padding:3px 0;color:var(--muted);font-size:11px">${desde} – ${hasta}</td>
               <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:${cfg.color||'var(--ink)'}">
-                ${((r[i]??d[i]??0)*100).toFixed(2)}%
+                ${(t*100).toFixed(2)}%
               </td>
-            </tr>`).join('')}
-        </table>
+            </tr>`;
+          }).join('');
+          return `<div style="margin-bottom:${filas.length>1?'10px':'0'}">
+            ${filas.length>1?`<div style="font-size:10px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:uppercase">${label}</div>`:''}
+            <table style="width:100%;border-collapse:collapse;font-size:11px">${rangos}</table>
+          </div>`;
+        }).join('')}
         ${cfg.pnMin?`<div style="font-size:10px;color:var(--muted);margin-top:8px;border-top:1px solid var(--border,#eee);padding-top:6px">
           Prima mín: <b>$${cfg.pnMin}</b> · TC máx: <b>${cfg.tcMax} cuotas</b> · Débito: <b>${cfg.debMax||10} cuotas</b>
         </div>`:''}
