@@ -266,6 +266,16 @@ function _getTasaRangoV2(asegName, va, region, tipo){
 }
 // Sanitiza el nombre de aseguradora para usarlo como sufijo de ID en el DOM
 function _safeName(n){ return n.replace(/[^a-zA-Z0-9]/g,'_'); }
+// Deduce SIERRA/COSTA a partir del nombre de la ciudad (para clientes sin región guardada)
+function _ciudadToRegion(ciudad){
+  if(!ciudad) return '';
+  const c = ciudad.toUpperCase().trim();
+  const COSTA  = ['GUAYAQUIL','GYE','SALINAS','PORTOVIEJO','MANTA','MACHALA','ESMERALDAS','QUEVEDO','SANTO DOMINGO','DAULE','MILAGRO','BABAHOYO','LA LIBERTAD','LIBERTAD'];
+  const SIERRA = ['QUITO','UIO','CUENCA','AMBATO','RIOBAMBA','LOJA','IBARRA','LATACUNGA','TULCAN','AZOGUES','GUARANDA','SANGOLQUI','CUMBAYA','TUMBACO'];
+  if(COSTA.some(x  => c===x || c.startsWith(x) || x.startsWith(c.slice(0,5)))) return 'COSTA';
+  if(SIERRA.some(x => c===x || c.startsWith(x) || x.startsWith(c.slice(0,5)))) return 'SIERRA';
+  return '';
+}
 // Lee la tasa del input de la tarjeta (si ejecutivo la modificó);
 // si no, usa tasas V2 considerando región y tipo de póliza del cotizador
 function _getTasaFromCard(name){
@@ -1469,16 +1479,27 @@ function prefillCotizador(c){
   document.getElementById('cot-ci').value=c.ci||'';
   document.getElementById('cot-cel').value=c.celular||'';
   document.getElementById('cot-email').value=c.correo||'';
-  // Ciudad / Región
+  // Ciudad: match exacto primero; si no coincide, búsqueda parcial (ej: "GYE" → GUAYAQUIL)
   const ciudadEl=document.getElementById('cot-ciudad');
   if(ciudadEl && c.ciudad){
-    const opt=[...ciudadEl.options].find(o=>o.value.toUpperCase()===c.ciudad.toUpperCase());
+    const cu = c.ciudad.toUpperCase().trim();
+    let opt = [...ciudadEl.options].find(o=>o.value.toUpperCase()===cu);
+    if(!opt) opt = [...ciudadEl.options].find(o=>cu.startsWith(o.value.slice(0,4).toUpperCase()) || o.value.toUpperCase().startsWith(cu.slice(0,4)));
     if(opt) ciudadEl.value=opt.value;
   }
+  // Región: del cliente si es válida; si no → deducir desde ciudad del cliente o ciudad seleccionada
   const regionEl=document.getElementById('cot-region');
-  if(regionEl && c.region){
-    const opt=[...regionEl.options].find(o=>o.value.toUpperCase()===c.region.toUpperCase());
-    if(opt) regionEl.value=opt.value;
+  if(regionEl){
+    let asignado=false;
+    if(c.region){
+      const opt=[...regionEl.options].find(o=>o.value.toUpperCase()===c.region.toUpperCase());
+      if(opt){ regionEl.value=opt.value; asignado=true; }
+    }
+    if(!asignado){
+      // Deducir región desde el nombre de ciudad guardado (más confiable que el select)
+      const regionDeducida = _ciudadToRegion(c.ciudad) || _ciudadToRegion(ciudadEl?.value||'');
+      if(regionDeducida) regionEl.value=regionDeducida;
+    }
   }
   // Tipo de póliza: si el cliente tiene póliza anterior → RENOVACION, si no → NUEVO
   const tipoEl=document.getElementById('cot-tipo');
@@ -4896,7 +4917,7 @@ function _mapExcelRowToCliente(row){
 
   return {
     nombre, ci, celular, celular2, telFijo, correo,
-    ciudad: ciudad||'QUITO', region: region||'SIERRA',
+    ciudad: ciudad||'QUITO', region: region || _ciudadToRegion(ciudad) || 'SIERRA',
     direccionDom: dir,
     tipoCliente, cuentaBanc, prestamo,
     saldo, fechaVtoCred,
