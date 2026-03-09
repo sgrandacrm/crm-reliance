@@ -3808,6 +3808,7 @@ function cambiarEstadoCotiz(id, nuevoEstado){
 // ── Modal confirmar aceptación ───────────────────────────
 let cotizAceptarId = null;
 let cotizAsegSeleccionada = null;
+let cotizFormaPagoSeleccionada = null; // 'TARJETA_CREDITO' | 'DEBITO_BANCARIO' | 'CONTADO'
 
 // Genera código único COT-AAMM-NNN (secuencial global continuo)
 function generarCodigoCotiz(){
@@ -3872,6 +3873,7 @@ function abrirAceptarCotiz(id){
   const c = all.find(x=>String(x.id)===String(id)); if(!c) return;
   cotizAceptarId = String(id); // normalizar siempre a string
   cotizAsegSeleccionada = null;
+  cotizFormaPagoSeleccionada = null;
 
   // Info cliente
   document.getElementById('modal-cotiz-cliente-info').innerHTML=`
@@ -3905,6 +3907,7 @@ function abrirAceptarCotiz(id){
 function seleccionarAsegAcept(name){
   const resultado = (window._cotizResultados||[]).find(r=>r.name===name)||{};
   cotizAsegSeleccionada = name;
+  cotizFormaPagoSeleccionada = null; // resetear pago al cambiar aseg
   const cfg = ASEGURADORAS[name]||{color:'#333'};
 
   // Resaltar botón seleccionado
@@ -3915,7 +3918,7 @@ function seleccionarAsegAcept(name){
     btn.style.transform = sel ? 'scale(1.02)' : '';
   });
 
-  // Resumen
+  // Resumen de montos
   const wrap = document.getElementById('cotiz-resumen-elegida');
   wrap.style.display='block';
   wrap.style.borderColor=cfg.color;
@@ -3928,12 +3931,57 @@ function seleccionarAsegAcept(name){
       <div><span style="color:var(--muted)">Débito ${resultado.debN} cuotas:</span> <b>$${resultado.debCuota?.toFixed(2)}/mes</b></div>
     </div>`;
 
-  document.getElementById('btn-confirmar-acept').disabled=false;
+  // Opciones de forma de pago
+  const pagoSection = document.getElementById('cotiz-pago-section');
+  const pagoOpts    = document.getElementById('cotiz-pago-options');
+  if(pagoSection && pagoOpts){
+    const opts = [];
+    if(resultado.tcN  && resultado.tcCuota  > 0)
+      opts.push({val:'TARJETA_CREDITO', icon:'💳', label:'Tarjeta de Crédito',
+                 sub:`${resultado.tcN} cuotas × $${resultado.tcCuota.toFixed(2)}/mes`});
+    if(resultado.debN && resultado.debCuota > 0)
+      opts.push({val:'DEBITO_BANCARIO', icon:'🏦', label:'Débito Bancario',
+                 sub:`${resultado.debN} cuotas × $${resultado.debCuota.toFixed(2)}/mes`});
+    if(resultado.total > 0)
+      opts.push({val:'CONTADO', icon:'💵', label:'Contado / Transferencia',
+                 sub:`${fmt(resultado.total)} total`});
+    pagoOpts.innerHTML = opts.map(o=>`
+      <button class="cotiz-pago-btn" data-pago="${o.val}"
+        onclick="seleccionarPagoAcept('${o.val}')"
+        style="border:2px solid var(--border);border-radius:8px;padding:10px 14px;
+               background:var(--paper);cursor:pointer;text-align:left;
+               transition:border .15s,background .15s;width:100%;display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">${o.icon}</span>
+        <span style="flex:1">
+          <span style="font-size:13px;font-weight:700">${o.label}</span>
+          <span style="font-size:11px;color:var(--muted);margin-left:6px">${o.sub}</span>
+        </span>
+      </button>`).join('');
+    pagoSection.style.display = 'block';
+  }
+
+  // Confirmar deshabilitado hasta elegir forma de pago
+  document.getElementById('btn-confirmar-acept').disabled = true;
+}
+
+function seleccionarPagoAcept(val){
+  cotizFormaPagoSeleccionada = val;
+  document.querySelectorAll('.cotiz-pago-btn').forEach(btn=>{
+    const sel = btn.dataset.pago === val;
+    btn.style.border      = sel ? '2px solid var(--green)' : '2px solid var(--border)';
+    btn.style.background  = sel ? '#d4edda' : 'var(--paper)';
+    btn.style.fontWeight  = sel ? '700' : '';
+  });
+  // Habilitar confirmar solo cuando hay aseg + forma de pago
+  document.getElementById('btn-confirmar-acept').disabled = !cotizAsegSeleccionada || !cotizFormaPagoSeleccionada;
 }
 
 function confirmarAceptacion(){
   if(!cotizAceptarId || !cotizAsegSeleccionada){
     showToast('Selecciona una aseguradora primero','error'); return;
+  }
+  if(!cotizFormaPagoSeleccionada){
+    showToast('Selecciona la forma de pago del cliente','error'); return;
   }
   const obs = (document.getElementById('cotiz-obs-acept').value||'').trim();
   const idStr = String(cotizAceptarId);
@@ -3946,7 +3994,13 @@ function confirmarAceptacion(){
     console.error('IDs disponibles:', all.map(c=>c.id));
     return;
   }
-  all[idx].asegElegida = cotizAsegSeleccionada;
+  all[idx].asegElegida        = cotizAsegSeleccionada;
+  all[idx].formaPagoElegida   = cotizFormaPagoSeleccionada;
+  // Guardar número de cuotas según la forma de pago seleccionada
+  const _rEleg = _parseResultados(all[idx].resultados||[]).find(r=>r.name===cotizAsegSeleccionada)||{};
+  all[idx].nCuotasElegidas = cotizFormaPagoSeleccionada==='TARJETA_CREDITO' ? (_rEleg.tcN||12)
+                           : cotizFormaPagoSeleccionada==='DEBITO_BANCARIO'  ? (_rEleg.debN||10)
+                           : 1;
   all[idx].obsAcept    = obs;
   all[idx].fechaAcept  = new Date().toISOString().split('T')[0];
   all[idx].estado      = 'EN EMISIÓN';
@@ -4066,11 +4120,24 @@ function irAEmision(id){
   if(cuentaEl&&clienteData) cuentaEl.value=clienteData.cuentaBanc||clienteData.cuenta||'';
   // Store tasa for saving
   if(r.tasa) cierreVentaData.tasa=r.tasa;
+
+  // Pre-cargar forma de pago que el cliente eligió al aceptar
+  const fpEl = document.getElementById('cv-forma-pago');
+  if(fpEl){
+    fpEl.value = cotiz.formaPagoElegida || 'DEBITO_BANCARIO';
+    // Ajustar nTc/nDeb en cierreVentaData según lo elegido
+    if(cotiz.formaPagoElegida==='TARJETA_CREDITO' && cotiz.nCuotasElegidas)
+      cierreVentaData.nTc  = cotiz.nCuotasElegidas;
+    if(cotiz.formaPagoElegida==='DEBITO_BANCARIO'  && cotiz.nCuotasElegidas)
+      cierreVentaData.nDeb = cotiz.nCuotasElegidas;
+  }
   recalcDesglose();
+  renderCvFormaPago();
   autocalcHasta();
 
   openModal('modal-cierre-venta');
-  showToast('📝 Cierre pre-llenado · ' + cotiz.asegElegida, 'info');
+  const fpLabel = {TARJETA_CREDITO:'💳 TC', DEBITO_BANCARIO:'🏦 Débito', CONTADO:'💵 Contado'}[cotiz.formaPagoElegida]||'';
+  showToast('📝 Cierre pre-llenado · ' + cotiz.asegElegida + (fpLabel?' · '+fpLabel:''), 'info');
 }
 
 // ── Ver detalle cotización ───────────────────────────────
