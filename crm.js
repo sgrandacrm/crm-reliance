@@ -1858,19 +1858,35 @@ function selTipoCliente(tipo, btn){
 
 let _pendingCierreClienteId=null;
 
-// Busca la cotización más reciente activa (no REEMPLAZADA, no EMITIDA) para un cliente
+// Normaliza nombre para comparación: mayúsculas, sin acentos, sin espacios dobles
+function _normNombre(s){
+  return (s||'').trim().toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/\s+/g,' ');
+}
+
+// Busca la cotización más reciente activa para un cliente.
+// Retorna {cotiz, vencida} si activa; {cotiz:null, emitida} si solo hay EMITIDA.
 function _cotizParaCierre(clienteId, ci, nombre){
   const all=_getCotizaciones();
+  const _match=cot=>
+    (clienteId && String(cot.clienteId)===String(clienteId)) ||
+    (ci && ci.length>3 && cot.clienteCI===ci) ||
+    _normNombre(cot.clienteNombre)===_normNombre(nombre);
+
   const activas=all.filter(cot=>{
     if(['REEMPLAZADA','EMITIDA'].includes(cot.estado)) return false;
-    return (clienteId && String(cot.clienteId)===String(clienteId)) ||
-           (ci && ci.length>3 && cot.clienteCI===ci) ||
-           (cot.clienteNombre||'').trim().toUpperCase()===(nombre||'').trim().toUpperCase();
+    return _match(cot);
   }).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
-  if(!activas.length) return {cotiz:null, vencida:false};
-  const cotiz=activas[0];
-  const dias=Math.floor((Date.now()-new Date(cotiz.fecha||''))/(86400000));
-  return {cotiz, vencida:dias>30};
+
+  if(activas.length){
+    const cotiz=activas[0];
+    const dias=Math.floor((Date.now()-new Date(cotiz.fecha||''))/(86400000));
+    return {cotiz, vencida:dias>30};
+  }
+  // Sin activas — detectar si existe EMITIDA (para mensaje diferenciado en Caso 4)
+  const emitida=all.find(cot=>cot.estado==='EMITIDA' && _match(cot))||null;
+  return {cotiz:null, vencida:false, emitida};
 }
 
 // Limpia TODOS los campos del modal de cierre antes de cada apertura nueva.
@@ -1960,7 +1976,7 @@ function abrirCierreDesdeCliente(id, skipEstadoCheck=false){
   if(!skipEstadoCheck && !['RENOVADO','EMITIDO'].includes(c.estado)){showToast('El estado debe ser RENOVADO o EMITIDO para registrar un cierre','error');return;}
   currentSegIdx=id;
 
-  const {cotiz, vencida}=_cotizParaCierre(c.id, c.ci, c.nombre);
+  const {cotiz, vencida, emitida}=_cotizParaCierre(c.id, c.ci, c.nombre);
 
   // Caso 1 — cotización activa con asegElegida y vigente → flujo ideal desde cotización
   if(cotiz && cotiz.asegElegida && !vencida){
@@ -1984,12 +2000,21 @@ function abrirCierreDesdeCliente(id, skipEstadoCheck=false){
     openModal('modal-confirm-cotiz');
     return;
   }
-  // Caso 4 — sin cotización registrada
+  // Caso 4 — sin cotización activa
   _pendingCierreClienteId=id;
-  document.getElementById('confirm-cotiz-titulo').textContent='⚠️ Sin cotización registrada';
-  document.getElementById('confirm-cotiz-msg').innerHTML=
-    `<b>${c.nombre}</b> no tiene cotización registrada.<br>
-     Los montos de prima deberán ingresarse manualmente sin respaldo comercial.`;
+  if(emitida){
+    // Hay cotización pero ya fue marcada como EMITIDA (cierre previo registrado)
+    document.getElementById('confirm-cotiz-titulo').textContent='⚠️ Cotización ya emitida';
+    document.getElementById('confirm-cotiz-msg').innerHTML=
+      `La cotización <b>${emitida.codigo||''}</b> de <b>${c.nombre}</b> ya fue marcada como EMITIDA.<br>
+       Si necesitas registrar un nuevo cierre, genera una nueva cotización primero.<br>
+       O puedes continuar e ingresar los datos manualmente.`;
+  } else {
+    document.getElementById('confirm-cotiz-titulo').textContent='⚠️ Sin cotización registrada';
+    document.getElementById('confirm-cotiz-msg').innerHTML=
+      `<b>${c.nombre}</b> no tiene cotización activa registrada.<br>
+       Los montos de prima deberán ingresarse manualmente sin respaldo comercial.`;
+  }
   openModal('modal-confirm-cotiz');
 }
 
@@ -6645,6 +6670,10 @@ async function _syncFromSP(){
     const prevHashC   = prevC.length   + '|' + (prevC[prevC.length-1]?._spId||'');
     const prevHashT   = prevT.length   + '|' + (prevT[prevT.length-1]?._spId||'');
 
+    // Capturar IDs dirty ANTES del await (flush async puede borrar ._dirty durante la espera)
+    const dirtyIdsCotiz   = new Set((_cache.cotizaciones||[]).filter(c=>c._dirty).map(c=>String(c.id)));
+    const dirtyIdsCierres = new Set((_cache.cierres||[]).filter(c=>c._dirty).map(c=>String(c.id)));
+
     // Cargar las listas en paralelo (spGetAll actualiza _cache internamente)
     const [clientes, cotizaciones, cierres, tareas, gestCobr, comisiones] = await Promise.all([
       spGetAll('clientes'),
@@ -6668,8 +6697,8 @@ async function _syncFromSP(){
       renderDashboard();
     }
     // Cotizaciones: re-fusionar registros dirty locales que aún no llegaron a SP
-    // (evita que el sync sobreescriba cambios locales pendientes como estado 'EN EMISIÓN')
-    const dirtyLocalCotiz = prevCot.filter(lc => lc._dirty);
+    // (usamos dirtyIdsCotiz capturado antes del await para evitar race con _flushCotizaciones)
+    const dirtyLocalCotiz = prevCot.filter(lc => dirtyIdsCotiz.has(String(lc.id)));
     if(dirtyLocalCotiz.length){
       dirtyLocalCotiz.forEach(lc => {
         const spIdx = cotizaciones.findIndex(sc => String(sc.id)===String(lc.id));
@@ -6684,8 +6713,8 @@ async function _syncFromSP(){
       if(pg==='page-cotizaciones') renderCotizaciones();
       actualizarBadgeCotizaciones();
     }
-    // Cierres: mismo patrón — preservar dirty locales
-    const dirtyLocalCierres = prevC.filter(lc => lc._dirty);
+    // Cierres: mismo patrón — preservar dirty locales (usando IDs capturados antes del await)
+    const dirtyLocalCierres = prevC.filter(lc => dirtyIdsCierres.has(String(lc.id)));
     if(dirtyLocalCierres.length){
       dirtyLocalCierres.forEach(lc => {
         const spIdx = cierres.findIndex(sc => String(sc.id)===String(lc.id));
