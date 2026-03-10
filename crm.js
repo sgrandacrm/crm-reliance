@@ -698,6 +698,36 @@ function renderDashboard(){
   const vencBadge = mine.filter(c=>{ const d=daysUntil(c.hasta); return d<0||d<=30; }).length;
   const badgeSeg=document.getElementById('badge-seg-urgente');
   if(badgeSeg){ badgeSeg.textContent=vencBadge||'0'; badgeSeg.style.display=vencBadge>0?'':'none'; }
+
+  // ── Panel de Espera — clientes en EMISIÓN aguardando póliza de aseguradora ──
+  const enEmision = mine.filter(c=>c.estado==='EMISIÓN');
+  const panelWrap  = document.getElementById('panel-espera-wrap');
+  const panelLista = document.getElementById('panel-espera-lista');
+  const panelCount = document.getElementById('panel-espera-count');
+  if(panelWrap && panelLista){
+    if(enEmision.length){
+      panelWrap.style.display='';
+      if(panelCount) panelCount.textContent=enEmision.length+' pendiente'+(enEmision.length>1?'s':'');
+      panelLista.innerHTML=enEmision.map(c=>{
+        // Días de espera desde ultimoContacto (fecha en que cambió a EMISIÓN)
+        const diasEspera=c.ultimoContacto?Math.floor((Date.now()-new Date(c.ultimoContacto))/(86400000)):null;
+        const urgente=typeof diasEspera==='number'&&diasEspera>=7;
+        const diasTxt=diasEspera!==null?(diasEspera===0?'hoy':diasEspera+'d'):'-';
+        return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.nombre.split(' ').slice(0,3).join(' ')}</div>
+            <div style="font-size:11px;color:var(--muted)">${c.aseguradora||'—'}</div>
+          </div>
+          <div style="font-size:11px;font-weight:600;color:${urgente?'var(--red)':'var(--muted)'};white-space:nowrap;min-width:40px;text-align:right">
+            📅 ${diasTxt}${urgente?' ⚠️':''}
+          </div>
+          <button class="btn btn-green btn-xs" style="white-space:nowrap" onclick="abrirCierreDesdeCliente('${c.id}')">📋 Registrar</button>
+        </div>`;
+      }).join('');
+    } else {
+      panelWrap.style.display='none';
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -748,7 +778,7 @@ function filterClientes(){
         <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')" title="WhatsApp">💬</button>
         <button class="btn btn-xs" style="background:#0078d4;color:#fff" onclick="openEmail('${c.id}','vencimiento')" title="Email">✉️</button>
         <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')" title="Nueva tarea">📌</button>
-        ${(c.estado==='EMITIDO'&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')" title="Registrar cierre de venta">📋</button>`:''}
+        ${(['EMITIDO','EMISIÓN'].includes(c.estado)&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')" title="Registrar cierre de venta">📋</button>`:''}
         ${c.factura?`<span title="Cierre registrado: ${c.factura}" style="font-size:14px;cursor:default">✅</span>`:''}
       </div></td>
     </tr>`;
@@ -1151,7 +1181,7 @@ function filterSeguimiento(){
         <button class="btn btn-xs" style="background:#25D366;color:#fff" onclick="openWhatsApp('${c.id}','vencimiento')">💬 WA</button>
         <button class="btn btn-xs" style="background:#0078d4;color:#fff" onclick="openEmail('${c.id}','vencimiento')">✉️ Mail</button>
         <button class="btn btn-ghost btn-xs" onclick="nuevaTareaDesdeCliente('${c.id}')" title="Nueva tarea">📌</button>
-        ${(c.estado==='EMITIDO'&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')">📋 Cierre</button>`:''}
+        ${(['EMITIDO','EMISIÓN'].includes(c.estado)&&!c.factura)?`<button class="btn btn-green btn-xs" onclick="abrirCierreDesdeCliente('${c.id}')">📋 Cierre</button>`:''}
         ${c.factura?`<span class="badge badge-green" style="font-size:10px">✅ Cerrado</span>`:''}
       </div></td>
     </tr>`;
@@ -1169,9 +1199,8 @@ function openSeguimiento(id){
   document.getElementById('modal-seg-nombre').textContent=c.nombre;
   document.getElementById('seg-nota').value=''; // limpiar para nueva entrada
   document.querySelectorAll('.estado-btn').forEach(b=>{ b.classList.remove('active'); if(b.classList.contains(currentSegEstado)) b.classList.add('active'); });
-  // Mostrar banner cierre si ya está EMITIDO
-  const banner=document.getElementById('seg-cierre-banner');
-  if(banner) banner.style.display=(currentSegEstado==='EMITIDO')?'block':'none';
+  // Mostrar banner cierre si ya está EMITIDO o EMISIÓN (reutiliza la misma lógica de setEstado)
+  setEstado(currentSegEstado);
   // Renderizar bitácora existente dentro del modal
   _renderBitacoraModal(c.bitacora||[]);
   openModal('modal-seguimiento');
@@ -1182,10 +1211,26 @@ function setEstado(e){
     b.classList.remove('active');
     if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+e+"'")) b.classList.add('active');
   });
-  // Mostrar banner "Registrar Cierre" al seleccionar EMITIDO
-  const banner=document.getElementById('seg-cierre-banner');
-  if(banner) banner.style.display=(e==='EMITIDO')?'block':'none';
-  // Solo actualiza la UI — el estado se persiste al presionar "Guardar" o "Guardar y Cierre"
+  // Mostrar banner "Registrar Cierre" al seleccionar EMITIDO o EMISIÓN
+  const banner  = document.getElementById('seg-cierre-banner');
+  const titulo  = document.getElementById('seg-banner-titulo');
+  const desc    = document.getElementById('seg-banner-desc');
+  if(banner){
+    if(e==='EMITIDO'){
+      banner.style.background='#d4edda'; banner.style.borderColor='#2d6a4f';
+      if(titulo){ titulo.textContent='✓ Póliza emitida — ¿Registrar cierre de venta?'; titulo.style.color='var(--green)'; }
+      if(desc)   desc.textContent='Guarda el estado y abre el formulario de cierre (factura, póliza, forma de pago).';
+      banner.style.display='block';
+    } else if(e==='EMISIÓN'){
+      banner.style.background='#fff3e0'; banner.style.borderColor='#e65100';
+      if(titulo){ titulo.textContent='📬 ¿Ya recibiste la póliza de la aseguradora?'; titulo.style.color='#e65100'; }
+      if(desc)   desc.textContent='Registra el cierre directamente. El sistema marcará EMITIDO y RENOVADO de forma automática.';
+      banner.style.display='block';
+    } else {
+      banner.style.display='none';
+    }
+  }
+  // Solo actualiza la UI — el estado se persiste al presionar "Guardar" o "Registrar Cierre"
 }
 
 // ── Bitácora de gestión ──────────────────────────────────────
@@ -1264,8 +1309,9 @@ function guardarSeguimiento(){
 function guardarSeguimientoYCierre(){
   const c=DB.find(x=>String(x.id)===String(currentSegIdx)); if(!c) return;
   const notaYC = document.getElementById('seg-nota').value.trim();
-  // Persistir el estado actual (EMITIDO) en DB antes de abrir el cierre
-  // para que la bitácora refleje la transición real EMISIÓN → EMITIDO → RENOVADO
+  // Persiste estado actual en DB y abre el cierre directamente.
+  // Desde EMISIÓN: el estado se queda como EMISIÓN y guardarCierreVenta lo lleva a RENOVADO (con EMITIDO en bitácora).
+  // Desde EMITIDO: guarda EMITIDO y guardarCierreVenta lo lleva a RENOVADO.
   const estadoAnterior = c.estado;
   c._dirty = true;
   c.estado = currentSegEstado;
@@ -1973,7 +2019,7 @@ function _continuarCierreSinCotiz(){
 // Valida cotización activa antes de abrir el cierre; enruta según el caso
 function abrirCierreDesdeCliente(id, skipEstadoCheck=false){
   const c=DB.find(x=>String(x.id)===String(id)); if(!c) return;
-  if(!skipEstadoCheck && !['RENOVADO','EMITIDO'].includes(c.estado)){showToast('El estado debe ser RENOVADO o EMITIDO para registrar un cierre','error');return;}
+  if(!skipEstadoCheck && !['RENOVADO','EMITIDO','EMISIÓN'].includes(c.estado)){showToast('El estado debe ser EMISIÓN, EMITIDO o RENOVADO para registrar un cierre','error');return;}
   currentSegIdx=id;
 
   const {cotiz, vencida, emitida}=_cotizParaCierre(c.id, c.ci, c.nombre);
@@ -2630,6 +2676,8 @@ function guardarCierreVenta(){
       c.polizaNueva=poliza; c.factura=factura; c.aseguradora=aseg;
       c.desde=desde; c.hasta=hasta; c.formaPago=pago;
       c.primaTotal=total; c.axavd=axavd;
+      // Si venía de EMISIÓN, registrar EMITIDO en bitácora como paso intermedio (trazabilidad completa)
+      if(c.estado==='EMISIÓN') _bitacoraAdd(c,'Póliza recibida de aseguradora — emitida','sistema');
       c.estado='RENOVADO'; _bitacoraAdd(c, `Cierre registrado${obs?' — '+obs:''}. Aseg: ${cierre?.aseguradora||''}`, 'cierre');
       c.ultimoContacto=new Date().toISOString().split('T')[0];
       saveDB();
