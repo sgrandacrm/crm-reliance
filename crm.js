@@ -1705,6 +1705,8 @@ function limpiarCotizador(){
   const buscarEl=document.getElementById('cot-buscar-cliente'); if(buscarEl) buscarEl.value='';
   const box=document.getElementById('cot-sugerencias'); if(box) box.style.display='none';
   _cotizClienteId = '';
+  // Cancelar edición pendiente para no marcar REEMPLAZADA si el ejecutivo abandona sin guardar
+  window._editandoCotizId = null; window._editandoCotizCodigo = null; window._editandoCotizVersion = null;
 }
 
 function calcCotizacion(){
@@ -3068,7 +3070,8 @@ function guardarCotizacion(){
   );
 
   const allCotiz = _getCotizaciones();
-  const esEdicion = !!window._editandoCotizId;
+  const esEdicion  = !!window._editandoCotizId;
+  const originalId = window._editandoCotizId; // capturar antes de limpiar
   const codigo  = esEdicion ? window._editandoCotizCodigo  : generarCodigoCotiz();
   const version = esEdicion ? window._editandoCotizVersion : 1;
   if(esEdicion){ window._editandoCotizId=null; window._editandoCotizCodigo=null; window._editandoCotizVersion=null; }
@@ -3095,6 +3098,12 @@ function guardarCotizacion(){
     aseguradoras: selected, resultados,
     estado: 'ENVIADA', asegElegida: null, obsAcept: '', fechaAcept: null,
   };
+
+  // Si es edición, marcar la original como REEMPLAZADA AHORA (solo si el ejecutivo llegó a guardar)
+  if(esEdicion && originalId){
+    const origIdx = allCotiz.findIndex(c=>String(c.id)===String(originalId));
+    if(origIdx>=0){ allCotiz[origIdx].estado='REEMPLAZADA'; allCotiz[origIdx]._dirty=true; }
+  }
 
   cotiz._dirty = true;
   allCotiz.push(cotiz);
@@ -3695,9 +3704,7 @@ function editarCotizacion(id){
   window._editandoCotizId      = id;
   window._editandoCotizCodigo  = original.codigo;
   window._editandoCotizVersion = (original.version||1)+1;
-  all[idx].estado = 'REEMPLAZADA';
-  all[idx]._dirty = true;
-  _saveCotizaciones(all);
+  // NO marcar REEMPLAZADA aquí — se hace en guardarCotizacion() solo si el ejecutivo guarda la nueva versión
   actualizarBadgeCotizaciones();
   showPage('cotizador');
   setTimeout(()=>{
@@ -3838,9 +3845,7 @@ function renderCotizaciones(){
         <button class="btn btn-primary btn-xs"
           onclick="irAEmision('${c.id}')" title="Registrar cierre / emisión">📝 Emitir</button>`;
     } else if(c.estado==='EN EMISIÓN'){
-      acciones = `
-        <button class="btn btn-green btn-xs"
-          onclick="cambiarEstadoCotiz('${c.id}','EMITIDA')" title="Marcar como emitida">🛡 Emitida</button>`;
+      // Botón "Emitida" eliminado — la cotización pasa a EMITIDA automáticamente al registrar el cierre
     }
     acciones += `
       <button class="btn btn-ghost btn-xs" onclick="verDetalleCotiz('${c.id}')" title="Ver detalle">🔍</button>
