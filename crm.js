@@ -4114,12 +4114,8 @@ function seleccionarAsegAcept(name){
   const cuotasPanel = document.getElementById('cotiz-cuotas-panel');
   if(cuotasPanel){ cuotasPanel.innerHTML=''; cuotasPanel.style.display='none'; }
   if(pagoSection && pagoOpts){
-    // Filtrar grupos disponibles según la cotización
-    const grupos = Object.entries(FORMAS_PAGO).filter(([tipo])=>{
-      if(tipo==='TC') return resultado.tcN>0 && resultado.tcCuota>0;
-      if(tipo==='DEBITO_PRODUBANCO') return resultado.debN>0 && resultado.debCuota>0;
-      return true; // CONTADO, DEBITO_OTROS, PAGOS_DIRECTOS, CHEQUES, DEBITO_REC_TC, MIXTO siempre disponibles
-    });
+    // Mostrar siempre los 8 grupos — los chips internos filtran por tcMax/debMax
+    const grupos = Object.entries(FORMAS_PAGO);
     pagoOpts.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
         ${grupos.map(([tipo,g])=>`
