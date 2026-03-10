@@ -1513,7 +1513,11 @@ function cotActualizarHasta(){
   hastaEl.style.display = 'block';
 }
 
+// ID del cliente seleccionado en el cotizador (para vincular clienteId al guardar)
+let _cotizClienteId = '';
+
 function prefillCotizador(c){
+  _cotizClienteId = c.id ? String(c.id) : '';
   // — Datos del cliente —
   document.getElementById('cot-nombre').value=c.nombre||'';
   document.getElementById('cot-ci').value=c.ci||'';
@@ -1654,6 +1658,7 @@ function limpiarCotizador(){
   const anio=document.getElementById('cot-anio'); if(anio) anio.value=new Date().getFullYear();
   const buscarEl=document.getElementById('cot-buscar-cliente'); if(buscarEl) buscarEl.value='';
   const box=document.getElementById('cot-sugerencias'); if(box) box.style.display='none';
+  _cotizClienteId = '';
 }
 
 function calcCotizacion(){
@@ -3002,7 +3007,7 @@ function guardarCotizacion(){
     ejecutivo: currentUser?.id||'',
     // Datos cliente
     clienteNombre: nombre, clienteCI: ci,
-    clienteId: clienteMatch ? String(clienteMatch.id) : '',
+    clienteId: _cotizClienteId || (clienteMatch ? String(clienteMatch.id) : ''),
     celular, correo, ciudad, region,
     // Datos vehículo
     vehiculo: `${marca} ${modelo} ${anio}`.trim(),
@@ -3022,6 +3027,7 @@ function guardarCotizacion(){
   allCotiz.push(cotiz);
   _saveCotizaciones(allCotiz);
   actualizarBadgeCotizaciones();
+  _cotizClienteId = ''; // limpiar vínculo de cliente tras guardar
   renderCotizaciones();
   showToast(`✅ ${codigo} guardada — ${nombre.split(' ')[0]} · ${selected.length} aseguradoras`, 'success');
 }
@@ -4027,6 +4033,12 @@ function confirmarAceptacion(){
   if(!clienteDB)
     clienteDB = DB.find(x=>x.nombre.trim().toUpperCase()===cotiz.clienteNombre.trim().toUpperCase());
   if(clienteDB){
+    // Backfill: si la cotización no tenía clienteId vinculado, enlazarla ahora
+    if(!all[idx].clienteId){
+      all[idx].clienteId = String(clienteDB.id);
+      all[idx].clienteCI = all[idx].clienteCI || clienteDB.ci || '';
+      _saveCotizaciones(all);
+    }
     clienteDB._dirty         = true;
     clienteDB.estado         = 'EMISIÓN';
     clienteDB.aseguradora    = cotizAsegSeleccionada.includes('SEGUROS') ? cotizAsegSeleccionada : cotizAsegSeleccionada + ' SEGUROS';
@@ -6655,14 +6667,33 @@ async function _syncFromSP(){
       if(pg==='page-clientes'){ renderClientes(); renderVencimientos(); }
       renderDashboard();
     }
-    // Cotizaciones
+    // Cotizaciones: re-fusionar registros dirty locales que aún no llegaron a SP
+    // (evita que el sync sobreescriba cambios locales pendientes como estado 'EN EMISIÓN')
+    const dirtyLocalCotiz = prevCot.filter(lc => lc._dirty);
+    if(dirtyLocalCotiz.length){
+      dirtyLocalCotiz.forEach(lc => {
+        const spIdx = cotizaciones.findIndex(sc => String(sc.id)===String(lc.id));
+        if(spIdx >= 0) cotizaciones[spIdx] = lc; // local dirty tiene prioridad
+        else cotizaciones.push(lc);               // registro aún no en SP
+      });
+      _cache.cotizaciones = cotizaciones;
+    }
     const hashCot = cotizaciones.length + '|' + (cotizaciones[cotizaciones.length-1]?._spId||'');
     if(hashCot !== prevHashCot){
       localStorage.setItem('reliance_cotizaciones', JSON.stringify(cotizaciones));
       if(pg==='page-cotizaciones') renderCotizaciones();
       actualizarBadgeCotizaciones();
     }
-    // Cierres
+    // Cierres: mismo patrón — preservar dirty locales
+    const dirtyLocalCierres = prevC.filter(lc => lc._dirty);
+    if(dirtyLocalCierres.length){
+      dirtyLocalCierres.forEach(lc => {
+        const spIdx = cierres.findIndex(sc => String(sc.id)===String(lc.id));
+        if(spIdx >= 0) cierres[spIdx] = lc;
+        else cierres.push(lc);
+      });
+      _cache.cierres = cierres;
+    }
     const hashC = cierres.length + '|' + (cierres[cierres.length-1]?._spId||'');
     if(hashC !== prevHashC){
       localStorage.setItem('reliance_cierres', JSON.stringify(cierres));
