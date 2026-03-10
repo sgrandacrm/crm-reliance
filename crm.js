@@ -3902,7 +3902,8 @@ function cambiarEstadoCotiz(id, nuevoEstado){
 // ── Modal confirmar aceptación ───────────────────────────
 let cotizAceptarId = null;
 let cotizAsegSeleccionada = null;
-let cotizFormaPagoSeleccionada = null; // 'TARJETA_CREDITO' | 'DEBITO_BANCARIO' | 'CONTADO'
+let cotizFormaPagoSeleccionada  = null; // 'TARJETA_CREDITO' | 'DEBITO_BANCARIO' | 'CONTADO' | 'MIXTO'
+let cotizCuotasElegidasAcept    = null; // cuotas reales que eligió el cliente al aceptar
 
 // Genera código único COT-AAMM-NNN (secuencial global continuo)
 function generarCodigoCotiz(){
@@ -3966,8 +3967,9 @@ function abrirAceptarCotiz(id){
   const all = _getCotizaciones();
   const c = all.find(x=>String(x.id)===String(id)); if(!c) return;
   cotizAceptarId = String(id); // normalizar siempre a string
-  cotizAsegSeleccionada = null;
+  cotizAsegSeleccionada      = null;
   cotizFormaPagoSeleccionada = null;
+  cotizCuotasElegidasAcept   = null;
 
   // Info cliente
   document.getElementById('modal-cotiz-cliente-info').innerHTML=`
@@ -4000,8 +4002,10 @@ function abrirAceptarCotiz(id){
 
 function seleccionarAsegAcept(name){
   const resultado = (window._cotizResultados||[]).find(r=>r.name===name)||{};
-  cotizAsegSeleccionada = name;
-  cotizFormaPagoSeleccionada = null; // resetear pago al cambiar aseg
+  cotizAsegSeleccionada      = name;
+  cotizFormaPagoSeleccionada = null;
+  cotizCuotasElegidasAcept   = null;
+  window._cotizResActual     = resultado; // guardar para recalcular cuotas
   const cfg = ASEGURADORAS[name]||{color:'#333'};
 
   // Resaltar botón seleccionado
@@ -4019,26 +4023,30 @@ function seleccionarAsegAcept(name){
   document.getElementById('cotiz-resumen-body').innerHTML=`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
       <div><span style="color:var(--muted)">Aseguradora:</span> <b style="color:${cfg.color}">${name}</b></div>
-      <div><span style="color:var(--muted)">Prima Neta:</span> <b>$${resultado.pn?.toFixed(2)}</b></div>
-      <div><span style="color:var(--muted)">Total:</span> <b style="font-size:15px">$${resultado.total?.toFixed(2)}</b></div>
-      <div><span style="color:var(--muted)">TC ${resultado.tcN} cuotas:</span> <b>$${resultado.tcCuota?.toFixed(2)}/mes</b></div>
-      <div><span style="color:var(--muted)">Débito ${resultado.debN} cuotas:</span> <b>$${resultado.debCuota?.toFixed(2)}/mes</b></div>
+      <div><span style="color:var(--muted)">Prima Neta:</span> <b>$${resultado.pn?.toFixed(2)||'—'}</b></div>
+      <div><span style="color:var(--muted)">Total:</span> <b style="font-size:15px">$${resultado.total?.toFixed(2)||'—'}</b></div>
+      <div><span style="color:var(--muted)">TC hasta ${resultado.tcN||'—'} cuotas:</span> <b>$${resultado.tcCuota?.toFixed(2)||'—'}/mes</b></div>
+      <div><span style="color:var(--muted)">Débito hasta ${resultado.debN||'—'} cuotas:</span> <b>$${resultado.debCuota?.toFixed(2)||'—'}/mes</b></div>
     </div>`;
 
   // Opciones de forma de pago
   const pagoSection = document.getElementById('cotiz-pago-section');
   const pagoOpts    = document.getElementById('cotiz-pago-options');
+  const cuotasPanel = document.getElementById('cotiz-cuotas-panel');
+  if(cuotasPanel){ cuotasPanel.innerHTML=''; cuotasPanel.style.display='none'; }
   if(pagoSection && pagoOpts){
     const opts = [];
     if(resultado.tcN  && resultado.tcCuota  > 0)
       opts.push({val:'TARJETA_CREDITO', icon:'💳', label:'Tarjeta de Crédito',
-                 sub:`${resultado.tcN} cuotas × $${resultado.tcCuota.toFixed(2)}/mes`});
+                 sub:`hasta ${resultado.tcN} cuotas`});
     if(resultado.debN && resultado.debCuota > 0)
       opts.push({val:'DEBITO_BANCARIO', icon:'🏦', label:'Débito Bancario',
-                 sub:`${resultado.debN} cuotas × $${resultado.debCuota.toFixed(2)}/mes`});
+                 sub:`hasta ${resultado.debN} cuotas`});
     if(resultado.total > 0)
       opts.push({val:'CONTADO', icon:'💵', label:'Contado / Transferencia',
                  sub:`${fmt(resultado.total)} total`});
+    opts.push({val:'MIXTO', icon:'🔀', label:'Pago Mixto',
+               sub:'Entrada + cuotas — detalle en cierre'});
     pagoOpts.innerHTML = opts.map(o=>`
       <button class="cotiz-pago-btn" data-pago="${o.val}"
         onclick="seleccionarPagoAcept('${o.val}')"
@@ -4060,14 +4068,87 @@ function seleccionarAsegAcept(name){
 
 function seleccionarPagoAcept(val){
   cotizFormaPagoSeleccionada = val;
+  cotizCuotasElegidasAcept   = null;
+
+  // Resaltar botón seleccionado
   document.querySelectorAll('.cotiz-pago-btn').forEach(btn=>{
     const sel = btn.dataset.pago === val;
-    btn.style.border      = sel ? '2px solid var(--green)' : '2px solid var(--border)';
-    btn.style.background  = sel ? '#d4edda' : 'var(--paper)';
-    btn.style.fontWeight  = sel ? '700' : '';
+    btn.style.border     = sel ? '2px solid var(--green)' : '2px solid var(--border)';
+    btn.style.background = sel ? '#d4edda' : 'var(--paper)';
+    btn.style.fontWeight = sel ? '700' : '';
   });
-  // Habilitar confirmar solo cuando hay aseg + forma de pago
+
+  const cuotasPanel = document.getElementById('cotiz-cuotas-panel');
+
+  if((val==='TARJETA_CREDITO' || val==='DEBITO_BANCARIO') && cuotasPanel){
+    const resultado = window._cotizResActual || {};
+    const cfg       = ASEGURADORAS[cotizAsegSeleccionada] || {};
+    const total     = resultado.total || 0;
+    const esTc      = val==='TARJETA_CREDITO';
+    const maxCuotas = esTc ? (cfg.tcMax  || resultado.tcN  || 12)
+                           : (cfg.debMax || resultado.debN || 10);
+    const piso      = esTc ? (cfg.pisoTC  || 0) : (cfg.pisoDeb || 0);
+    const defCuotas = esTc ? (resultado.tcN  || maxCuotas)
+                           : (resultado.debN || maxCuotas);
+
+    // Construir chips: 1 hasta maxCuotas, filtrando por piso mínimo
+    const chips = [];
+    for(let n=1; n<=maxCuotas; n++){
+      const cuota = Math.round(total/n*100)/100;
+      if(piso>0 && n>1 && cuota<piso) continue;
+      chips.push({n, cuota});
+    }
+    // Usar el máximo permitido como default (alineado con lo cotizado)
+    const defaultN = chips.find(c=>c.n===defCuotas) ? defCuotas : chips[chips.length-1]?.n || 1;
+    cotizCuotasElegidasAcept = defaultN;
+
+    cuotasPanel.innerHTML=`
+      <div style="margin-top:10px;padding:10px 12px;background:#f8f9fa;border-radius:8px;border:1px solid var(--border)">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">
+          Número de cuotas <span style="color:var(--red)">*</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${chips.map(o=>`
+            <button class="cotiz-cuota-chip" data-n="${o.n}"
+              onclick="actualizarCuotasAcept(${o.n})"
+              style="border:2px solid ${o.n===defaultN?'var(--green)':'var(--border)'};
+                     border-radius:6px;padding:6px 10px;cursor:pointer;
+                     background:${o.n===defaultN?'#d4edda':'var(--paper)'};
+                     font-size:12px;font-weight:${o.n===defaultN?'700':'400'};
+                     transition:border .15s,background .15s;white-space:nowrap">
+              ${o.n}c — $${o.cuota.toFixed(2)}/mes
+            </button>`).join('')}
+        </div>
+        <div id="cotiz-cuota-label" style="margin-top:8px;font-size:13px;font-weight:600;color:var(--green)">
+          ✓ ${defaultN} cuotas × $${(Math.round(total/defaultN*100)/100).toFixed(2)}/mes
+        </div>
+      </div>`;
+    cuotasPanel.style.display='';
+
+  } else if(cuotasPanel){
+    // CONTADO o MIXTO — no necesitan selector de cuotas
+    cuotasPanel.innerHTML=''; cuotasPanel.style.display='none';
+    cotizCuotasElegidasAcept = 1;
+  }
+
+  // Habilitar confirmar: TC/Débito requieren cuotas elegidas (ya están por default)
   document.getElementById('btn-confirmar-acept').disabled = !cotizAsegSeleccionada || !cotizFormaPagoSeleccionada;
+}
+
+function actualizarCuotasAcept(n){
+  cotizCuotasElegidasAcept = n;
+  const total = (window._cotizResActual||{}).total || 0;
+  const cuota = Math.round(total/n*100)/100;
+  // Actualizar resaltado de chips
+  document.querySelectorAll('.cotiz-cuota-chip').forEach(chip=>{
+    const sel = parseInt(chip.dataset.n)===n;
+    chip.style.border      = sel ? '2px solid var(--green)' : '2px solid var(--border)';
+    chip.style.background  = sel ? '#d4edda' : 'var(--paper)';
+    chip.style.fontWeight  = sel ? '700' : '400';
+  });
+  // Actualizar etiqueta
+  const label = document.getElementById('cotiz-cuota-label');
+  if(label) label.textContent = `✓ ${n} cuotas × $${cuota.toFixed(2)}/mes`;
 }
 
 function confirmarAceptacion(){
@@ -4090,11 +4171,13 @@ function confirmarAceptacion(){
   }
   all[idx].asegElegida        = cotizAsegSeleccionada;
   all[idx].formaPagoElegida   = cotizFormaPagoSeleccionada;
-  // Guardar número de cuotas según la forma de pago seleccionada
+  // Guardar cuotas reales elegidas por el cliente en el modal de aceptación
+  // cotizCuotasElegidasAcept viene del selector de chips (TC/Débito) o es 1 (Contado/Mixto)
   const _rEleg = _parseResultados(all[idx].resultados||[]).find(r=>r.name===cotizAsegSeleccionada)||{};
-  all[idx].nCuotasElegidas = cotizFormaPagoSeleccionada==='TARJETA_CREDITO' ? (_rEleg.tcN||12)
-                           : cotizFormaPagoSeleccionada==='DEBITO_BANCARIO'  ? (_rEleg.debN||10)
-                           : 1;
+  all[idx].nCuotasElegidas = cotizCuotasElegidasAcept ||
+    (cotizFormaPagoSeleccionada==='TARJETA_CREDITO' ? (_rEleg.tcN||12)
+   : cotizFormaPagoSeleccionada==='DEBITO_BANCARIO'  ? (_rEleg.debN||10)
+   : 1);
   all[idx].obsAcept    = obs;
   all[idx].fechaAcept  = new Date().toISOString().split('T')[0];
   all[idx].estado      = 'EN EMISIÓN';
