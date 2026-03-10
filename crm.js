@@ -3231,22 +3231,17 @@ function _getCuotasFromCierre(cierre){
       });
     });
   } else if(fp.forma === 'TARJETA_CREDITO'){
-    const nC = fp.nCuotas || 1;
-    const cuotaMonto = parseFloat(fp.cuotaMonto) || Math.round((cierre.primaTotal||0)/nC*100)/100;
-    for(let i=0; i<nC; i++){
-      let fecha = fp.fechaContacto || cierre.vigDesde || '';
-      if(fecha && i>0){
-        const d = new Date(fecha); d.setMonth(d.getMonth()+i);
-        fecha = d.toISOString().split('T')[0];
-      }
-      cuotas.push({...base,
-        idx: i, fecha,
-        monto: cuotaMonto,
-        estado: estados[i] || 'IMPAGO',
-        nCuota: i+1, totalCuotas: nC,
-        tipo: 'TC', banco: fp.banco||'',
-      });
-    }
+    // TC: el financiamiento a cuotas lo maneja el emisor de la tarjeta.
+    // Reliance registra 1 solo cobro por el total en la fecha de contacto.
+    cuotas.push({...base,
+      idx: 0,
+      fecha: fp.fechaContacto || cierre.vigDesde || '',
+      monto: cierre.primaTotal || 0,
+      estado: estados[0] || 'IMPAGO',
+      nCuota: 1, totalCuotas: 1,
+      tipo: 'TC', banco: fp.banco || '',
+      nota: `TC ${fp.nCuotas||''} cuotas (financiado por emisor)`,
+    });
   } else if(fp.forma === 'CONTADO'){
     cuotas.push({...base,
       idx: 0, fecha: fp.fechaCobro||cierre.vigDesde||'',
