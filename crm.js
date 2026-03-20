@@ -609,7 +609,7 @@ function openModal(id){document.getElementById(id).classList.add('open')}
 // ══════════════════════════════════════════════════════
 //  NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles={dashboard:'Dashboard',cierres:'Cierres de Venta',clientes:'Cartera de Clientes',vencimientos:'Vencimientos de Pólizas',calendario:'Calendario de Vencimientos',seguimiento:'Seguimiento de Clientes',cotizador:'Cotizador de Primas',comparativo:'Comparativo de Coberturas',tasas:'Tabla de Tasas',admin:'Panel de Administración','nuevo-cliente':'Registrar Cliente',cobranza:'Módulo de Cobranza'};
+const pageTitles={dashboard:'Dashboard',cierres:'Cierres de Venta',clientes:'Cartera de Clientes',vencimientos:'Vencimientos de Pólizas',calendario:'Calendario de Vencimientos',seguimiento:'Seguimiento de Clientes',cotizador:'Cotizador de Primas',comparativo:'Comparativo de Coberturas',tasas:'Tabla de Tasas',admin:'Panel de Administración','nuevo-cliente':'Registrar Cliente',cobranza:'Módulo de Cobranza',cola:'Cola de Envío'};
 function showPage(id){
   // Cerrar cualquier modal abierto al cambiar de módulo
   document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));
@@ -621,7 +621,7 @@ function showPage(id){
   navItems.forEach(n=>{
     if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes("'"+id+"'")) n.classList.add('active');
   });
-  const renders={clientes:renderClientes,vencimientos:()=>showPage('seguimiento'),calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones,cobranza:()=>renderCobranza(_currentFiltroCobranza||'mes'),cotizador:()=>setTimeout(calcCotizacion,100),tasas:renderTasas};
+  const renders={clientes:renderClientes,vencimientos:()=>showPage('seguimiento'),calendario:()=>{renderCalendario();renderTareasCalendario();},seguimiento:renderSeguimiento,dashboard:renderDashboard,admin:()=>{renderAdmin();showAdminTab('importar',document.querySelector('#admin-tabs .pill'));},comparativo:renderComparativo,cierres:renderCierres,reportes:renderReportes,cotizaciones:renderCotizaciones,cobranza:()=>renderCobranza(_currentFiltroCobranza||'mes'),cotizador:()=>setTimeout(calcCotizacion,100),tasas:renderTasas,cola:initCola};
   if(renders[id]) renders[id]();
 }
 
@@ -3588,6 +3588,497 @@ function _renderGestionCobranzaHistorial(cierreId, cuotaIdx){
       ${g.seguimiento?`<div style="margin-top:3px;font-size:11px;color:var(--accent)">📅 Seguimiento: ${g.seguimiento}</div>`:''}
       <div style="margin-top:3px;font-size:10px;color:var(--muted)">👤 ${g.ejecutivo||'—'}</div>
     </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════
+//  COLA DE ENVÍO — Cooldown + Envío Masivo + Agenda
+// ══════════════════════════════════════════════════════
+
+// Cooldown por urgencia (días entre contactos)
+const COOLDOWN_DIAS = { CRITICO: 2, URGENTE: 4, NORMAL: 7, PROXIMO: 14 };
+
+// Calcula la urgencia de un cliente según días hasta vencimiento
+function _urgenciaCliente(c){
+  const d = daysUntil(c.hasta);
+  if(d < 0 || d > 60) return 'CRITICO';   // ya venció o más de 60 días (lejos)
+  if(d <= 15) return 'URGENTE';
+  if(d <= 60) return 'NORMAL';
+  return 'PROXIMO';
+}
+
+// Calcula días desde último contacto
+function _diasDesdeContacto(c){
+  if(!c.ultimoContacto) return null; // nunca contactado
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const uc = new Date(c.ultimoContacto); uc.setHours(0,0,0,0);
+  return Math.floor((hoy - uc) / 86400000);
+}
+
+// Verifica si un cliente está en cooldown
+function _enCooldown(c){
+  const dias = _diasDesdeContacto(c);
+  if(dias === null) return { enCooldown: false, diasRestantes: 0 }; // nunca contactado = listo
+  const urgencia = _urgenciaCliente(c);
+  const limite = COOLDOWN_DIAS[urgencia] || 7;
+  if(dias >= limite) return { enCooldown: false, diasRestantes: 0 };
+  return { enCooldown: true, diasRestantes: limite - dias };
+}
+
+// Clasifica todos los clientes del ejecutivo para la cola
+function _clasificarCola(){
+  const clientes = myClientes();
+  const listos = [], sinContacto = [], enCooldown = [];
+
+  clientes.forEach(c => {
+    // Excluir estados finales
+    if(['EMITIDA','CERRADO','ARCHIVADO'].includes(c.estado)) return;
+
+    const urgencia = _urgenciaCliente(c);
+    const diasUC = _diasDesdeContacto(c);
+    const cd = _enCooldown(c);
+    const tieneEmail = !!(c.email && c.email.includes('@'));
+    const tieneCelular = !!(c.celular && c.celular.replace(/\D/g,'').length >= 7);
+
+    const item = {
+      ...c, _urgencia: urgencia, _diasDesdeContacto: diasUC,
+      _tieneEmail: tieneEmail, _tieneCelular: tieneCelular,
+      _cooldown: cd
+    };
+
+    if(diasUC === null){
+      sinContacto.push(item);
+    } else if(cd.enCooldown){
+      item._diasRestantes = cd.diasRestantes;
+      enCooldown.push(item);
+    } else {
+      listos.push(item);
+    }
+  });
+
+  // Ordenar: críticos primero
+  const urgOrder = { CRITICO: 0, URGENTE: 1, NORMAL: 2, PROXIMO: 3 };
+  const sortFn = (a, b) => (urgOrder[a._urgencia]||9) - (urgOrder[b._urgencia]||9);
+  listos.sort(sortFn);
+  sinContacto.sort(sortFn);
+  enCooldown.sort((a, b) => a._diasRestantes - b._diasRestantes);
+
+  return { listos, sinContacto, enCooldown };
+}
+
+// Genera agenda de liberación: cuántos clientes se liberan cada día (30 días)
+function _generarAgendaCooldown(){
+  const clientes = myClientes();
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const agenda = {}; // fecha -> count
+
+  // Inicializar 30 días
+  for(let i = 0; i < 30; i++){
+    const d = new Date(hoy); d.setDate(hoy.getDate() + i);
+    agenda[d.toISOString().split('T')[0]] = 0;
+  }
+
+  clientes.forEach(c => {
+    if(['EMITIDA','CERRADO','ARCHIVADO'].includes(c.estado)) return;
+    const cd = _enCooldown(c);
+    if(!cd.enCooldown || cd.diasRestantes <= 0) return;
+    if(cd.diasRestantes > 30) return;
+    const fechaLibre = new Date(hoy);
+    fechaLibre.setDate(hoy.getDate() + cd.diasRestantes);
+    const key = fechaLibre.toISOString().split('T')[0];
+    if(agenda[key] !== undefined) agenda[key]++;
+  });
+
+  return agenda;
+}
+
+let _colaData = null; // cache
+
+function initCola(){
+  _colaData = _clasificarCola();
+  _renderColaStats(_colaData);
+  _renderColaAgenda();
+  renderCola();
+  actualizarBadgeCola();
+}
+
+function _renderColaStats(data){
+  const el = document.getElementById('cola-stats');
+  if(!el) return;
+  const total = data.listos.length + data.sinContacto.length + data.enCooldown.length;
+  const conEmail = [...data.listos, ...data.sinContacto].filter(c => c._tieneEmail).length;
+  const conWA = [...data.listos, ...data.sinContacto].filter(c => c._tieneCelular).length;
+  el.innerHTML = `
+    <div class="stat-card" style="border-color:var(--green)"><div class="stat-value" style="color:var(--green)">${data.listos.length}</div><div class="stat-label">Listos para contactar</div></div>
+    <div class="stat-card" style="border-color:#1a4c84"><div class="stat-value" style="color:#1a4c84">${data.sinContacto.length}</div><div class="stat-label">Sin contacto previo</div></div>
+    <div class="stat-card" style="border-color:var(--accent)"><div class="stat-value" style="color:var(--accent)">${data.enCooldown.length}</div><div class="stat-label">En cooldown</div></div>
+    <div class="stat-card"><div class="stat-value">${conEmail} 📧 / ${conWA} 📲</div><div class="stat-label">Con datos de contacto</div></div>
+  `;
+}
+
+function _renderColaAgenda(){
+  const agenda = _generarAgendaCooldown();
+  const el = document.getElementById('cola-agenda');
+  if(!el) return;
+  const hoy = new Date().toISOString().split('T')[0];
+  const dias = Object.entries(agenda).sort((a,b) => a[0].localeCompare(b[0]));
+  const maxVal = Math.max(...dias.map(d => d[1]), 1);
+
+  el.innerHTML = dias.map(([fecha, count]) => {
+    const d = new Date(fecha + 'T12:00:00');
+    const diaSem = d.toLocaleDateString('es-EC', { weekday: 'short' }).substring(0, 2);
+    const diaNum = d.getDate();
+    const esHoy = fecha === hoy;
+    const intensity = count > 0 ? Math.max(0.15, count / maxVal) : 0;
+    const bg = count > 0 ? `rgba(26,76,132,${intensity})` : (esHoy ? '#fff3e0' : '#f8f9fa');
+    const color = intensity > 0.5 ? '#fff' : '#333';
+    return `<div style="width:42px;text-align:center;padding:4px 2px;border-radius:6px;background:${bg};color:${color};font-size:10px;border:${esHoy?'2px solid var(--accent)':'1px solid var(--border)'}">
+      <div style="font-weight:600;text-transform:uppercase">${diaSem}</div>
+      <div style="font-size:14px;font-weight:700">${diaNum}</div>
+      ${count > 0 ? `<div style="font-size:9px;font-weight:700;margin-top:2px">+${count}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function toggleColaAgenda(){
+  const wrap = document.getElementById('cola-agenda-wrap');
+  const toggle = document.getElementById('cola-agenda-toggle');
+  if(!wrap) return;
+  const visible = wrap.style.display !== 'none';
+  wrap.style.display = visible ? 'none' : 'block';
+  if(toggle) toggle.textContent = visible ? '▼ Expandir' : '▲ Colapsar';
+}
+
+function renderCola(){
+  if(!_colaData) _colaData = _clasificarCola();
+  const filtroTipo = document.getElementById('cola-filtro-tipo')?.value || 'listos';
+  const filtroUrg = document.getElementById('cola-filtro-urgencia')?.value || '';
+  const busq = (document.getElementById('cola-search')?.value || '').toLowerCase();
+
+  let items = [];
+  switch(filtroTipo){
+    case 'listos': items = _colaData.listos; break;
+    case 'sin_contacto': items = _colaData.sinContacto; break;
+    case 'en_cooldown': items = _colaData.enCooldown; break;
+    default: items = [..._colaData.listos, ..._colaData.sinContacto, ..._colaData.enCooldown]; break;
+  }
+
+  if(filtroUrg) items = items.filter(c => c._urgencia === filtroUrg);
+  if(busq) items = items.filter(c =>
+    (c.nombre||'').toLowerCase().includes(busq) ||
+    (c.aseguradora||'').toLowerCase().includes(busq) ||
+    (c.email||'').toLowerCase().includes(busq)
+  );
+
+  const countEl = document.getElementById('cola-count');
+  if(countEl) countEl.textContent = `${items.length} cliente${items.length!==1?'s':''}`;
+
+  const wrap = document.getElementById('cola-tabla');
+  if(!wrap) return;
+
+  if(!items.length){
+    wrap.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:8px">✅</div>
+      <div>No hay clientes en esta categoría</div>
+    </div>`;
+    _updateColaSelInfo();
+    return;
+  }
+
+  const urgBadge = u => {
+    const cfg = { CRITICO: { color:'#b71c1c', bg:'#fde8e0', icon:'🔴' },
+                  URGENTE: { color:'#e65100', bg:'#fff3e0', icon:'🟠' },
+                  NORMAL:  { color:'#f9a825', bg:'#fffde7', icon:'🟡' },
+                  PROXIMO: { color:'#2d6a4f', bg:'#d4edda', icon:'🟢' }};
+    const c = cfg[u] || cfg.NORMAL;
+    return `<span style="background:${c.bg};color:${c.color};border:1px solid ${c.color}33;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:600">${c.icon} ${u}</span>`;
+  };
+
+  const rows = items.map(c => {
+    const diasVenc = daysUntil(c.hasta);
+    const contactable = filtroTipo !== 'en_cooldown';
+    const statusTxt = c._cooldown.enCooldown
+      ? `<span style="color:var(--accent);font-size:11px">⏳ ${c._diasRestantes||c._cooldown.diasRestantes}d restantes</span>`
+      : (c._diasDesdeContacto === null
+        ? '<span style="color:#1a4c84;font-size:11px">🆕 Nunca contactado</span>'
+        : `<span style="color:var(--green);font-size:11px">✅ Listo (${c._diasDesdeContacto}d desde últ.)</span>`);
+
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px 6px;text-align:center">
+        ${contactable ? `<input type="checkbox" class="cola-check" data-id="${c.id}" onchange="_updateColaSelInfo()">` : ''}
+      </td>
+      <td style="padding:8px 12px">${urgBadge(c._urgencia)}</td>
+      <td style="padding:8px 12px;font-size:12px">
+        <div style="font-weight:600">${c.nombre||'—'}</div>
+        <div style="color:var(--muted);font-size:11px">${c.aseguradora||'—'}</div>
+      </td>
+      <td style="padding:8px 12px;font-size:11px;font-family:'DM Mono',monospace">${c.cedula||c.ruc||'—'}</td>
+      <td style="padding:8px 12px;font-size:11px">
+        ${c._tieneEmail ? `📧 <span style="color:var(--green)">✓</span>` : `📧 <span style="color:var(--muted)">✗</span>`}
+        ${c._tieneCelular ? ` 📲 <span style="color:var(--green)">✓</span>` : ` 📲 <span style="color:var(--muted)">✗</span>`}
+      </td>
+      <td style="padding:8px 12px;font-size:11px;font-family:'DM Mono',monospace">${c.hasta||'—'}</td>
+      <td style="padding:8px 12px;font-size:11px">${c.ultimoContacto||'—'}</td>
+      <td style="padding:8px 12px">${statusTxt}</td>
+      <td style="padding:8px 6px">
+        <div style="display:flex;gap:4px">
+          ${contactable && c._tieneEmail ? `<button class="btn btn-sm btn-ghost" title="Email individual" onclick="abrirEmailDesdeCola('${c.id}')" style="padding:3px 6px;font-size:11px">📧</button>` : ''}
+          ${contactable && c._tieneCelular ? `<button class="btn btn-sm btn-ghost" title="WhatsApp individual" onclick="abrirWaDesdeCola('${c.id}')" style="padding:3px 6px;font-size:11px">📲</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr>
+      <th style="width:30px"></th><th>Urgencia</th><th>Cliente</th><th>Identificación</th>
+      <th>Contacto</th><th>Vencimiento</th><th>Últ. Contacto</th><th>Estado</th><th>Acciones</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+
+  _updateColaSelInfo();
+}
+
+function toggleAllCola(checked){
+  document.querySelectorAll('.cola-check').forEach(cb => cb.checked = checked);
+  _updateColaSelInfo();
+}
+
+function _updateColaSelInfo(){
+  const checks = document.querySelectorAll('.cola-check:checked');
+  const n = checks.length;
+  const infoEl = document.getElementById('cola-sel-info');
+  if(infoEl) infoEl.textContent = `${n} seleccionado${n!==1?'s':''}`;
+  const btnEmail = document.getElementById('cola-btn-email');
+  const btnWa = document.getElementById('cola-btn-wa');
+  if(btnEmail) btnEmail.disabled = n === 0;
+  if(btnWa) btnWa.disabled = n === 0;
+}
+
+// Abrir email para un cliente individual desde la cola
+function abrirEmailDesdeCola(clienteId){
+  const c = DB.find(x => String(x.id) === String(clienteId));
+  if(!c) return;
+  // Registrar contacto
+  c._dirty = true;
+  _bitacoraAdd(c, 'Email enviado desde Cola de Envío', 'manual');
+  c.ultimoContacto = new Date().toISOString().split('T')[0];
+  saveDB();
+  // Abrir modal de email existente
+  emailClienteId = clienteId;
+  document.getElementById('email-destino').value = c.email || '';
+  selEmailPlantilla('vencimiento', document.querySelector('#email-tipo-pills .pill'));
+  openModal('modal-email');
+}
+
+function abrirWaDesdeCola(clienteId){
+  const c = DB.find(x => String(x.id) === String(clienteId));
+  if(!c) return;
+  // Registrar contacto
+  c._dirty = true;
+  _bitacoraAdd(c, 'WhatsApp enviado desde Cola de Envío', 'manual');
+  c.ultimoContacto = new Date().toISOString().split('T')[0];
+  saveDB();
+  // Abrir modal de WhatsApp
+  waClienteId = clienteId;
+  const celular = (c.celular || '').replace(/\D/g, '');
+  const phone = celular.startsWith('593') ? celular : `593${celular.replace(/^0/, '')}`;
+  document.getElementById('wa-numero').value = phone;
+  selWaPlantilla('vencimiento', document.querySelector('#wa-tipo-pills .pill'));
+  openModal('modal-whatsapp');
+}
+
+// Envío masivo de email (abre mailto para cada seleccionado + registra contacto)
+function envioMasivoEmail(){
+  const checks = document.querySelectorAll('.cola-check:checked');
+  if(!checks.length){ showToast('Selecciona al menos un cliente','error'); return; }
+
+  const ids = Array.from(checks).map(cb => cb.dataset.id);
+  const clientes = ids.map(id => DB.find(x => String(x.id) === String(id))).filter(Boolean);
+  const conEmail = clientes.filter(c => c.email && c.email.includes('@'));
+  const sinEmail = clientes.length - conEmail.length;
+
+  if(!conEmail.length){ showToast('Ninguno de los seleccionados tiene email','error'); return; }
+
+  // Validar cooldown
+  const omitidos = [];
+  const enviables = [];
+  conEmail.forEach(c => {
+    const cd = _enCooldown(c);
+    if(cd.enCooldown){
+      omitidos.push({ nombre: c.nombre, motivo: `En cooldown (${cd.diasRestantes}d)` });
+    } else {
+      enviables.push(c);
+    }
+  });
+
+  if(!enviables.length){
+    showToast('Todos los seleccionados están en cooldown','error');
+    return;
+  }
+
+  // Generar lista de emails y abrir mailto masivo
+  const emails = enviables.map(c => c.email).join(',');
+  const exec = currentUser ? currentUser.name : 'Ejecutivo RELIANCE';
+  const asunto = encodeURIComponent('Renovación de Póliza — RELIANCE Broker de Seguros');
+  const cuerpo = encodeURIComponent(
+    `Estimado/a cliente,\n\nLe informamos que su póliza de seguro está próxima a vencer.\n` +
+    `Para renovar y mantener su protección, contáctenos a la brevedad.\n\n` +
+    `Saludos cordiales,\n${exec}\nRELIANCE — Asesores de Seguros`
+  );
+
+  // Registrar contacto en cada cliente
+  const hoy = new Date().toISOString().split('T')[0];
+  enviables.forEach(c => {
+    c._dirty = true;
+    _bitacoraAdd(c, `Email masivo enviado desde Cola de Envío (${enviables.length} clientes)`, 'sistema');
+    c.ultimoContacto = hoy;
+  });
+  saveDB();
+
+  // Abrir mailto
+  window.location.href = `mailto:?bcc=${emails}&subject=${asunto}&body=${cuerpo}`;
+
+  // Mostrar reporte
+  _mostrarReporteCola(enviables, omitidos, sinEmail, 'email');
+
+  // Refresh
+  setTimeout(() => { _colaData = null; initCola(); }, 500);
+}
+
+function envioMasivoWA(){
+  const checks = document.querySelectorAll('.cola-check:checked');
+  if(!checks.length){ showToast('Selecciona al menos un cliente','error'); return; }
+
+  const ids = Array.from(checks).map(cb => cb.dataset.id);
+  const clientes = ids.map(id => DB.find(x => String(x.id) === String(id))).filter(Boolean);
+  const conWA = clientes.filter(c => c.celular && c.celular.replace(/\D/g,'').length >= 7);
+
+  if(!conWA.length){ showToast('Ninguno de los seleccionados tiene celular','error'); return; }
+
+  const omitidos = [];
+  const enviables = [];
+  conWA.forEach(c => {
+    const cd = _enCooldown(c);
+    if(cd.enCooldown){
+      omitidos.push({ nombre: c.nombre, motivo: `En cooldown (${cd.diasRestantes}d)` });
+    } else {
+      enviables.push(c);
+    }
+  });
+
+  if(!enviables.length){
+    showToast('Todos los seleccionados están en cooldown','error');
+    return;
+  }
+
+  // Registrar contacto
+  const hoy = new Date().toISOString().split('T')[0];
+  enviables.forEach(c => {
+    c._dirty = true;
+    _bitacoraAdd(c, `WhatsApp masivo desde Cola de Envío (${enviables.length} clientes)`, 'sistema');
+    c.ultimoContacto = hoy;
+  });
+  saveDB();
+
+  // Abrir WhatsApp Web para el primer cliente, mostrar lista del resto
+  const first = enviables[0];
+  const cel = (first.celular||'').replace(/\D/g,'');
+  const phone = cel.startsWith('593') ? cel : `593${cel.replace(/^0/,'')}`;
+  const exec = currentUser ? currentUser.name : 'Ejecutivo RELIANCE';
+  const msg = encodeURIComponent(
+    `Estimado/a *${primerNombre(first.nombre)}*, le recordamos que su póliza de seguro vehicular con *${first.aseguradora||'su aseguradora'}* está próxima a vencer.\n\n` +
+    `Para renovar y mantener su protección, contáctenos a la brevedad.\n\n${exec}\nRELIANCE — Asesores de Seguros`
+  );
+  window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${msg}`, '_blank');
+
+  // Mostrar reporte con lista de números pendientes
+  _mostrarReporteCola(enviables, omitidos, clientes.length - conWA.length, 'whatsapp');
+
+  setTimeout(() => { _colaData = null; initCola(); }, 500);
+}
+
+function _mostrarReporteCola(enviados, omitidos, sinDatos, canal){
+  const repEl = document.getElementById('cola-reporte');
+  if(!repEl) return;
+  repEl.style.display = 'block';
+
+  const canalIcon = canal === 'email' ? '📧' : '📲';
+  const canalTxt = canal === 'email' ? 'Email' : 'WhatsApp';
+
+  let html = `<div class="card" style="border-color:var(--green)">
+    <div class="card-header"><div class="card-title">${canalIcon} Reporte de Envío Masivo — ${canalTxt}</div></div>
+    <div class="card-body" style="padding:16px">
+      <div class="grid-3" style="gap:12px;margin-bottom:16px">
+        <div style="background:#d4edda;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:20px;font-weight:700;color:var(--green)">${enviados.length}</div>
+          <div style="font-size:11px;color:var(--green)">Contactados</div>
+        </div>
+        <div style="background:#fff3e0;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:20px;font-weight:700;color:var(--accent)">${omitidos.length}</div>
+          <div style="font-size:11px;color:var(--accent)">Omitidos (cooldown)</div>
+        </div>
+        <div style="background:#f8f9fa;padding:12px;border-radius:8px;text-align:center">
+          <div style="font-size:20px;font-weight:700;color:var(--muted)">${sinDatos}</div>
+          <div style="font-size:11px;color:var(--muted)">Sin datos de ${canalTxt.toLowerCase()}</div>
+        </div>
+      </div>`;
+
+  if(canal === 'whatsapp' && enviados.length > 1){
+    html += `<div style="margin-top:12px"><strong style="font-size:12px">📲 Números pendientes de enviar manualmente:</strong>
+      <div style="margin-top:8px;max-height:200px;overflow-y:auto">
+        ${enviados.slice(1).map(c => {
+          const cel = (c.celular||'').replace(/\D/g,'');
+          const ph = cel.startsWith('593') ? cel : `593${cel.replace(/^0/,'')}`;
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid var(--border);font-size:12px">
+            <span>${c.nombre||'—'}</span>
+            <a href="https://web.whatsapp.com/send?phone=${ph}" target="_blank" style="color:var(--green);font-weight:600">📲 ${ph}</a>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
+
+  if(omitidos.length){
+    html += `<details style="margin-top:12px"><summary style="font-size:12px;cursor:pointer;color:var(--accent)">Ver ${omitidos.length} omitidos por cooldown</summary>
+      <div style="margin-top:6px;font-size:11px">
+        ${omitidos.map(o => `<div style="padding:3px 8px;border-bottom:1px solid var(--border)">${o.nombre} — ${o.motivo}</div>`).join('')}
+      </div>
+    </details>`;
+  }
+
+  html += `<button class="btn btn-sm" style="margin-top:12px" onclick="document.getElementById('cola-reporte').style.display='none'">✕ Cerrar reporte</button>
+    </div></div>`;
+
+  repEl.innerHTML = html;
+}
+
+function exportColaExcel(){
+  if(!_colaData) _colaData = _clasificarCola();
+  const all = [..._colaData.listos, ..._colaData.sinContacto, ..._colaData.enCooldown];
+  if(!all.length){ showToast('Sin datos para exportar','error'); return; }
+  const rows = all.map(c => ({
+    'Nombre': c.nombre||'',
+    'Identificación': c.cedula||c.ruc||'',
+    'Aseguradora': c.aseguradora||'',
+    'Email': c.email||'',
+    'Celular': c.celular||'',
+    'Vencimiento': c.hasta||'',
+    'Últ. Contacto': c.ultimoContacto||'',
+    'Urgencia': c._urgencia||'',
+    'Estado Cooldown': c._cooldown.enCooldown ? `En cooldown (${c._cooldown.diasRestantes}d)` : 'Listo',
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Cola de Envío');
+  XLSX.writeFile(wb, `Cola_Envio_${new Date().toISOString().split('T')[0]}.xlsx`);
+}
+
+function actualizarBadgeCola(){
+  const data = _colaData || _clasificarCola();
+  const n = data.listos.length + data.sinContacto.length;
+  const el = document.getElementById('badge-cola');
+  if(el){ el.textContent = n; el.style.display = n > 0 ? '' : 'none'; }
 }
 
 
@@ -7160,6 +7651,7 @@ async function initApp(){
   actualizarBadgeCotizaciones();
   actualizarBadgeTareas();
   actualizarBadgeCobranza();
+  actualizarBadgeCola();
   renderDashTareas();
 
   // Ocultar login, mostrar app

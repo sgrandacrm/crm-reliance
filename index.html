@@ -86,6 +86,7 @@
     <div class="nav-item" onclick="showPage('seguimiento')"><span class="icon">◎</span><span>Seguimiento</span><span class="nav-badge" style="background:var(--accent);display:none" id="badge-seg-urgente">0</span></div>
     <div class="nav-item" onclick="showPage('cierres')"><span class="icon">✓</span><span>Cierres de Venta</span><span class="nav-badge" style="background:var(--green)" id="badge-cierres">0</span></div>
     <div class="nav-item" onclick="showPage('cobranza')"><span class="icon">💰</span><span>Cobranza</span><span class="nav-badge" style="background:var(--red);display:none" id="badge-cobranza">0</span></div>
+    <div class="nav-item" onclick="showPage('cola')"><span class="icon">📤</span><span>Cola de Envío</span><span class="nav-badge" style="background:var(--accent);display:none" id="badge-cola">0</span></div>
     <div class="nav-section">Herramientas</div>
     <div class="nav-item" onclick="showPage('cotizaciones')"><span class="icon">📋</span><span>Cotizaciones</span><span class="nav-badge" style="background:var(--accent2)" id="badge-cotizaciones">0</span></div>
     <div class="nav-item" onclick="showPage('cotizador')"><span class="icon">◆</span><span>Cotizador</span></div>
@@ -929,6 +930,68 @@
     </div>
   </div>
 
+  <!-- ═══════════════════ COLA DE ENVÍO ═══════════════════ -->
+  <div class="page" id="page-cola">
+    <div class="highlight-card" style="background:linear-gradient(135deg,#e8f0fb,#d1e3fa);border-color:#1a4c84;margin-bottom:20px">
+      <div class="flex items-center justify-between">
+        <div>
+          <div style="font-family:'DM Serif Display',serif;font-size:18px;color:#1a4c84">📤 Cola de Envío</div>
+          <div class="text-muted" style="font-size:12px">Clientes listos para contactar — respeta cooldown por urgencia — envío masivo de emails y WhatsApp</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm" style="background:#1a4c84;color:#fff;border:none" onclick="exportColaExcel()">⬇ Exportar</button>
+        </div>
+      </div>
+    </div>
+    <div class="grid-4" id="cola-stats" style="margin-bottom:20px"></div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header" style="cursor:pointer" onclick="toggleColaAgenda()">
+        <div class="card-title">📅 Agenda de Liberación (30 días)</div>
+        <span class="text-muted" style="font-size:11px" id="cola-agenda-toggle">▼ Expandir</span>
+      </div>
+      <div id="cola-agenda-wrap" style="display:none">
+        <div id="cola-agenda" style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:6px"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-body" style="padding:12px 16px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select class="form-input" id="cola-filtro-tipo" onchange="renderCola()" style="width:180px">
+            <option value="listos">✅ Listos para contactar</option>
+            <option value="sin_contacto">🆕 Sin contacto previo</option>
+            <option value="en_cooldown">⏳ En cooldown</option>
+            <option value="todos">📋 Todos</option>
+          </select>
+          <select class="form-input" id="cola-filtro-urgencia" onchange="renderCola()" style="width:160px">
+            <option value="">Todas las urgencias</option>
+            <option value="CRITICO">🔴 Crítico</option>
+            <option value="URGENTE">🟠 Urgente</option>
+            <option value="NORMAL">🟡 Normal</option>
+            <option value="PROXIMO">🟢 Próximo</option>
+          </select>
+          <div style="flex:1"></div>
+          <input class="form-input" id="cola-search" placeholder="🔍 Buscar cliente…" style="width:200px" oninput="renderCola()">
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+            <input type="checkbox" id="cola-check-all" onchange="toggleAllCola(this.checked)"> Seleccionar todos
+          </label>
+          <span class="text-muted" style="font-size:12px" id="cola-sel-info">0 seleccionados</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-sm" id="cola-btn-email" style="background:#1a4c84;color:#fff;border:none" onclick="envioMasivoEmail()" disabled>📧 Enviar Email Masivo</button>
+          <button class="btn btn-sm" id="cola-btn-wa" style="background:#25d366;color:#fff;border:none" onclick="envioMasivoWA()" disabled>📲 WhatsApp Masivo</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Clientes en Cola</div>
+        <span class="text-muted" style="font-size:12px" id="cola-count">—</span>
+      </div>
+      <div id="cola-tabla"></div>
+    </div>
+    <div id="cola-reporte" style="display:none;margin-top:16px"></div>
+  </div>
 
 </div><!-- /main -->
 
