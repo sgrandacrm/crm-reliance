@@ -992,25 +992,6 @@ function showClienteModal(id){
           <div class="detail-row"><span class="detail-key">Póliza anterior</span><span class="detail-val mono" style="font-size:10px">${c.polizaAnterior||c.poliza||'—'}</span></div>
           <div class="detail-row"><span class="detail-key">Aseg. anterior</span><span class="detail-val" style="font-size:11px">${c.aseguradoraAnterior||'—'}</span></div>
         </div>
-        ${(c.historialWa&&c.historialWa.length)?`
-        <div class="detail-section">
-          <div class="detail-section-title" style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:16px">💬</span> Historial de WhatsApp
-          </div>
-          <table style="width:100%;font-size:11px">
-            <thead><tr>
-              <th style="padding:4px 8px;text-align:left;color:var(--muted);font-size:10px">Fecha</th>
-              <th style="padding:4px 8px;text-align:left;color:var(--muted);font-size:10px">Resumen</th>
-            </tr></thead>
-            <tbody>
-              ${c.historialWa.map(h=>`<tr style="border-bottom:1px solid var(--warm)">
-                <td style="padding:5px 8px;font-family:'DM Mono',monospace;white-space:nowrap">${h.fecha}</td>
-                <td style="padding:5px 8px;color:var(--muted)">${h.resumen}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>`:''}
-
           <div class="detail-row"><span class="detail-key">Val. Asegurado</span><span class="detail-val text-accent font-bold">${fmt(c.va)}</span></div>
         </div>
         <div class="detail-section">
@@ -1058,33 +1039,13 @@ function showClienteModal(id){
         </div>`:''}
       </div></div>
     </div>
-    ${(()=>{
-      const hist = _getCierres()
-        .filter(x=> (x._clienteId && String(x._clienteId)===String(id)) || (x.clienteNombre||'').toUpperCase().trim()===(c.nombre||'').toUpperCase().trim())
-        .sort((a,b)=>(b.fechaRegistro||'').localeCompare(a.fechaRegistro||''));
-      if(!hist.length) return '';
-      return `<div class="card" style="margin-top:12px"><div class="card-body">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px">📜 Historial de Pólizas (${hist.length})</div>
-        <table style="width:100%;font-size:11px;border-collapse:collapse">
-          <thead><tr style="background:var(--warm)">
-            <th style="padding:5px 8px;text-align:left;color:var(--muted)">Fecha</th>
-            <th style="padding:5px 8px;text-align:left;color:var(--muted)">Aseguradora</th>
-            <th style="padding:5px 8px;text-align:left;color:var(--muted)">Póliza</th>
-            <th style="padding:5px 8px;text-align:right;color:var(--muted)">Prima</th>
-            <th style="padding:5px 8px;text-align:left;color:var(--muted)">Pago</th>
-          </tr></thead>
-          <tbody>
-            ${hist.map(h=>`<tr style="border-bottom:1px solid var(--border)">
-              <td style="padding:5px 8px;font-family:'DM Mono',monospace">${h.fechaRegistro||'—'}</td>
-              <td style="padding:5px 8px;font-weight:500">${h.aseguradora||'—'}</td>
-              <td style="padding:5px 8px;font-family:'DM Mono',monospace;font-size:10px">${h.polizaNueva||h.Title||'—'}</td>
-              <td style="padding:5px 8px;text-align:right;font-weight:600;color:var(--green)">${fmt(h.primaTotal||0)}</td>
-              <td style="padding:5px 8px;font-size:10px;color:var(--muted)">${(h.formaPago?.forma||'').replace('_',' ')||'—'}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div></div>`;
-    })()}
+    <div class="card" style="margin-top:12px">
+      <div class="card-header">
+        <div class="card-title">🕐 Historial de Actividad</div>
+        <span style="font-size:11px;color:var(--muted)" id="modal-timeline-count"></span>
+      </div>
+      <div class="card-body" style="padding:12px 16px;max-height:420px;overflow-y:auto" id="modal-cliente-timeline"></div>
+    </div>
     `;
   document.getElementById('modal-btn-cotizar').style.display='';
   document.getElementById('modal-btn-editar').style.display='';
@@ -1092,6 +1053,16 @@ function showClienteModal(id){
   document.getElementById('modal-btn-cotizar').onclick=()=>{ closeModal('modal-cliente'); prefillCotizador(c); showPage('cotizador'); setTimeout(calcCotizacion,200); };
   document.getElementById('modal-btn-editar').onclick=()=>{ closeModal('modal-cliente'); openEditar(id); };
   document.getElementById('modal-btn-eliminar').onclick=()=>{ if(confirm(`¿Eliminar a ${c.nombre}?`)){ const cliToDel=DB.find(x=>String(x.id)===String(id)); if(cliToDel?._spId && _spReady) spDelete('clientes', cliToDel._spId); DB=DB.filter(x=>String(x.id)!==String(id)); saveDB(); closeModal('modal-cliente'); renderClientes(); renderDashboard(); showToast('Cliente eliminado','error'); }};
+
+  // Timeline unificado
+  const tlEl = document.getElementById('modal-cliente-timeline');
+  if(tlEl){
+    tlEl.innerHTML = _renderClienteTimeline(c);
+    const tlEntries = _buildClienteTimeline(c);
+    const cntEl = document.getElementById('modal-timeline-count');
+    if(cntEl) cntEl.textContent = tlEntries.length ? `${tlEntries.length} evento${tlEntries.length!==1?'s':''}` : '';
+  }
+
   openModal('modal-cliente');
 }
 
@@ -1420,6 +1391,100 @@ function _bitacoraAdd(cliente, nota, tipo='manual'){
   if(nota) cliente.nota = nota;
   // Marcar para sync con SharePoint
   cliente._dirty = true;
+}
+
+// ── Timeline unificado del cliente ────────────────────────────────────────
+const _TL_CFG = {
+  manual:     { icon:'💬', color:'#1a4c84', label:'Nota'        },
+  sistema:    { icon:'⚙️', color:'#888',    label:'Sistema'     },
+  cotizacion: { icon:'📋', color:'#2196f3', label:'Cotización'  },
+  cierre:     { icon:'✅', color:'#28a745', label:'Cierre'      },
+  wa:         { icon:'💚', color:'#25d366', label:'WhatsApp'    },
+  poliza:     { icon:'📄', color:'#28a745', label:'Póliza'      },
+  tarea:      { icon:'📌', color:'#6f42c1', label:'Tarea'       },
+};
+
+function _buildClienteTimeline(c){
+  const entries = [];
+
+  // 1. Bitácora (fuente principal)
+  (c.bitacora||[]).forEach(e=>{
+    const cfg = _TL_CFG[e.tipo] || _TL_CFG.manual;
+    entries.push({ fecha:e.fecha||'0000-00-00', hora:e.hora||'', tipo:e.tipo||'manual',
+      icono:cfg.icon, color:cfg.color, label:cfg.label,
+      titulo:e.nota||'(sin nota)', estado:e.estado||'', ejecutivo:e.ejecutivo||'' });
+  });
+
+  // 2. historialWa — incluir los que no estén ya cubiertos en bitácora ese día
+  (c.historialWa||[]).forEach(h=>{
+    const yaEnBit = (c.bitacora||[]).some(e=>e.fecha===h.fecha &&
+      (e.nota||'').toLowerCase().includes('whatsapp'));
+    if(!yaEnBit){
+      entries.push({ fecha:h.fecha||'0000-00-00', hora:'', tipo:'wa',
+        icono:'💚', color:'#25d366', label:'WhatsApp',
+        titulo:h.resumen||'WhatsApp enviado', estado:'', ejecutivo:h.ejecutivo||'' });
+    }
+  });
+
+  // 3. Cierres — como entradas enriquecidas si no hay ya entry tipo=cierre ese día
+  _getCierres().filter(x=>
+    (x._clienteId && String(x._clienteId)===String(c.id)) ||
+    (x.clienteNombre||'').toUpperCase().trim()===(c.nombre||'').toUpperCase().trim()
+  ).forEach(h=>{
+    const yaEnBit = (c.bitacora||[]).some(e=>e.fecha===h.fechaRegistro && e.tipo==='cierre');
+    if(!yaEnBit){
+      entries.push({ fecha:h.fechaRegistro||'0000-00-00', hora:'', tipo:'poliza',
+        icono:'📄', color:'#28a745', label:'Póliza',
+        titulo:`Póliza registrada — ${h.aseguradora||'—'} · ${h.polizaNueva||'—'} · ${fmt(h.primaTotal||0)}`,
+        estado:'', ejecutivo:h.ejecutivo||'' });
+    }
+  });
+
+  // Ordenar: más reciente primero
+  entries.sort((a,b)=>{
+    const d = b.fecha.localeCompare(a.fecha);
+    return d!==0 ? d : (b.hora||'').localeCompare(a.hora||'');
+  });
+  return entries;
+}
+
+function _renderClienteTimeline(c){
+  const entries = _buildClienteTimeline(c);
+  if(!entries.length) return '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">Sin historial de actividad aún</div>';
+
+  const today = new Date().toISOString().split('T')[0];
+  const ayer  = new Date(Date.now()-86400000).toISOString().split('T')[0];
+  const fmtFecha = f => {
+    if(f===today) return 'Hoy';
+    if(f===ayer)  return 'Ayer';
+    if(!f||f==='0000-00-00') return '—';
+    return new Date(f+'T12:00:00').toLocaleDateString('es-EC',{day:'numeric',month:'short',year:'numeric'});
+  };
+
+  // Agrupar por fecha
+  const grupos = {};
+  entries.forEach(e=>{ if(!grupos[e.fecha]) grupos[e.fecha]=[]; grupos[e.fecha].push(e); });
+
+  return Object.keys(grupos).sort((a,b)=>b.localeCompare(a)).map(fecha=>`
+    <div style="margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);
+        letter-spacing:.8px;padding:3px 0 7px;border-bottom:1px solid var(--border);margin-bottom:6px">${fmtFecha(fecha)}</div>
+      ${grupos[fecha].map(e=>`
+        <div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--warm)">
+          <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;
+            background:${e.color}18;border:1.5px solid ${e.color}55;
+            display:flex;align-items:center;justify-content:center;font-size:12px">${e.icono}</div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:2px">
+              <span style="font-size:10px;font-weight:700;color:${e.color};text-transform:uppercase;letter-spacing:.4px">${e.label}</span>
+              ${e.hora?`<span style="font-size:10px;color:var(--muted)">${e.hora}</span>`:''}
+              ${e.estado?`<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--warm);color:var(--muted)">${e.estado}</span>`:''}
+              ${e.ejecutivo?`<span style="font-size:10px;color:var(--muted)">· ${e.ejecutivo}</span>`:''}
+            </div>
+            <div style="font-size:12px;color:var(--ink);line-height:1.45">${e.titulo}</div>
+          </div>
+        </div>`).join('')}
+    </div>`).join('');
 }
 
 // Renderiza el historial de bitácora dentro del modal de seguimiento
