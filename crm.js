@@ -508,6 +508,68 @@ function getDefaultClientes(){
 // ══════════════════════════════════════════════════════
 //  AUTH
 // ══════════════════════════════════════════════════════
+// ── Timeout de sesión por inactividad ──────────────────────────────────────
+const SESSION_INACTIVITY_MS = 20 * 60 * 1000; // 20 min sin actividad → advertencia
+const SESSION_WARN_SECS     = 60;              // segundos de cuenta regresiva antes de logout
+
+let _sessionTimer    = null;
+let _sessionWarnInt  = null;
+let _sessionWarnSecs = SESSION_WARN_SECS;
+
+function _resetSessionTimer(){
+  clearTimeout(_sessionTimer);
+  clearInterval(_sessionWarnInt);
+  _hideSessionWarning();
+  if(!currentUser) return;
+  _sessionTimer = setTimeout(_showSessionWarning, SESSION_INACTIVITY_MS);
+}
+
+function _showSessionWarning(){
+  const modal = document.getElementById('modal-session-timeout');
+  if(!modal || !currentUser) return;
+  _sessionWarnSecs = SESSION_WARN_SECS;
+  const cdEl = document.getElementById('session-countdown');
+  if(cdEl) cdEl.textContent = _sessionWarnSecs;
+  modal.style.display = 'flex';
+  clearInterval(_sessionWarnInt);
+  _sessionWarnInt = setInterval(() => {
+    _sessionWarnSecs--;
+    if(cdEl) cdEl.textContent = _sessionWarnSecs;
+    if(_sessionWarnSecs <= 0){
+      clearInterval(_sessionWarnInt);
+      _hideSessionWarning();
+      doLogout();
+      setTimeout(()=>{ const err=document.getElementById('login-err'); if(err) err.textContent='Sesión cerrada por inactividad.'; }, 50);
+    }
+  }, 1000);
+}
+
+function _hideSessionWarning(){
+  const modal = document.getElementById('modal-session-timeout');
+  if(modal) modal.style.display = 'none';
+  clearInterval(_sessionWarnInt);
+}
+
+function _keepSession(){
+  _hideSessionWarning();
+  _resetSessionTimer();
+}
+
+const _SESSION_EVENTS = ['mousemove','mousedown','keydown','scroll','touchstart','click'];
+
+function _startSessionTracking(){
+  _SESSION_EVENTS.forEach(ev => document.addEventListener(ev, _resetSessionTimer, { passive: true }));
+  _resetSessionTimer();
+}
+
+function _stopSessionTracking(){
+  clearTimeout(_sessionTimer);
+  clearInterval(_sessionWarnInt);
+  _hideSessionWarning();
+  _SESSION_EVENTS.forEach(ev => document.removeEventListener(ev, _resetSessionTimer));
+  _sessionTimer = null;
+}
+
 async function doLogin(){
   const u = document.getElementById('login-user').value.trim().toLowerCase();
   const p = document.getElementById('login-pass').value;
@@ -546,9 +608,11 @@ async function doLogin(){
   document.getElementById('sidebar-name').textContent = user.name;
   document.getElementById('sidebar-role').textContent = user.rol==='admin'?'Administrador':'Ejecutivo Comercial';
   document.querySelectorAll('.admin-only').forEach(el=>el.style.display=user.rol==='admin'?'':'none');
+  _startSessionTracking();
   await initApp();
 }
 function doLogout(){
+  _stopSessionTracking();
   currentUser=null;
   // Limpiar intervals para que no sigan corriendo sin sesión activa
   if(typeof _syncInterval  !== 'undefined' && _syncInterval)  { clearInterval(_syncInterval);  _syncInterval  = null; }
