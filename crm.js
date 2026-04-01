@@ -7411,6 +7411,107 @@ function renderReportes(){
       </table></div>`;
   }
 
+  // ── RECAUDACIÓN POR ASEGURADORA ──────────────────────────────────────────
+  const recaudAsegEl  = document.getElementById('rep-recaud-aseg');
+  const recaudAsegCnt = document.getElementById('rep-recaud-aseg-count');
+  if(recaudAsegEl){
+    const byAseg = {};
+    cierresPeriodo.forEach(c=>{
+      const a = c.aseguradora||'Sin aseguradora';
+      if(!byAseg[a]) byAseg[a]={ cierres:0, prima:0, comision:0 };
+      byAseg[a].cierres++;
+      byAseg[a].prima += c.primaTotal||0;
+      byAseg[a].comision += c.comision||Math.round((c.primaNeta||0)*((_getComisiones()[a]||0)/100)*100)/100;
+    });
+    const sortedAseg = Object.entries(byAseg).sort((a,b)=>b[1].prima-a[1].prima);
+    const grandTotal = sortedAseg.reduce((s,[,v])=>s+v.prima,0);
+    if(recaudAsegCnt) recaudAsegCnt.textContent = sortedAseg.length+' aseguradoras';
+    recaudAsegEl.innerHTML = sortedAseg.length ? `
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <thead><tr style="background:var(--warm)">
+          <th style="padding:8px 12px;text-align:left;color:var(--muted)">Aseguradora</th>
+          <th style="padding:8px;text-align:center;color:var(--muted)">Cierres</th>
+          <th style="padding:8px;text-align:right;color:var(--muted)">Prima</th>
+          <th style="padding:8px;text-align:right;color:var(--muted)">Comisión</th>
+          <th style="padding:8px;color:var(--muted)">%</th>
+        </tr></thead>
+        <tbody>${sortedAseg.map(([aseg,v])=>{
+          const pct = grandTotal>0 ? Math.round(v.prima/grandTotal*100) : 0;
+          return `<tr style="border-bottom:1px solid var(--warm)">
+            <td style="padding:8px 12px;font-weight:500">${aseg}</td>
+            <td style="padding:8px;text-align:center;color:var(--accent2)">${v.cierres}</td>
+            <td style="padding:8px;text-align:right;font-weight:700;color:var(--green)">${fmt(v.prima)}</td>
+            <td style="padding:8px;text-align:right;color:var(--gold)">${fmt(v.comision)}</td>
+            <td style="padding:8px;min-width:80px">
+              <div style="display:flex;align-items:center;gap:5px">
+                <div style="flex:1;background:#f0f0f0;border-radius:3px;height:5px;overflow:hidden">
+                  <div style="height:100%;width:${pct}%;background:var(--accent2);border-radius:3px"></div>
+                </div>
+                <span style="font-size:10px;color:var(--muted);width:26px">${pct}%</span>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+        <tfoot><tr style="background:var(--warm);border-top:2px solid var(--border)">
+          <td style="padding:8px 12px;font-weight:700">TOTAL</td>
+          <td style="padding:8px;text-align:center;font-weight:700">${cierresPeriodo.length}</td>
+          <td style="padding:8px;text-align:right;font-weight:800;color:var(--green)">${fmt(grandTotal)}</td>
+          <td colspan="2"></td>
+        </tr></tfoot>
+      </table>`
+    : '<div style="padding:16px;color:var(--muted);font-size:12px;text-align:center">Sin cierres en el período</div>';
+  }
+
+  // ── PRIMA POR EJECUTIVA × MES (últimos 6 meses) ───────────────────────────
+  const recaudMesEl = document.getElementById('rep-recaud-mes');
+  if(recaudMesEl){
+    const meses6h = [];
+    for(let i=5; i>=0; i--){
+      const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-i);
+      const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0');
+      meses6h.push({ key:`${y}-${m}`, label:d.toLocaleString('es-ES',{month:'short',year:'2-digit'}) });
+    }
+    const execs2 = USERS.filter(u=>u.rol==='ejecutivo');
+    const matrix = execs2.map(u=>{
+      const cols = meses6h.map(({key})=>
+        Math.round(allCierres.filter(c=>c.ejecutivo===u.id&&(c.fechaRegistro||'').startsWith(key))
+                             .reduce((s,c)=>s+(c.primaTotal||0),0))
+      );
+      return { u, cols, rowTotal:cols.reduce((s,v)=>s+v,0) };
+    }).filter(r=>r.rowTotal>0).sort((a,b)=>b.rowTotal-a.rowTotal);
+
+    if(!matrix.length){
+      recaudMesEl.innerHTML='<div style="padding:16px;color:var(--muted);font-size:12px;text-align:center">Sin cierres registrados</div>';
+    } else {
+      const colTotals = meses6h.map((_,i)=>matrix.reduce((s,r)=>s+r.cols[i],0));
+      const grandT2 = matrix.reduce((s,r)=>s+r.rowTotal,0);
+      recaudMesEl.innerHTML=`<table style="width:100%;font-size:11px;border-collapse:collapse">
+        <thead><tr style="background:var(--warm)">
+          <th style="padding:8px 10px;text-align:left;color:var(--muted)">Ejecutiva</th>
+          ${meses6h.map(({label})=>`<th style="padding:8px;text-align:right;color:var(--muted)">${label}</th>`).join('')}
+          <th style="padding:8px;text-align:right;color:var(--muted);font-weight:700">Total</th>
+        </tr></thead>
+        <tbody>${matrix.map(r=>`
+          <tr style="border-bottom:1px solid var(--warm)">
+            <td style="padding:8px 10px">
+              <div style="display:flex;align-items:center;gap:6px">
+                <div style="width:20px;height:20px;border-radius:50%;background:${r.u.color};color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">${r.u.initials}</div>
+                <span style="font-weight:500">${r.u.name.split(' ')[0]}</span>
+              </div>
+            </td>
+            ${r.cols.map(v=>`<td style="padding:8px;text-align:right;font-family:'DM Mono',monospace;color:${v>0?'var(--green)':'var(--muted)'}">${v>0?'$'+v.toLocaleString('es-EC'):'-'}</td>`).join('')}
+            <td style="padding:8px;text-align:right;font-weight:700;color:var(--green);font-family:'DM Mono',monospace">$${r.rowTotal.toLocaleString('es-EC')}</td>
+          </tr>`).join('')}
+        </tbody>
+        <tfoot><tr style="background:var(--warm);border-top:2px solid var(--border)">
+          <td style="padding:8px 10px;font-weight:700">TOTAL</td>
+          ${colTotals.map(v=>`<td style="padding:8px;text-align:right;font-weight:700;font-family:'DM Mono',monospace">$${v.toLocaleString('es-EC')}</td>`).join('')}
+          <td style="padding:8px;text-align:right;font-weight:800;color:var(--green);font-family:'DM Mono',monospace">$${grandT2.toLocaleString('es-EC')}</td>
+        </tr></tfoot>
+      </table>`;
+    }
+  }
+
   // ── CHART 7: Cartera por tipo de cliente ──
   const tiposCount = {};
   DB.forEach(c=>{ const t=c.tipoCliente||'PARTICULAR'; tiposCount[t]=(tiposCount[t]||0)+1; });
