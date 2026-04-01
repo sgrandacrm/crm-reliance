@@ -126,6 +126,17 @@
 <div class="main">
   <div class="topbar">
     <div class="topbar-title" id="page-title">Dashboard</div>
+    <!-- Búsqueda global -->
+    <div style="position:relative;flex:1;max-width:320px;margin:0 20px" id="global-search-wrap">
+      <div style="display:flex;align-items:center;gap:6px;background:var(--warm);border:1px solid var(--border);border-radius:8px;padding:5px 10px">
+        <span style="color:var(--muted);font-size:13px">🔍</span>
+        <input type="text" id="global-search-input" placeholder="Buscar en todo el CRM…"
+          style="border:none;background:transparent;outline:none;font-size:12px;width:100%;color:var(--ink)"
+          oninput="busquedaGlobal()" onfocus="busquedaGlobal()" onkeydown="handleBusquedaKey(event)">
+        <kbd style="font-size:9px;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:1px 5px;white-space:nowrap;flex-shrink:0">⌘K</kbd>
+      </div>
+      <div id="global-search-results" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;min-width:400px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:200;max-height:500px;overflow-y:auto"></div>
+    </div>
     <div class="topbar-actions">
       <span class="text-muted mono" style="font-size:11px" id="current-date"></span>
       <button class="btn btn-primary no-print" onclick="showPage('nuevo-cliente')">+ Nuevo Cliente</button>

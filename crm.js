@@ -508,6 +508,146 @@ function getDefaultClientes(){
 // ══════════════════════════════════════════════════════
 //  AUTH
 // ══════════════════════════════════════════════════════
+// ── Búsqueda global ────────────────────────────────────────────────────────
+function _highlight(text, q){
+  if(!q||!text) return text||'';
+  const safe = q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  return String(text).replace(new RegExp('('+safe+')','gi'),
+    '<mark style="background:#fff3cd;padding:0 1px;border-radius:2px">$1</mark>');
+}
+
+function busquedaGlobal(){
+  const inp = document.getElementById('global-search-input');
+  const resEl = document.getElementById('global-search-results');
+  if(!resEl||!inp) return;
+  const q = inp.value.toLowerCase().trim();
+  if(!q||q.length<2){ resEl.style.display='none'; return; }
+
+  const clientes = myClientes();
+
+  // ── Cartera ──
+  const matchCli = clientes.filter(c=>
+    (c.nombre||'').toLowerCase().includes(q)||
+    (c.ci||'').includes(q)||
+    (c.placa||'').toLowerCase().includes(q)||
+    (c.aseguradora||'').toLowerCase().includes(q)||
+    (c.celular||'').includes(q)||
+    (c.correo||'').toLowerCase().includes(q)
+  ).slice(0,6);
+
+  // ── Notas de gestión (bitácora) — una card por cliente ──
+  const matchBit = [];
+  clientes.forEach(c=>{
+    const hit = (c.bitacora||[]).find(e=>(e.nota||'').toLowerCase().includes(q));
+    if(hit) matchBit.push({c, e:hit});
+  });
+  const matchBitSlice = matchBit.slice(0,4);
+
+  // ── Cierres ──
+  const allCierres = _getCierres();
+  const ciSrc = currentUser?.rol==='admin' ? allCierres
+    : allCierres.filter(x=>x.ejecutivo===currentUser?.id);
+  const matchCierres = ciSrc.filter(x=>
+    (x.clienteNombre||'').toLowerCase().includes(q)||
+    (x.aseguradora||'').toLowerCase().includes(q)||
+    (x.polizaNueva||'').toLowerCase().includes(q)
+  ).slice(0,4);
+
+  const total = matchCli.length+matchBitSlice.length+matchCierres.length;
+
+  if(!total){
+    resEl.style.display='';
+    resEl.innerHTML=`<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Sin resultados para <b>"${q}"</b></div>`;
+    return;
+  }
+
+  const secHead = (icon,label,cnt,color)=>
+    `<div style="padding:6px 12px 2px;font-size:10px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.5px;border-top:1px solid var(--warm)">${icon} ${label} <span style="opacity:.6">(${cnt})</span></div>`;
+
+  let html = `<div style="padding:8px 12px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border)">
+    ${total} resultado${total!==1?'s':''} para <b>"${q}"</b>
+    <button onclick="cerrarBusquedaGlobal()" style="float:right;background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px">✕</button>
+  </div>`;
+
+  if(matchCli.length){
+    html += secHead('👤','Cartera',matchCli.length,'#1a4c84');
+    html += matchCli.map(c=>{
+      const dias=daysUntil(c.hasta);
+      const dTxt=dias===9999?'':dias<0?` · Vencida hace ${Math.abs(dias)}d`:` · Vence en ${dias}d`;
+      return `<div onclick="cerrarBusquedaGlobal();showPage('clientes');setTimeout(()=>showClienteModal('${c.id}'),250)"
+        style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--warm)"
+        onmouseover="this.style.background='var(--warm)'" onmouseout="this.style.background=''">
+        <div style="width:30px;height:30px;border-radius:8px;background:#e8f0fb;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">👤</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_highlight(c.nombre||'',q)}</div>
+          <div style="font-size:10px;color:var(--muted)">${_highlight(c.ci||'—',q)} · ${_highlight(c.aseguradora||'—',q)}${dTxt}</div>
+        </div>
+        ${estadoBadge(c.estado||'PENDIENTE')}
+      </div>`;
+    }).join('');
+  }
+
+  if(matchBitSlice.length){
+    html += secHead('💬','Notas de gestión',matchBitSlice.length,'#2196f3');
+    html += matchBitSlice.map(({c,e})=>
+      `<div onclick="cerrarBusquedaGlobal();openSeguimiento('${c.id}')"
+        style="padding:8px 12px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;border-bottom:1px solid var(--warm)"
+        onmouseover="this.style.background='var(--warm)'" onmouseout="this.style.background=''">
+        <div style="width:30px;height:30px;border-radius:8px;background:#e3f2fd;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">💬</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:12px">${c.nombre||'—'}</div>
+          <div style="font-size:11px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_highlight(e.nota||'',q)}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">${e.fecha||''} · ${e.ejecutivo||''}</div>
+        </div>
+      </div>`
+    ).join('');
+  }
+
+  if(matchCierres.length){
+    html += secHead('📄','Cierres',matchCierres.length,'#28a745');
+    html += matchCierres.map(ci=>
+      `<div onclick="cerrarBusquedaGlobal();showPage('cierres')"
+        style="padding:8px 12px;cursor:pointer;display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--warm)"
+        onmouseover="this.style.background='var(--warm)'" onmouseout="this.style.background=''">
+        <div style="width:30px;height:30px;border-radius:8px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">📄</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:12px">${_highlight(ci.clienteNombre||'—',q)}</div>
+          <div style="font-size:10px;color:var(--muted)">${_highlight(ci.aseguradora||'—',q)} · ${ci.polizaNueva||'—'} · ${fmt(ci.primaTotal||0)} · ${ci.fechaRegistro||'—'}</div>
+        </div>
+      </div>`
+    ).join('');
+  }
+
+  resEl.style.display='';
+  resEl.innerHTML=html;
+}
+
+function cerrarBusquedaGlobal(){
+  const resEl=document.getElementById('global-search-results');
+  const inp=document.getElementById('global-search-input');
+  if(resEl) resEl.style.display='none';
+  if(inp) inp.value='';
+}
+
+function handleBusquedaKey(e){
+  if(e.key==='Escape') cerrarBusquedaGlobal();
+}
+
+// Atajo Ctrl/Cmd + K → foco en búsqueda global
+document.addEventListener('keydown', e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key==='k'){
+    e.preventDefault();
+    const inp=document.getElementById('global-search-input');
+    if(inp){ inp.focus(); inp.select(); }
+  }
+});
+
+// Click fuera → cerrar resultados
+document.addEventListener('click', e=>{
+  const wrap=document.getElementById('global-search-wrap');
+  if(wrap&&!wrap.contains(e.target)) cerrarBusquedaGlobal();
+});
+
 // ── Timeout de sesión por inactividad ──────────────────────────────────────
 const SESSION_INACTIVITY_MS = 20 * 60 * 1000; // 20 min sin actividad → advertencia
 const SESSION_WARN_SECS     = 60;              // segundos de cuenta regresiva antes de logout
