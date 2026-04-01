@@ -758,6 +758,74 @@ function renderDashboard(){
     <div class="tl-text"><b>${c.nombre.split(' ').slice(0,2).join(' ')}</b> — ${c.obs} <span class="badge ${c.tipo==='NUEVO'?'badge-blue':'badge-gold'}" style="font-size:10px">${c.tipo}</span></div>
     </div>`).join('');
 
+  // ── KPI por ejecutiva (solo admin) ──────────────────────────────────────
+  const execPanel = document.getElementById('dash-exec-panel');
+  if(execPanel){
+    if(currentUser?.rol === 'admin'){
+      const ejecutivas = USERS.filter(u => u.rol === 'ejecutivo');
+      if(ejecutivas.length){
+        const rows = ejecutivas.map(u => {
+          const cli = DB.filter(c => String(c.ejecutivo) === String(u.id));
+          const renov = cli.filter(c => c.tipo === 'RENOVACION').length;
+          const nuevos = cli.filter(c => c.tipo === 'NUEVO').length;
+          const v30 = cli.filter(c => { const d = daysUntil(c.hasta); return d >= 0 && d <= 30; }).length;
+          const renovados = cli.filter(c => ['RENOVADO','EMITIDO','EMISIÓN','PÓLIZA VIGENTE'].includes(c.estado)).length;
+          const pct = cli.length ? Math.round(renovados / cli.length * 100) : 0;
+          const alertColor = v30 > 10 ? 'var(--accent)' : v30 > 5 ? 'var(--gold)' : 'var(--green)';
+          return `
+            <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px 18px;cursor:pointer;transition:box-shadow .15s"
+                 onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow=''"
+                 onclick="showPage('clientes')">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,${u.color},${u.color}99);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex-shrink:0">${u.initials}</div>
+                <div style="min-width:0">
+                  <div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${u.name}</div>
+                  <div style="font-size:10px;color:var(--muted)">${cli.length} cliente${cli.length!==1?'s':''}</div>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+                <div style="background:#f8f9fa;border-radius:7px;padding:7px 10px;text-align:center">
+                  <div style="font-size:18px;font-weight:800;color:#1a4c84">${renov}</div>
+                  <div style="font-size:10px;color:var(--muted)">Renovaciones</div>
+                </div>
+                <div style="background:#f8f9fa;border-radius:7px;padding:7px 10px;text-align:center">
+                  <div style="font-size:18px;font-weight:800;color:var(--accent2)">${nuevos}</div>
+                  <div style="font-size:10px;color:var(--muted)">Nuevos</div>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <span style="font-size:11px;color:var(--muted)">Progreso renovaciones</span>
+                <span style="font-size:11px;font-weight:700;color:${u.color}">${pct}%</span>
+              </div>
+              <div style="background:#f0f0f0;border-radius:4px;height:6px;overflow:hidden;margin-bottom:10px">
+                <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,${u.color},${u.color}99);border-radius:4px;transition:width .4s"></div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:11px;color:var(--muted)">Vencen en 30d</span>
+                <span style="font-size:13px;font-weight:800;color:${alertColor}">${v30}</span>
+              </div>
+            </div>`;
+        }).join('');
+        execPanel.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div style="font-weight:700;font-size:14px;color:#1a4c84">👥 Panel de Ejecutivas</div>
+            <button class="btn btn-ghost btn-sm" onclick="showPage('reportes')">Ver reporte completo →</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px">${rows}</div>`;
+      } else {
+        execPanel.innerHTML = '';
+      }
+    } else {
+      execPanel.innerHTML = '';
+    }
+  }
+
+  // Adaptar label "Mi Cartera" con nombre de la ejecutiva
+  const labelCartera = document.querySelector('.stat-card.s1 .stat-label');
+  if(labelCartera && currentUser){
+    labelCartera.textContent = currentUser.rol === 'admin' ? 'Total Cartera' : 'Mi Cartera';
+  }
+
   // Actualizar badge de urgencia en sidebar Seguimiento
   const vencBadge = mine.filter(c=>{ const d=daysUntil(c.hasta); return d<0||d<=30; }).length;
   const badgeSeg=document.getElementById('badge-seg-urgente');
