@@ -943,7 +943,8 @@
         </div>
       </div>
     </div>
-    <div class="grid-4" id="cola-stats" style="margin-bottom:20px"></div>
+    <div class="grid-4" id="cola-stats" style="margin-bottom:16px"></div>
+    <div id="cola-banner-lotes" style="margin-bottom:16px"></div>
     <div class="card" style="margin-bottom:16px">
       <div class="card-header" style="cursor:pointer" onclick="toggleColaAgenda()">
         <div class="card-title">📅 Agenda de Liberación (30 días)</div>
@@ -976,6 +977,7 @@
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
             <input type="checkbox" id="cola-check-all" onchange="toggleAllCola(this.checked)"> Seleccionar todos
           </label>
+          <button class="btn btn-sm" onclick="seleccionarLote()" style="background:#6f42c1;color:#fff;border:none">⚡ Seleccionar lote</button>
           <span class="text-muted" style="font-size:12px" id="cola-sel-info">0 seleccionados</span>
           <div style="flex:1"></div>
           <button class="btn btn-sm" id="cola-btn-email" style="background:#1a4c84;color:#fff;border:none" onclick="envioMasivoEmail()" disabled>📧 Enviar Email Masivo</button>

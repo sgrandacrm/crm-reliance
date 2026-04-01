@@ -3692,10 +3692,93 @@ function _generarAgendaCooldown(){
 }
 
 let _colaData = null; // cache
+const TAMANO_LOTE = 30;
+
+function _calcularLimiteDiario(){
+  if(!_colaData) return null;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+
+  // Clientes que se liberan hoy (diasRestantes <= 1)
+  const liberadosHoy = _colaData.enCooldown.filter(c => (c._diasRestantes || 0) <= 1).length;
+  const clientesListos = _colaData.listos.length + _colaData.sinContacto.length + liberadosHoy;
+
+  if(!clientesListos) return { limiteDiario:0, diasHabilesRestantes:0, clientesListos:0, lotesSugeridos:0, tamanoLote:TAMANO_LOTE };
+
+  // Determinar fecha límite del período: percentil 80 de fechas de vencimiento activas
+  const todos = [..._colaData.listos, ..._colaData.sinContacto, ..._colaData.enCooldown];
+  const fechas = todos.filter(c => c.hasta).map(c => new Date(c.hasta)).sort((a,b) => a-b);
+
+  let fechaHasta;
+  if(fechas.length){
+    const idx = Math.min(Math.floor(fechas.length * 0.8), fechas.length - 1);
+    fechaHasta = fechas[idx];
+    // Mínimo 7 días calendario en el futuro para no generar límites absurdos
+    const minFecha = new Date(hoy); minFecha.setDate(hoy.getDate() + 7);
+    if(fechaHasta < minFecha) fechaHasta = minFecha;
+  } else {
+    fechaHasta = new Date(hoy); fechaHasta.setDate(hoy.getDate() + 30);
+  }
+
+  // Contar días hábiles desde hoy hasta fechaHasta (inclusive)
+  let diasHabiles = 0;
+  const cur = new Date(hoy);
+  while(cur <= fechaHasta){
+    const dow = cur.getDay();
+    if(dow !== 0 && dow !== 6) diasHabiles++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  diasHabiles = Math.max(diasHabiles, 1);
+
+  const limiteDiario = Math.ceil(clientesListos / diasHabiles);
+  const lotesSugeridos = Math.max(1, Math.ceil(limiteDiario / TAMANO_LOTE));
+
+  return { limiteDiario, diasHabilesRestantes: diasHabiles, clientesListos, lotesSugeridos, tamanoLote: TAMANO_LOTE, fechaHasta };
+}
+
+function _renderColaBanner(){
+  const el = document.getElementById('cola-banner-lotes');
+  if(!el) return;
+  const calc = _calcularLimiteDiario();
+  if(!calc || !calc.clientesListos){ el.innerHTML = ''; return; }
+
+  const { limiteDiario, diasHabilesRestantes, clientesListos, lotesSugeridos, tamanoLote } = calc;
+  const tamLote = Math.ceil(limiteDiario / lotesSugeridos);
+  const HORARIOS = ['9am','11am','1pm','3pm','5pm'];
+  const horarios = HORARIOS.slice(0, Math.min(lotesSugeridos, HORARIOS.length)).join(' · ');
+
+  el.innerHTML = `
+    <div style="background:linear-gradient(135deg,#f0f7ff,#e8f0fb);border:1px solid #1a4c84;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:22px">📊</span>
+        <div>
+          <div style="font-weight:600;font-size:13px;color:#1a4c84">Hoy: enviar <strong>~${limiteDiario} clientes</strong> en <strong>${lotesSugeridos} lote${lotesSugeridos!==1?'s':''}</strong> de ~${tamLote} cada 2h</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${diasHabilesRestantes} días hábiles restantes · ${clientesListos} clientes listos · Horarios: ${horarios}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function seleccionarLote(){
+  // Cambiar filtro a "listos" para priorizar urgentes, luego sin_contacto
+  const filtroEl = document.getElementById('cola-filtro-tipo');
+  if(filtroEl && filtroEl.value === 'en_cooldown') filtroEl.value = 'listos';
+  renderCola();
+
+  const checks = document.querySelectorAll('.cola-check');
+  let count = 0;
+  checks.forEach(cb => {
+    cb.checked = count < TAMANO_LOTE;
+    if(count < TAMANO_LOTE) count++;
+  });
+  _updateColaSelInfo();
+  if(count > 0) showToast(`${count} clientes seleccionados para este lote`, 'success');
+  else showToast('No hay clientes disponibles en la vista actual', 'error');
+}
 
 function initCola(){
   _colaData = _clasificarCola();
   _renderColaStats(_colaData);
+  _renderColaBanner();
   _renderColaAgenda();
   renderCola();
   actualizarBadgeCola();
@@ -3848,7 +3931,13 @@ function _updateColaSelInfo(){
   const checks = document.querySelectorAll('.cola-check:checked');
   const n = checks.length;
   const infoEl = document.getElementById('cola-sel-info');
-  if(infoEl) infoEl.textContent = `${n} seleccionado${n!==1?'s':''}`;
+  if(infoEl){
+    if(n > TAMANO_LOTE){
+      infoEl.innerHTML = `<span style="color:var(--accent);font-weight:600">⚠ ${n} seleccionados (supera el lote de ${TAMANO_LOTE} — considera dividir)</span>`;
+    } else {
+      infoEl.textContent = `${n} seleccionado${n!==1?'s':''}`;
+    }
+  }
   const btnEmail = document.getElementById('cola-btn-email');
   const btnWa = document.getElementById('cola-btn-wa');
   if(btnEmail) btnEmail.disabled = n === 0;
@@ -3892,6 +3981,7 @@ function abrirWaDesdeCola(clienteId){
 function envioMasivoEmail(){
   const checks = document.querySelectorAll('.cola-check:checked');
   if(!checks.length){ showToast('Selecciona al menos un cliente','error'); return; }
+  if(checks.length > TAMANO_LOTE && !confirm(`Tienes ${checks.length} clientes seleccionados (el lote recomendado es ${TAMANO_LOTE}).\n\n¿Deseas enviar a todos de una vez o prefieres dividir en lotes de ~${TAMANO_LOTE} cada 2h?\n\nPresiona Aceptar para continuar con ${checks.length}, o Cancelar para ajustar.`)) return;
 
   const ids = Array.from(checks).map(cb => cb.dataset.id);
   const clientes = ids.map(id => DB.find(x => String(x.id) === String(id))).filter(Boolean);
@@ -3949,6 +4039,7 @@ function envioMasivoEmail(){
 function envioMasivoWA(){
   const checks = document.querySelectorAll('.cola-check:checked');
   if(!checks.length){ showToast('Selecciona al menos un cliente','error'); return; }
+  if(checks.length > TAMANO_LOTE && !confirm(`Tienes ${checks.length} clientes seleccionados (el lote recomendado es ${TAMANO_LOTE}).\n\n¿Deseas enviar a todos de una vez o prefieres dividir en lotes de ~${TAMANO_LOTE} cada 2h?\n\nPresiona Aceptar para continuar con ${checks.length}, o Cancelar para ajustar.`)) return;
 
   const ids = Array.from(checks).map(cb => cb.dataset.id);
   const clientes = ids.map(id => DB.find(x => String(x.id) === String(id))).filter(Boolean);
