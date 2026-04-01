@@ -508,208 +508,6 @@ function getDefaultClientes(){
 // ══════════════════════════════════════════════════════
 //  AUTH
 // ══════════════════════════════════════════════════════
-// ── Búsqueda global ────────────────────────────────────────────────────────
-function _highlight(text, q){
-  if(!q||!text) return text||'';
-  const safe = q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  return String(text).replace(new RegExp('('+safe+')','gi'),
-    '<mark style="background:#fff3cd;padding:0 1px;border-radius:2px">$1</mark>');
-}
-
-function busquedaGlobal(){
-  const inp = document.getElementById('global-search-input');
-  const resEl = document.getElementById('global-search-results');
-  if(!resEl||!inp) return;
-  const q = inp.value.toLowerCase().trim();
-  if(!q||q.length<2){ resEl.style.display='none'; return; }
-
-  const clientes = myClientes();
-
-  // ── Cartera ──
-  const matchCli = clientes.filter(c=>
-    (c.nombre||'').toLowerCase().includes(q)||
-    (c.ci||'').includes(q)||
-    (c.placa||'').toLowerCase().includes(q)||
-    (c.aseguradora||'').toLowerCase().includes(q)||
-    (c.celular||'').includes(q)||
-    (c.correo||'').toLowerCase().includes(q)
-  ).slice(0,6);
-
-  // ── Notas de gestión (bitácora) — una card por cliente ──
-  const matchBit = [];
-  clientes.forEach(c=>{
-    const hit = (c.bitacora||[]).find(e=>(e.nota||'').toLowerCase().includes(q));
-    if(hit) matchBit.push({c, e:hit});
-  });
-  const matchBitSlice = matchBit.slice(0,4);
-
-  // ── Cierres ──
-  const allCierres = _getCierres();
-  const ciSrc = currentUser?.rol==='admin' ? allCierres
-    : allCierres.filter(x=>x.ejecutivo===currentUser?.id);
-  const matchCierres = ciSrc.filter(x=>
-    (x.clienteNombre||'').toLowerCase().includes(q)||
-    (x.aseguradora||'').toLowerCase().includes(q)||
-    (x.polizaNueva||'').toLowerCase().includes(q)
-  ).slice(0,4);
-
-  const total = matchCli.length+matchBitSlice.length+matchCierres.length;
-
-  if(!total){
-    resEl.style.display='';
-    resEl.innerHTML=`<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Sin resultados para <b>"${q}"</b></div>`;
-    return;
-  }
-
-  const secHead = (icon,label,cnt,color)=>
-    `<div style="padding:6px 12px 2px;font-size:10px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.5px;border-top:1px solid var(--warm)">${icon} ${label} <span style="opacity:.6">(${cnt})</span></div>`;
-
-  let html = `<div style="padding:8px 12px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border)">
-    ${total} resultado${total!==1?'s':''} para <b>"${q}"</b>
-    <button onclick="cerrarBusquedaGlobal()" style="float:right;background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px">✕</button>
-  </div>`;
-
-  if(matchCli.length){
-    html += secHead('👤','Cartera',matchCli.length,'#1a4c84');
-    html += matchCli.map(c=>{
-      const dias=daysUntil(c.hasta);
-      const dTxt=dias===9999?'':dias<0?` · Vencida hace ${Math.abs(dias)}d`:` · Vence en ${dias}d`;
-      return `<div onclick="cerrarBusquedaGlobal();showPage('clientes');setTimeout(()=>showClienteModal('${c.id}'),250)"
-        style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--warm)"
-        onmouseover="this.style.background='var(--warm)'" onmouseout="this.style.background=''">
-        <div style="width:30px;height:30px;border-radius:8px;background:#e8f0fb;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">👤</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_highlight(c.nombre||'',q)}</div>
-          <div style="font-size:10px;color:var(--muted)">${_highlight(c.ci||'—',q)} · ${_highlight(c.aseguradora||'—',q)}${dTxt}</div>
-        </div>
-        ${estadoBadge(c.estado||'PENDIENTE')}
-      </div>`;
-    }).join('');
-  }
-
-  if(matchBitSlice.length){
-    html += secHead('💬','Notas de gestión',matchBitSlice.length,'#2196f3');
-    html += matchBitSlice.map(({c,e})=>
-      `<div onclick="cerrarBusquedaGlobal();openSeguimiento('${c.id}')"
-        style="padding:8px 12px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;border-bottom:1px solid var(--warm)"
-        onmouseover="this.style.background='var(--warm)'" onmouseout="this.style.background=''">
-        <div style="width:30px;height:30px;border-radius:8px;background:#e3f2fd;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">💬</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:12px">${c.nombre||'—'}</div>
-          <div style="font-size:11px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_highlight(e.nota||'',q)}</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:2px">${e.fecha||''} · ${e.ejecutivo||''}</div>
-        </div>
-      </div>`
-    ).join('');
-  }
-
-  if(matchCierres.length){
-    html += secHead('📄','Cierres',matchCierres.length,'#28a745');
-    html += matchCierres.map(ci=>
-      `<div onclick="cerrarBusquedaGlobal();showPage('cierres')"
-        style="padding:8px 12px;cursor:pointer;display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--warm)"
-        onmouseover="this.style.background='var(--warm)'" onmouseout="this.style.background=''">
-        <div style="width:30px;height:30px;border-radius:8px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">📄</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:12px">${_highlight(ci.clienteNombre||'—',q)}</div>
-          <div style="font-size:10px;color:var(--muted)">${_highlight(ci.aseguradora||'—',q)} · ${ci.polizaNueva||'—'} · ${fmt(ci.primaTotal||0)} · ${ci.fechaRegistro||'—'}</div>
-        </div>
-      </div>`
-    ).join('');
-  }
-
-  resEl.style.display='';
-  resEl.innerHTML=html;
-}
-
-function cerrarBusquedaGlobal(){
-  const resEl=document.getElementById('global-search-results');
-  const inp=document.getElementById('global-search-input');
-  if(resEl) resEl.style.display='none';
-  if(inp) inp.value='';
-}
-
-function handleBusquedaKey(e){
-  if(e.key==='Escape') cerrarBusquedaGlobal();
-}
-
-// Atajo Ctrl/Cmd + K → foco en búsqueda global
-document.addEventListener('keydown', e=>{
-  if((e.metaKey||e.ctrlKey)&&e.key==='k'){
-    e.preventDefault();
-    const inp=document.getElementById('global-search-input');
-    if(inp){ inp.focus(); inp.select(); }
-  }
-});
-
-// Click fuera → cerrar resultados
-document.addEventListener('click', e=>{
-  const wrap=document.getElementById('global-search-wrap');
-  if(wrap&&!wrap.contains(e.target)) cerrarBusquedaGlobal();
-});
-
-// ── Timeout de sesión por inactividad ──────────────────────────────────────
-const SESSION_INACTIVITY_MS = 20 * 60 * 1000; // 20 min sin actividad → advertencia
-const SESSION_WARN_SECS     = 60;              // segundos de cuenta regresiva antes de logout
-
-let _sessionTimer    = null;
-let _sessionWarnInt  = null;
-let _sessionWarnSecs = SESSION_WARN_SECS;
-
-function _resetSessionTimer(){
-  clearTimeout(_sessionTimer);
-  clearInterval(_sessionWarnInt);
-  _hideSessionWarning();
-  if(!currentUser) return;
-  _sessionTimer = setTimeout(_showSessionWarning, SESSION_INACTIVITY_MS);
-}
-
-function _showSessionWarning(){
-  const modal = document.getElementById('modal-session-timeout');
-  if(!modal || !currentUser) return;
-  _sessionWarnSecs = SESSION_WARN_SECS;
-  const cdEl = document.getElementById('session-countdown');
-  if(cdEl) cdEl.textContent = _sessionWarnSecs;
-  modal.style.display = 'flex';
-  clearInterval(_sessionWarnInt);
-  _sessionWarnInt = setInterval(() => {
-    _sessionWarnSecs--;
-    if(cdEl) cdEl.textContent = _sessionWarnSecs;
-    if(_sessionWarnSecs <= 0){
-      clearInterval(_sessionWarnInt);
-      _hideSessionWarning();
-      doLogout();
-      setTimeout(()=>{ const err=document.getElementById('login-err'); if(err) err.textContent='Sesión cerrada por inactividad.'; }, 50);
-    }
-  }, 1000);
-}
-
-function _hideSessionWarning(){
-  const modal = document.getElementById('modal-session-timeout');
-  if(modal) modal.style.display = 'none';
-  clearInterval(_sessionWarnInt);
-}
-
-function _keepSession(){
-  _hideSessionWarning();
-  _resetSessionTimer();
-}
-
-const _SESSION_EVENTS = ['mousemove','mousedown','keydown','scroll','touchstart','click'];
-
-function _startSessionTracking(){
-  _SESSION_EVENTS.forEach(ev => document.addEventListener(ev, _resetSessionTimer, { passive: true }));
-  _resetSessionTimer();
-}
-
-function _stopSessionTracking(){
-  clearTimeout(_sessionTimer);
-  clearInterval(_sessionWarnInt);
-  _hideSessionWarning();
-  _SESSION_EVENTS.forEach(ev => document.removeEventListener(ev, _resetSessionTimer));
-  _sessionTimer = null;
-}
-
 async function doLogin(){
   const u = document.getElementById('login-user').value.trim().toLowerCase();
   const p = document.getElementById('login-pass').value;
@@ -748,11 +546,9 @@ async function doLogin(){
   document.getElementById('sidebar-name').textContent = user.name;
   document.getElementById('sidebar-role').textContent = user.rol==='admin'?'Administrador':'Ejecutivo Comercial';
   document.querySelectorAll('.admin-only').forEach(el=>el.style.display=user.rol==='admin'?'':'none');
-  _startSessionTracking();
   await initApp();
 }
 function doLogout(){
-  _stopSessionTracking();
   currentUser=null;
   // Limpiar intervals para que no sigan corriendo sin sesión activa
   if(typeof _syncInterval  !== 'undefined' && _syncInterval)  { clearInterval(_syncInterval);  _syncInterval  = null; }
@@ -898,74 +694,6 @@ function renderDashboard(){
     <div class="tl-text"><b>${c.nombre.split(' ').slice(0,2).join(' ')}</b> — ${c.obs} <span class="badge ${c.tipo==='NUEVO'?'badge-blue':'badge-gold'}" style="font-size:10px">${c.tipo}</span></div>
     </div>`).join('');
 
-  // ── KPI por ejecutiva (solo admin) ──────────────────────────────────────
-  const execPanel = document.getElementById('dash-exec-panel');
-  if(execPanel){
-    if(currentUser?.rol === 'admin'){
-      const ejecutivas = USERS.filter(u => u.rol === 'ejecutivo');
-      if(ejecutivas.length){
-        const rows = ejecutivas.map(u => {
-          const cli = DB.filter(c => String(c.ejecutivo) === String(u.id));
-          const renov = cli.filter(c => c.tipo === 'RENOVACION').length;
-          const nuevos = cli.filter(c => c.tipo === 'NUEVO').length;
-          const v30 = cli.filter(c => { const d = daysUntil(c.hasta); return d >= 0 && d <= 30; }).length;
-          const renovados = cli.filter(c => ['RENOVADO','EMITIDO','EMISIÓN','PÓLIZA VIGENTE'].includes(c.estado)).length;
-          const pct = cli.length ? Math.round(renovados / cli.length * 100) : 0;
-          const alertColor = v30 > 10 ? 'var(--accent)' : v30 > 5 ? 'var(--gold)' : 'var(--green)';
-          return `
-            <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px 18px;cursor:pointer;transition:box-shadow .15s"
-                 onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow=''"
-                 onclick="showPage('clientes')">
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-                <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,${u.color},${u.color}99);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex-shrink:0">${u.initials}</div>
-                <div style="min-width:0">
-                  <div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${u.name}</div>
-                  <div style="font-size:10px;color:var(--muted)">${cli.length} cliente${cli.length!==1?'s':''}</div>
-                </div>
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
-                <div style="background:#f8f9fa;border-radius:7px;padding:7px 10px;text-align:center">
-                  <div style="font-size:18px;font-weight:800;color:#1a4c84">${renov}</div>
-                  <div style="font-size:10px;color:var(--muted)">Renovaciones</div>
-                </div>
-                <div style="background:#f8f9fa;border-radius:7px;padding:7px 10px;text-align:center">
-                  <div style="font-size:18px;font-weight:800;color:var(--accent2)">${nuevos}</div>
-                  <div style="font-size:10px;color:var(--muted)">Nuevos</div>
-                </div>
-              </div>
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                <span style="font-size:11px;color:var(--muted)">Progreso renovaciones</span>
-                <span style="font-size:11px;font-weight:700;color:${u.color}">${pct}%</span>
-              </div>
-              <div style="background:#f0f0f0;border-radius:4px;height:6px;overflow:hidden;margin-bottom:10px">
-                <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,${u.color},${u.color}99);border-radius:4px;transition:width .4s"></div>
-              </div>
-              <div style="display:flex;align-items:center;justify-content:space-between">
-                <span style="font-size:11px;color:var(--muted)">Vencen en 30d</span>
-                <span style="font-size:13px;font-weight:800;color:${alertColor}">${v30}</span>
-              </div>
-            </div>`;
-        }).join('');
-        execPanel.innerHTML = `
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-            <div style="font-weight:700;font-size:14px;color:#1a4c84">👥 Panel de Ejecutivas</div>
-            <button class="btn btn-ghost btn-sm" onclick="showPage('reportes')">Ver reporte completo →</button>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px">${rows}</div>`;
-      } else {
-        execPanel.innerHTML = '';
-      }
-    } else {
-      execPanel.innerHTML = '';
-    }
-  }
-
-  // Adaptar label "Mi Cartera" con nombre de la ejecutiva
-  const labelCartera = document.querySelector('.stat-card.s1 .stat-label');
-  if(labelCartera && currentUser){
-    labelCartera.textContent = currentUser.rol === 'admin' ? 'Total Cartera' : 'Mi Cartera';
-  }
-
   // Actualizar badge de urgencia en sidebar Seguimiento
   const vencBadge = mine.filter(c=>{ const d=daysUntil(c.hasta); return d<0||d<=30; }).length;
   const badgeSeg=document.getElementById('badge-seg-urgente');
@@ -1007,41 +735,6 @@ function renderDashboard(){
 // ══════════════════════════════════════════════════════
 let clientesFiltrados = [];
 
-// ── Sort state para cartera ──
-let _sortCarteraCol = 'dias';
-let _sortCarteraDir = 1; // 1=asc, -1=desc
-
-const _CARTERA_COLS = [
-  { key:'nombre',    label:'Cliente',     sortFn:(a,b)=>(a.nombre||'').localeCompare(b.nombre||'') },
-  { key:'ci',        label:'CI',          sortFn:(a,b)=>(a.ci||'').localeCompare(b.ci||'') },
-  { key:'tipo',      label:'Tipo',        sortFn:(a,b)=>(a.tipo||'').localeCompare(b.tipo||'') },
-  { key:'aseg',      label:'Aseguradora', sortFn:(a,b)=>(a.aseguradora||'').localeCompare(b.aseguradora||'') },
-  { key:'vehiculo',  label:'Vehículo',    sortFn:(a,b)=>(`${a.marca} ${a.modelo}`).localeCompare(`${b.marca} ${b.modelo}`) },
-  { key:'placa',     label:'Placa',       sortFn:(a,b)=>(a.placa||'').localeCompare(b.placa||'') },
-  { key:'vence',     label:'Vence',       sortFn:(a,b)=>(a.hasta||'').localeCompare(b.hasta||'') },
-  { key:'dias',      label:'Días',        sortFn:(a,b)=>daysUntil(a.hasta)-daysUntil(b.hasta) },
-  { key:'estado',    label:'Estado',      sortFn:(a,b)=>(a.estado||'').localeCompare(b.estado||'') },
-  { key:'_acciones', label:'Acciones',    sortFn:null },
-];
-
-function sortCartera(col){
-  if(_sortCarteraCol === col){ _sortCarteraDir *= -1; }
-  else { _sortCarteraCol = col; _sortCarteraDir = 1; }
-  filterClientes();
-}
-
-function _renderCarteraThead(){
-  const tr = document.getElementById('cartera-thead-row');
-  if(!tr) return;
-  tr.innerHTML = _CARTERA_COLS.map(col => {
-    if(!col.sortFn) return `<th>${col.label}</th>`;
-    const activo = _sortCarteraCol === col.key;
-    const flecha = activo ? (_sortCarteraDir === 1 ? ' ↑' : ' ↓') : '';
-    const style = activo ? 'cursor:pointer;color:var(--primary);user-select:none' : 'cursor:pointer;user-select:none';
-    return `<th style="${style}" onclick="sortCartera('${col.key}')" title="Ordenar por ${col.label}">${col.label}<span style="opacity:${activo?1:0.3}">${flecha||' ↕'}</span></th>`;
-  }).join('');
-}
-
 function renderClientes(){
   initFilters();
   filterClientes();
@@ -1053,7 +746,6 @@ function filterClientes(){
   const asegEl=document.getElementById('filter-aseg');   const aseg=asegEl?asegEl.value:'';
   const regionEl=document.getElementById('filter-region');const region=regionEl?regionEl.value:'';
   const estadoEl=document.getElementById('filter-estado');const estado=estadoEl?estadoEl.value:'';
-  const colDef = _CARTERA_COLS.find(c=>c.key===_sortCarteraCol) || _CARTERA_COLS.find(c=>c.key==='dias');
   clientesFiltrados = myClientes().filter(c=>{
     const mq=!q||(c.nombre||'').toLowerCase().includes(q)||(c.ci||'').includes(q)||(c.placa||'').toLowerCase().includes(q)||(c.aseguradora||'').toLowerCase().includes(q);
     const mt=!tipo||c.tipo===tipo;
@@ -1061,8 +753,7 @@ function filterClientes(){
     const mr=!region||c.region===region;
     const me=!estado||(c.estado||'PENDIENTE')===estado;
     return mq&&mt&&ma&&mr&&me;
-  }).sort((a,b)=>colDef.sortFn(a,b)*_sortCarteraDir);
-  _renderCarteraThead();
+  }).sort((a,b)=>daysUntil(a.hasta)-daysUntil(b.hasta));
   document.getElementById('clientes-count').textContent=clientesFiltrados.length+' clientes';
   const obsColors={RENOVACION:'badge-gold',ENDOSO:'badge-blue',NUEVO:'badge-green','POLIZA ANULADA':'badge-red','NO REGISTRADO':'badge-gray','RENOVACION+VD':'badge-gold','RENOVACION+AXA':'badge-gold','RENOVACION+VD+AXA':'badge-blue'};
   document.getElementById('clientes-tbody').innerHTML = clientesFiltrados.map(c=>{
@@ -1132,6 +823,25 @@ function showClienteModal(id){
           <div class="detail-row"><span class="detail-key">Póliza anterior</span><span class="detail-val mono" style="font-size:10px">${c.polizaAnterior||c.poliza||'—'}</span></div>
           <div class="detail-row"><span class="detail-key">Aseg. anterior</span><span class="detail-val" style="font-size:11px">${c.aseguradoraAnterior||'—'}</span></div>
         </div>
+        ${(c.historialWa&&c.historialWa.length)?`
+        <div class="detail-section">
+          <div class="detail-section-title" style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:16px">💬</span> Historial de WhatsApp
+          </div>
+          <table style="width:100%;font-size:11px">
+            <thead><tr>
+              <th style="padding:4px 8px;text-align:left;color:var(--muted);font-size:10px">Fecha</th>
+              <th style="padding:4px 8px;text-align:left;color:var(--muted);font-size:10px">Resumen</th>
+            </tr></thead>
+            <tbody>
+              ${c.historialWa.map(h=>`<tr style="border-bottom:1px solid var(--warm)">
+                <td style="padding:5px 8px;font-family:'DM Mono',monospace;white-space:nowrap">${h.fecha}</td>
+                <td style="padding:5px 8px;color:var(--muted)">${h.resumen}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`:''}
+
           <div class="detail-row"><span class="detail-key">Val. Asegurado</span><span class="detail-val text-accent font-bold">${fmt(c.va)}</span></div>
         </div>
         <div class="detail-section">
@@ -1179,13 +889,33 @@ function showClienteModal(id){
         </div>`:''}
       </div></div>
     </div>
-    <div class="card" style="margin-top:12px">
-      <div class="card-header">
-        <div class="card-title">🕐 Historial de Actividad</div>
-        <span style="font-size:11px;color:var(--muted)" id="modal-timeline-count"></span>
-      </div>
-      <div class="card-body" style="padding:12px 16px;max-height:420px;overflow-y:auto" id="modal-cliente-timeline"></div>
-    </div>
+    ${(()=>{
+      const hist = _getCierres()
+        .filter(x=> (x._clienteId && String(x._clienteId)===String(id)) || (x.clienteNombre||'').toUpperCase().trim()===(c.nombre||'').toUpperCase().trim())
+        .sort((a,b)=>(b.fechaRegistro||'').localeCompare(a.fechaRegistro||''));
+      if(!hist.length) return '';
+      return `<div class="card" style="margin-top:12px"><div class="card-body">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px">📜 Historial de Pólizas (${hist.length})</div>
+        <table style="width:100%;font-size:11px;border-collapse:collapse">
+          <thead><tr style="background:var(--warm)">
+            <th style="padding:5px 8px;text-align:left;color:var(--muted)">Fecha</th>
+            <th style="padding:5px 8px;text-align:left;color:var(--muted)">Aseguradora</th>
+            <th style="padding:5px 8px;text-align:left;color:var(--muted)">Póliza</th>
+            <th style="padding:5px 8px;text-align:right;color:var(--muted)">Prima</th>
+            <th style="padding:5px 8px;text-align:left;color:var(--muted)">Pago</th>
+          </tr></thead>
+          <tbody>
+            ${hist.map(h=>`<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:5px 8px;font-family:'DM Mono',monospace">${h.fechaRegistro||'—'}</td>
+              <td style="padding:5px 8px;font-weight:500">${h.aseguradora||'—'}</td>
+              <td style="padding:5px 8px;font-family:'DM Mono',monospace;font-size:10px">${h.polizaNueva||h.Title||'—'}</td>
+              <td style="padding:5px 8px;text-align:right;font-weight:600;color:var(--green)">${fmt(h.primaTotal||0)}</td>
+              <td style="padding:5px 8px;font-size:10px;color:var(--muted)">${(h.formaPago?.forma||'').replace('_',' ')||'—'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div></div>`;
+    })()}
     `;
   document.getElementById('modal-btn-cotizar').style.display='';
   document.getElementById('modal-btn-editar').style.display='';
@@ -1193,16 +923,6 @@ function showClienteModal(id){
   document.getElementById('modal-btn-cotizar').onclick=()=>{ closeModal('modal-cliente'); prefillCotizador(c); showPage('cotizador'); setTimeout(calcCotizacion,200); };
   document.getElementById('modal-btn-editar').onclick=()=>{ closeModal('modal-cliente'); openEditar(id); };
   document.getElementById('modal-btn-eliminar').onclick=()=>{ if(confirm(`¿Eliminar a ${c.nombre}?`)){ const cliToDel=DB.find(x=>String(x.id)===String(id)); if(cliToDel?._spId && _spReady) spDelete('clientes', cliToDel._spId); DB=DB.filter(x=>String(x.id)!==String(id)); saveDB(); closeModal('modal-cliente'); renderClientes(); renderDashboard(); showToast('Cliente eliminado','error'); }};
-
-  // Timeline unificado
-  const tlEl = document.getElementById('modal-cliente-timeline');
-  if(tlEl){
-    tlEl.innerHTML = _renderClienteTimeline(c);
-    const tlEntries = _buildClienteTimeline(c);
-    const cntEl = document.getElementById('modal-timeline-count');
-    if(cntEl) cntEl.textContent = tlEntries.length ? `${tlEntries.length} evento${tlEntries.length!==1?'s':''}` : '';
-  }
-
   openModal('modal-cliente');
 }
 
@@ -1531,100 +1251,6 @@ function _bitacoraAdd(cliente, nota, tipo='manual'){
   if(nota) cliente.nota = nota;
   // Marcar para sync con SharePoint
   cliente._dirty = true;
-}
-
-// ── Timeline unificado del cliente ────────────────────────────────────────
-const _TL_CFG = {
-  manual:     { icon:'💬', color:'#1a4c84', label:'Nota'        },
-  sistema:    { icon:'⚙️', color:'#888',    label:'Sistema'     },
-  cotizacion: { icon:'📋', color:'#2196f3', label:'Cotización'  },
-  cierre:     { icon:'✅', color:'#28a745', label:'Cierre'      },
-  wa:         { icon:'💚', color:'#25d366', label:'WhatsApp'    },
-  poliza:     { icon:'📄', color:'#28a745', label:'Póliza'      },
-  tarea:      { icon:'📌', color:'#6f42c1', label:'Tarea'       },
-};
-
-function _buildClienteTimeline(c){
-  const entries = [];
-
-  // 1. Bitácora (fuente principal)
-  (c.bitacora||[]).forEach(e=>{
-    const cfg = _TL_CFG[e.tipo] || _TL_CFG.manual;
-    entries.push({ fecha:e.fecha||'0000-00-00', hora:e.hora||'', tipo:e.tipo||'manual',
-      icono:cfg.icon, color:cfg.color, label:cfg.label,
-      titulo:e.nota||'(sin nota)', estado:e.estado||'', ejecutivo:e.ejecutivo||'' });
-  });
-
-  // 2. historialWa — incluir los que no estén ya cubiertos en bitácora ese día
-  (c.historialWa||[]).forEach(h=>{
-    const yaEnBit = (c.bitacora||[]).some(e=>e.fecha===h.fecha &&
-      (e.nota||'').toLowerCase().includes('whatsapp'));
-    if(!yaEnBit){
-      entries.push({ fecha:h.fecha||'0000-00-00', hora:'', tipo:'wa',
-        icono:'💚', color:'#25d366', label:'WhatsApp',
-        titulo:h.resumen||'WhatsApp enviado', estado:'', ejecutivo:h.ejecutivo||'' });
-    }
-  });
-
-  // 3. Cierres — como entradas enriquecidas si no hay ya entry tipo=cierre ese día
-  _getCierres().filter(x=>
-    (x._clienteId && String(x._clienteId)===String(c.id)) ||
-    (x.clienteNombre||'').toUpperCase().trim()===(c.nombre||'').toUpperCase().trim()
-  ).forEach(h=>{
-    const yaEnBit = (c.bitacora||[]).some(e=>e.fecha===h.fechaRegistro && e.tipo==='cierre');
-    if(!yaEnBit){
-      entries.push({ fecha:h.fechaRegistro||'0000-00-00', hora:'', tipo:'poliza',
-        icono:'📄', color:'#28a745', label:'Póliza',
-        titulo:`Póliza registrada — ${h.aseguradora||'—'} · ${h.polizaNueva||'—'} · ${fmt(h.primaTotal||0)}`,
-        estado:'', ejecutivo:h.ejecutivo||'' });
-    }
-  });
-
-  // Ordenar: más reciente primero
-  entries.sort((a,b)=>{
-    const d = b.fecha.localeCompare(a.fecha);
-    return d!==0 ? d : (b.hora||'').localeCompare(a.hora||'');
-  });
-  return entries;
-}
-
-function _renderClienteTimeline(c){
-  const entries = _buildClienteTimeline(c);
-  if(!entries.length) return '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">Sin historial de actividad aún</div>';
-
-  const today = new Date().toISOString().split('T')[0];
-  const ayer  = new Date(Date.now()-86400000).toISOString().split('T')[0];
-  const fmtFecha = f => {
-    if(f===today) return 'Hoy';
-    if(f===ayer)  return 'Ayer';
-    if(!f||f==='0000-00-00') return '—';
-    return new Date(f+'T12:00:00').toLocaleDateString('es-EC',{day:'numeric',month:'short',year:'numeric'});
-  };
-
-  // Agrupar por fecha
-  const grupos = {};
-  entries.forEach(e=>{ if(!grupos[e.fecha]) grupos[e.fecha]=[]; grupos[e.fecha].push(e); });
-
-  return Object.keys(grupos).sort((a,b)=>b.localeCompare(a)).map(fecha=>`
-    <div style="margin-bottom:14px">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);
-        letter-spacing:.8px;padding:3px 0 7px;border-bottom:1px solid var(--border);margin-bottom:6px">${fmtFecha(fecha)}</div>
-      ${grupos[fecha].map(e=>`
-        <div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--warm)">
-          <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;
-            background:${e.color}18;border:1.5px solid ${e.color}55;
-            display:flex;align-items:center;justify-content:center;font-size:12px">${e.icono}</div>
-          <div style="flex:1;min-width:0">
-            <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:2px">
-              <span style="font-size:10px;font-weight:700;color:${e.color};text-transform:uppercase;letter-spacing:.4px">${e.label}</span>
-              ${e.hora?`<span style="font-size:10px;color:var(--muted)">${e.hora}</span>`:''}
-              ${e.estado?`<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--warm);color:var(--muted)">${e.estado}</span>`:''}
-              ${e.ejecutivo?`<span style="font-size:10px;color:var(--muted)">· ${e.ejecutivo}</span>`:''}
-            </div>
-            <div style="font-size:12px;color:var(--ink);line-height:1.45">${e.titulo}</div>
-          </div>
-        </div>`).join('')}
-    </div>`).join('');
 }
 
 // Renderiza el historial de bitácora dentro del modal de seguimiento
@@ -5813,10 +5439,7 @@ function limpiarCarteraEjecutivo(){
   showToast(`${antes} clientes eliminados de ${exec.name}`,'error');
 }
 function exportarTodoExcel(){
-  const esAdmin = currentUser?.rol==='admin';
-  const fuente = esAdmin ? DB : myClientes();
-  const label = esAdmin ? 'Clientes' : (currentUser?.name||'Mis_Clientes').replace(/\s+/g,'_');
-  const data=fuente.map(c=>({
+  const data=DB.map(c=>({
     'Ejecutivo':c.ejecutivo,'Nombre':c.nombre,'CI':c.ci,'Celular':c.celular,
     'Aseguradora':c.aseguradora,'Póliza':c.poliza,'Vigencia Desde':c.desde,'Vigencia Hasta':c.hasta,
     'VA':c.va,'Prima Neta':c.pn,'Estado':c.estado,'Marca':c.marca,'Modelo':c.modelo,
@@ -5826,10 +5449,9 @@ function exportarTodoExcel(){
   const ws=XLSX.utils.json_to_sheet(data);
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Clientes');
-  XLSX.writeFile(wb,`Reliance_${label}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  XLSX.writeFile(wb,`Reliance_Clientes_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 function exportarBackupJSON(){
-  if(currentUser?.rol!=='admin'){ showToast('Solo el administrador puede generar backups','error'); return; }
   const backup={
     fecha:new Date().toISOString(),
     clientes:DB,
@@ -7549,107 +7171,6 @@ function renderReportes(){
           </tr>`;
         }).join('')}${proxVenc.length>20?`<tr><td colspan="7" style="text-align:center;padding:8px;color:var(--muted);font-size:12px">... y ${proxVenc.length-20} más</td></tr>`:''}</tbody>
       </table></div>`;
-  }
-
-  // ── RECAUDACIÓN POR ASEGURADORA ──────────────────────────────────────────
-  const recaudAsegEl  = document.getElementById('rep-recaud-aseg');
-  const recaudAsegCnt = document.getElementById('rep-recaud-aseg-count');
-  if(recaudAsegEl){
-    const byAseg = {};
-    cierresPeriodo.forEach(c=>{
-      const a = c.aseguradora||'Sin aseguradora';
-      if(!byAseg[a]) byAseg[a]={ cierres:0, prima:0, comision:0 };
-      byAseg[a].cierres++;
-      byAseg[a].prima += c.primaTotal||0;
-      byAseg[a].comision += c.comision||Math.round((c.primaNeta||0)*((_getComisiones()[a]||0)/100)*100)/100;
-    });
-    const sortedAseg = Object.entries(byAseg).sort((a,b)=>b[1].prima-a[1].prima);
-    const grandTotal = sortedAseg.reduce((s,[,v])=>s+v.prima,0);
-    if(recaudAsegCnt) recaudAsegCnt.textContent = sortedAseg.length+' aseguradoras';
-    recaudAsegEl.innerHTML = sortedAseg.length ? `
-      <table style="width:100%;font-size:12px;border-collapse:collapse">
-        <thead><tr style="background:var(--warm)">
-          <th style="padding:8px 12px;text-align:left;color:var(--muted)">Aseguradora</th>
-          <th style="padding:8px;text-align:center;color:var(--muted)">Cierres</th>
-          <th style="padding:8px;text-align:right;color:var(--muted)">Prima</th>
-          <th style="padding:8px;text-align:right;color:var(--muted)">Comisión</th>
-          <th style="padding:8px;color:var(--muted)">%</th>
-        </tr></thead>
-        <tbody>${sortedAseg.map(([aseg,v])=>{
-          const pct = grandTotal>0 ? Math.round(v.prima/grandTotal*100) : 0;
-          return `<tr style="border-bottom:1px solid var(--warm)">
-            <td style="padding:8px 12px;font-weight:500">${aseg}</td>
-            <td style="padding:8px;text-align:center;color:var(--accent2)">${v.cierres}</td>
-            <td style="padding:8px;text-align:right;font-weight:700;color:var(--green)">${fmt(v.prima)}</td>
-            <td style="padding:8px;text-align:right;color:var(--gold)">${fmt(v.comision)}</td>
-            <td style="padding:8px;min-width:80px">
-              <div style="display:flex;align-items:center;gap:5px">
-                <div style="flex:1;background:#f0f0f0;border-radius:3px;height:5px;overflow:hidden">
-                  <div style="height:100%;width:${pct}%;background:var(--accent2);border-radius:3px"></div>
-                </div>
-                <span style="font-size:10px;color:var(--muted);width:26px">${pct}%</span>
-              </div>
-            </td>
-          </tr>`;
-        }).join('')}</tbody>
-        <tfoot><tr style="background:var(--warm);border-top:2px solid var(--border)">
-          <td style="padding:8px 12px;font-weight:700">TOTAL</td>
-          <td style="padding:8px;text-align:center;font-weight:700">${cierresPeriodo.length}</td>
-          <td style="padding:8px;text-align:right;font-weight:800;color:var(--green)">${fmt(grandTotal)}</td>
-          <td colspan="2"></td>
-        </tr></tfoot>
-      </table>`
-    : '<div style="padding:16px;color:var(--muted);font-size:12px;text-align:center">Sin cierres en el período</div>';
-  }
-
-  // ── PRIMA POR EJECUTIVA × MES (últimos 6 meses) ───────────────────────────
-  const recaudMesEl = document.getElementById('rep-recaud-mes');
-  if(recaudMesEl){
-    const meses6h = [];
-    for(let i=5; i>=0; i--){
-      const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-i);
-      const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0');
-      meses6h.push({ key:`${y}-${m}`, label:d.toLocaleString('es-ES',{month:'short',year:'2-digit'}) });
-    }
-    const execs2 = USERS.filter(u=>u.rol==='ejecutivo');
-    const matrix = execs2.map(u=>{
-      const cols = meses6h.map(({key})=>
-        Math.round(allCierres.filter(c=>c.ejecutivo===u.id&&(c.fechaRegistro||'').startsWith(key))
-                             .reduce((s,c)=>s+(c.primaTotal||0),0))
-      );
-      return { u, cols, rowTotal:cols.reduce((s,v)=>s+v,0) };
-    }).filter(r=>r.rowTotal>0).sort((a,b)=>b.rowTotal-a.rowTotal);
-
-    if(!matrix.length){
-      recaudMesEl.innerHTML='<div style="padding:16px;color:var(--muted);font-size:12px;text-align:center">Sin cierres registrados</div>';
-    } else {
-      const colTotals = meses6h.map((_,i)=>matrix.reduce((s,r)=>s+r.cols[i],0));
-      const grandT2 = matrix.reduce((s,r)=>s+r.rowTotal,0);
-      recaudMesEl.innerHTML=`<table style="width:100%;font-size:11px;border-collapse:collapse">
-        <thead><tr style="background:var(--warm)">
-          <th style="padding:8px 10px;text-align:left;color:var(--muted)">Ejecutiva</th>
-          ${meses6h.map(({label})=>`<th style="padding:8px;text-align:right;color:var(--muted)">${label}</th>`).join('')}
-          <th style="padding:8px;text-align:right;color:var(--muted);font-weight:700">Total</th>
-        </tr></thead>
-        <tbody>${matrix.map(r=>`
-          <tr style="border-bottom:1px solid var(--warm)">
-            <td style="padding:8px 10px">
-              <div style="display:flex;align-items:center;gap:6px">
-                <div style="width:20px;height:20px;border-radius:50%;background:${r.u.color};color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">${r.u.initials}</div>
-                <span style="font-weight:500">${r.u.name.split(' ')[0]}</span>
-              </div>
-            </td>
-            ${r.cols.map(v=>`<td style="padding:8px;text-align:right;font-family:'DM Mono',monospace;color:${v>0?'var(--green)':'var(--muted)'}">${v>0?'$'+v.toLocaleString('es-EC'):'-'}</td>`).join('')}
-            <td style="padding:8px;text-align:right;font-weight:700;color:var(--green);font-family:'DM Mono',monospace">$${r.rowTotal.toLocaleString('es-EC')}</td>
-          </tr>`).join('')}
-        </tbody>
-        <tfoot><tr style="background:var(--warm);border-top:2px solid var(--border)">
-          <td style="padding:8px 10px;font-weight:700">TOTAL</td>
-          ${colTotals.map(v=>`<td style="padding:8px;text-align:right;font-weight:700;font-family:'DM Mono',monospace">$${v.toLocaleString('es-EC')}</td>`).join('')}
-          <td style="padding:8px;text-align:right;font-weight:800;color:var(--green);font-family:'DM Mono',monospace">$${grandT2.toLocaleString('es-EC')}</td>
-        </tr></tfoot>
-      </table>`;
-    }
   }
 
   // ── CHART 7: Cartera por tipo de cliente ──

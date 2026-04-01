@@ -68,17 +68,6 @@
   </div>
 </div>
 
-<!-- Modal: advertencia de sesión por inactividad -->
-<div id="modal-session-timeout" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:14px;padding:32px 28px;max-width:380px;width:90%;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,.25)">
-    <div style="font-size:40px;margin-bottom:12px">⏱</div>
-    <div style="font-size:17px;font-weight:700;color:#1a4c84;margin-bottom:8px">¿Sigues ahí?</div>
-    <div style="font-size:13px;color:#555;margin-bottom:20px">Tu sesión cerrará automáticamente por inactividad en<br><span id="session-countdown" style="font-size:28px;font-weight:800;color:var(--accent)">60</span> segundos.</div>
-    <button onclick="_keepSession()" style="background:#1a4c84;color:#fff;border:none;border-radius:8px;padding:11px 28px;font-size:14px;font-weight:600;cursor:pointer;width:100%">✅ Continuar sesión</button>
-    <button onclick="doLogout()" style="background:none;border:none;color:var(--muted);font-size:12px;margin-top:10px;cursor:pointer;display:block;width:100%">Cerrar sesión ahora</button>
-  </div>
-</div>
-
 <!-- APP (oculta hasta que SP cargue) -->
 <div class="app" style="display:none">
 
@@ -126,17 +115,6 @@
 <div class="main">
   <div class="topbar">
     <div class="topbar-title" id="page-title">Dashboard</div>
-    <!-- Búsqueda global -->
-    <div style="position:relative;flex:1;max-width:320px;margin:0 20px" id="global-search-wrap">
-      <div style="display:flex;align-items:center;gap:6px;background:var(--warm);border:1px solid var(--border);border-radius:8px;padding:5px 10px">
-        <span style="color:var(--muted);font-size:13px">🔍</span>
-        <input type="text" id="global-search-input" placeholder="Buscar en todo el CRM…"
-          style="border:none;background:transparent;outline:none;font-size:12px;width:100%;color:var(--ink)"
-          oninput="busquedaGlobal()" onfocus="busquedaGlobal()" onkeydown="handleBusquedaKey(event)">
-        <kbd style="font-size:9px;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:1px 5px;white-space:nowrap;flex-shrink:0">⌘K</kbd>
-      </div>
-      <div id="global-search-results" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;min-width:400px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:200;max-height:500px;overflow-y:auto"></div>
-    </div>
     <div class="topbar-actions">
       <span class="text-muted mono" style="font-size:11px" id="current-date"></span>
       <button class="btn btn-primary no-print" onclick="showPage('nuevo-cliente')">+ Nuevo Cliente</button>
@@ -151,8 +129,6 @@
       <div class="stat-card s3"><div class="stat-icon">◈</div><div class="stat-label">Nuevos</div><div class="stat-value" id="stat-nuevo">—</div><div class="stat-sub">Pólizas emitidas</div></div>
       <div class="stat-card s5"><div class="stat-icon">⏰</div><div class="stat-label">Vencen en 30 días</div><div class="stat-value text-accent" id="stat-venc30">—</div><div class="stat-sub">Requieren acción</div></div>
     </div>
-    <!-- Panel KPI por ejecutiva (solo visible para admin) -->
-    <div id="dash-exec-panel" style="margin-bottom:16px"></div>
     <!-- ⏳ Panel de Espera — clientes en EMISIÓN pendientes de póliza -->
     <div class="card" id="panel-espera-wrap" style="display:none;margin-bottom:16px">
       <div class="card-header">
@@ -207,7 +183,7 @@
       <div class="card-header"><div class="card-title">Cartera de Clientes</div><span class="text-muted" style="font-size:12px" id="clientes-count">— clientes</span></div>
       <div class="tbl-wrap">
         <table>
-          <thead><tr id="cartera-thead-row"></tr></thead>
+          <thead><tr><th>Cliente</th><th>CI</th><th>Tipo</th><th>Aseguradora</th><th>Vehículo</th><th>Placa</th><th>Vence</th><th>Días</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody id="clientes-tbody"></tbody>
         </table>
       </div>
@@ -614,24 +590,6 @@
     <div class="card" style="margin-bottom:20px">
       <div class="card-header"><div class="card-title">🏆 Ranking de Ejecutivos</div></div>
       <div class="card-body" id="rep-ranking"></div>
-    </div>
-
-    <!-- Desglose de recaudación -->
-    <div class="grid-2" style="margin-bottom:20px">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">💵 Recaudación por Aseguradora</div>
-          <span class="text-muted" style="font-size:12px" id="rep-recaud-aseg-count">—</span>
-        </div>
-        <div style="overflow-x:auto" id="rep-recaud-aseg"></div>
-      </div>
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">📅 Prima por Ejecutiva × Mes</div>
-          <span class="text-muted" style="font-size:11px">Últimos 6 meses</span>
-        </div>
-        <div style="overflow-x:auto" id="rep-recaud-mes"></div>
-      </div>
     </div>
 
     <!-- Detalle cierres del período -->
