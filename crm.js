@@ -5439,7 +5439,10 @@ function limpiarCarteraEjecutivo(){
   showToast(`${antes} clientes eliminados de ${exec.name}`,'error');
 }
 function exportarTodoExcel(){
-  const data=DB.map(c=>({
+  const esAdmin = currentUser?.rol==='admin';
+  const fuente = esAdmin ? DB : myClientes();
+  const label = esAdmin ? 'Clientes' : (currentUser?.name||'Mis_Clientes').replace(/\s+/g,'_');
+  const data=fuente.map(c=>({
     'Ejecutivo':c.ejecutivo,'Nombre':c.nombre,'CI':c.ci,'Celular':c.celular,
     'Aseguradora':c.aseguradora,'Póliza':c.poliza,'Vigencia Desde':c.desde,'Vigencia Hasta':c.hasta,
     'VA':c.va,'Prima Neta':c.pn,'Estado':c.estado,'Marca':c.marca,'Modelo':c.modelo,
@@ -5449,9 +5452,10 @@ function exportarTodoExcel(){
   const ws=XLSX.utils.json_to_sheet(data);
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Clientes');
-  XLSX.writeFile(wb,`Reliance_Clientes_${new Date().toISOString().split('T')[0]}.xlsx`);
+  XLSX.writeFile(wb,`Reliance_${label}_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 function exportarBackupJSON(){
+  if(currentUser?.rol!=='admin'){ showToast('Solo el administrador puede generar backups','error'); return; }
   const backup={
     fecha:new Date().toISOString(),
     clientes:DB,
