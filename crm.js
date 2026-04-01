@@ -735,6 +735,41 @@ function renderDashboard(){
 // ══════════════════════════════════════════════════════
 let clientesFiltrados = [];
 
+// ── Sort state para cartera ──
+let _sortCarteraCol = 'dias';
+let _sortCarteraDir = 1; // 1=asc, -1=desc
+
+const _CARTERA_COLS = [
+  { key:'nombre',    label:'Cliente',     sortFn:(a,b)=>(a.nombre||'').localeCompare(b.nombre||'') },
+  { key:'ci',        label:'CI',          sortFn:(a,b)=>(a.ci||'').localeCompare(b.ci||'') },
+  { key:'tipo',      label:'Tipo',        sortFn:(a,b)=>(a.tipo||'').localeCompare(b.tipo||'') },
+  { key:'aseg',      label:'Aseguradora', sortFn:(a,b)=>(a.aseguradora||'').localeCompare(b.aseguradora||'') },
+  { key:'vehiculo',  label:'Vehículo',    sortFn:(a,b)=>(`${a.marca} ${a.modelo}`).localeCompare(`${b.marca} ${b.modelo}`) },
+  { key:'placa',     label:'Placa',       sortFn:(a,b)=>(a.placa||'').localeCompare(b.placa||'') },
+  { key:'vence',     label:'Vence',       sortFn:(a,b)=>(a.hasta||'').localeCompare(b.hasta||'') },
+  { key:'dias',      label:'Días',        sortFn:(a,b)=>daysUntil(a.hasta)-daysUntil(b.hasta) },
+  { key:'estado',    label:'Estado',      sortFn:(a,b)=>(a.estado||'').localeCompare(b.estado||'') },
+  { key:'_acciones', label:'Acciones',    sortFn:null },
+];
+
+function sortCartera(col){
+  if(_sortCarteraCol === col){ _sortCarteraDir *= -1; }
+  else { _sortCarteraCol = col; _sortCarteraDir = 1; }
+  filterClientes();
+}
+
+function _renderCarteraThead(){
+  const tr = document.getElementById('cartera-thead-row');
+  if(!tr) return;
+  tr.innerHTML = _CARTERA_COLS.map(col => {
+    if(!col.sortFn) return `<th>${col.label}</th>`;
+    const activo = _sortCarteraCol === col.key;
+    const flecha = activo ? (_sortCarteraDir === 1 ? ' ↑' : ' ↓') : '';
+    const style = activo ? 'cursor:pointer;color:var(--primary);user-select:none' : 'cursor:pointer;user-select:none';
+    return `<th style="${style}" onclick="sortCartera('${col.key}')" title="Ordenar por ${col.label}">${col.label}<span style="opacity:${activo?1:0.3}">${flecha||' ↕'}</span></th>`;
+  }).join('');
+}
+
 function renderClientes(){
   initFilters();
   filterClientes();
@@ -746,6 +781,7 @@ function filterClientes(){
   const asegEl=document.getElementById('filter-aseg');   const aseg=asegEl?asegEl.value:'';
   const regionEl=document.getElementById('filter-region');const region=regionEl?regionEl.value:'';
   const estadoEl=document.getElementById('filter-estado');const estado=estadoEl?estadoEl.value:'';
+  const colDef = _CARTERA_COLS.find(c=>c.key===_sortCarteraCol) || _CARTERA_COLS.find(c=>c.key==='dias');
   clientesFiltrados = myClientes().filter(c=>{
     const mq=!q||(c.nombre||'').toLowerCase().includes(q)||(c.ci||'').includes(q)||(c.placa||'').toLowerCase().includes(q)||(c.aseguradora||'').toLowerCase().includes(q);
     const mt=!tipo||c.tipo===tipo;
@@ -753,7 +789,8 @@ function filterClientes(){
     const mr=!region||c.region===region;
     const me=!estado||(c.estado||'PENDIENTE')===estado;
     return mq&&mt&&ma&&mr&&me;
-  }).sort((a,b)=>daysUntil(a.hasta)-daysUntil(b.hasta));
+  }).sort((a,b)=>colDef.sortFn(a,b)*_sortCarteraDir);
+  _renderCarteraThead();
   document.getElementById('clientes-count').textContent=clientesFiltrados.length+' clientes';
   const obsColors={RENOVACION:'badge-gold',ENDOSO:'badge-blue',NUEVO:'badge-green','POLIZA ANULADA':'badge-red','NO REGISTRADO':'badge-gray','RENOVACION+VD':'badge-gold','RENOVACION+AXA':'badge-gold','RENOVACION+VD+AXA':'badge-blue'};
   document.getElementById('clientes-tbody').innerHTML = clientesFiltrados.map(c=>{
