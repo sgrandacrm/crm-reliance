@@ -5,6 +5,7 @@ Crea borradores en Outlook para cada cliente de la carpeta CLIENTES.
 """
 import sys, io, re
 from pathlib import Path
+from datetime import datetime
 import pandas as pd
 
 BASE         = Path(__file__).parent.parent
@@ -270,18 +271,22 @@ def run():
         print(f"  ERROR al conectar con Outlook: {e}")
         return
 
-    ok, errores = 0, []
+    ok, errores, omitidos = 0, [], []
 
     for pdf_path in pdfs:
+        _ci = ""
         try:
             ci = _ci_de_nombre(pdf_path.name)
+            _ci = ci or ""
             if not ci:
                 errores.append(f"{pdf_path.name}: no se pudo extraer CI")
+                omitidos.append({"ARCHIVO": pdf_path.name, "CI": "", "NOMBRE": "", "MOTIVO": "No se pudo extraer CI"})
                 continue
 
             filas = df_uni[df_uni["_CI"] == ci]
             if filas.empty:
                 errores.append(f"{pdf_path.name}: CI {ci} no encontrado en UNIFICADO")
+                omitidos.append({"ARCHIVO": pdf_path.name, "CI": ci, "NOMBRE": "", "MOTIVO": "CI no encontrado en UNIFICADO"})
                 continue
 
 
@@ -295,9 +300,11 @@ def run():
             ejec_raw  = str(fila.get("EJECUTIVO", "") or "").strip().upper()
             ejec_info = ejec_map.get(ejec_raw, {"mail": "", "celular": ""})
             correo    = str(fila.get("CORREO", "") or "").strip()
+            nombre_cl = str(fila.get("NOMBRE_CLIENTE", "") or "").strip()
 
             if not correo:
                 errores.append(f"{pdf_path.name}: sin correo en UNIFICADO")
+                omitidos.append({"ARCHIVO": pdf_path.name, "CI": ci, "NOMBRE": nombre_cl, "MOTIVO": "Sin correo en UNIFICADO"})
                 continue
 
             codigo_ramo = _ramo_a_codigo(str(fila.get("RAMO", "") or ""))
@@ -330,13 +337,21 @@ def run():
 
         except Exception as e:
             errores.append(f"{pdf_path.name}: {e}")
+            omitidos.append({"ARCHIVO": pdf_path.name, "CI": _ci, "NOMBRE": "", "MOTIVO": f"Error: {e}"})
 
     print()
-    print(f"  Borradores creados : {ok}")
+    print(f"  Borradores creados  : {ok}")
     if errores:
-        print(f"  Errores            : {len(errores)}")
+        print(f"  Clientes omitidos   : {len(errores)}")
         for err in errores:
             print(f"    - {err}")
+
+    if omitidos:
+        fecha_str   = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        ruta_rep    = DIR_OP / f"ENVIO_OMITIDOS_{fecha_str}.xlsx"
+        pd.DataFrame(omitidos).to_excel(ruta_rep, index=False)
+        print(f"\n  Reporte de omitidos : salida/{ruta_rep.name}")
+
     print()
     print("  Revisa los borradores en Outlook antes de enviar.")
 
