@@ -39,6 +39,12 @@ class TextQueue(io.TextIOBase):
         pass
 
 
+class AutoEnter(io.StringIO):
+    """Stdin falso: cualquier input() retorna vacío de inmediato (simula Enter)."""
+    def readline(self):
+        return "\n"
+
+
 class DBrokerApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -179,9 +185,10 @@ class DBrokerApp(tk.Tk):
             pass
 
         stream = TextQueue(self._q)
-        old_out, old_err = sys.stdout, sys.stderr
+        old_out, old_err, old_in = sys.stdout, sys.stderr, sys.stdin
         sys.stdout = stream
         sys.stderr = stream
+        sys.stdin  = AutoEnter()
         try:
             mod = importlib.import_module(modulo)
             importlib.reload(mod)
@@ -192,6 +199,7 @@ class DBrokerApp(tk.Tk):
         finally:
             sys.stdout = old_out
             sys.stderr = old_err
+            sys.stdin  = old_in
             try:
                 import pythoncom
                 pythoncom.CoUninitialize()
