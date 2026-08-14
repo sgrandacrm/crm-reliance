@@ -284,6 +284,10 @@ def run():
                 errores.append(f"{pdf_path.name}: CI {ci} no encontrado en UNIFICADO")
                 continue
 
+            filas_emit = filas[filas["ESTADO_RENOVACION"].astype(str).str.strip().str.upper() == "EMITIDO"]
+            if not filas_emit.empty:
+                filas = filas_emit
+
             # Fila principal (mayor prioridad de ramo)
             filas_ord = filas.copy()
             filas_ord["_PRI"] = filas_ord["RAMO"].apply(
