@@ -48,7 +48,10 @@ def _ci_de_nombre(nombre_pdf):
     return m.group(1).lstrip("0") if m else None
 
 def _norm_ci(ci):
-    return str(ci).strip().lstrip("0")
+    s = str(ci).strip().lstrip("0")
+    if len(s) == 13 and s.endswith("001"):
+        s = s[:-3]
+    return s
 
 def _ramo_a_codigo(ramo_str):
     r = str(ramo_str).strip().upper()
