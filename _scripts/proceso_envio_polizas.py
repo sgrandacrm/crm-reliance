@@ -242,8 +242,14 @@ def run():
     vh_files = sorted(DIR_OP.glob("UNIFICADO_VEHICULOS_*.xlsx"), reverse=True)
     ot_files = sorted(DIR_OP.glob("UNIFICADO_OTROS_*.xlsx"),     reverse=True)
     dfs = []
-    if vh_files: dfs.append(pd.read_excel(vh_files[0], dtype=str))
-    if ot_files: dfs.append(pd.read_excel(ot_files[0], dtype=str))
+    def _leer_unificado(ruta):
+        hojas = pd.read_excel(ruta, dtype=str, sheet_name=None)
+        return pd.concat(
+            [v for k, v in hojas.items() if k.upper() != "ALERTAS"],
+            ignore_index=True
+        )
+    if vh_files: dfs.append(_leer_unificado(vh_files[0]))
+    if ot_files: dfs.append(_leer_unificado(ot_files[0]))
     if not dfs:
         print("  ERROR: No hay archivos UNIFICADO en OPERACIONES/salida/")
         return
