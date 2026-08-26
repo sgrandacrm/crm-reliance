@@ -197,6 +197,8 @@ _SUFIJOS_CONOCIDOS = {
     "CUOTAS", "CUOTAS VH", "CUOTAS VD",
     # Hogar / Incendio (pólizas standalone)
     "POLIZA MH", "POLIZA IN",
+    # Formato compuesto IN (NOMBRE IN POL / IN END / etc.)
+    "IN POL", "IN FRENTE", "IN COND", "IN FC", "IN END",
     # Formato compuesto IN/MH (al final para evitar colisiones con apellidos)
     "MH", "IN",
     # Documentos adicionales
@@ -211,6 +213,7 @@ _SUFIJOS_VH = {
     "FAC VH", "FACTURA VH", "FC VH", "FC VD", "FC", "FACT",
     "ENDOSO", "EB",
     "IN", "MH", "POLIZA IN", "POLIZA MH",
+    "IN POL", "IN FRENTE", "IN COND", "IN FC", "IN END",
 }
 
 def _detectar_sufijo(nombre_sin_ext, sufijos_dict):
@@ -339,10 +342,14 @@ def organizar(base, log, gs_cmd):
                     "FRENTE VH": 0, "FRENTE": 0, "POLIZA VH": 0, "POLIZA": 0,
                     "CARATULA": 0, "O": 0, "POLIZA MH": 0, "POLIZA IN": 0, "MH": 0, "IN": 0,
                     "VH POL": 0, "VH FRENTE": 0,
+                    "IN POL": 0, "IN FRENTE": 0,
                     "COND VH": 1, "CONDICIONES VH": 1, "CONDICIONES": 1, "COND": 1,
                     "VH COND": 1, "VH": 1, "PC": 1, "CP VH": 1, "CP VD": 1, "CP": 1, "CERTIFICADO BANCARIO": 1,
+                    "IN COND": 1,
                     "VH FC": 2, "FAC VH": 2, "FACTURA VH": 2, "FC VH": 2, "FC VD": 2, "FC": 2, "FACT": 2,
+                    "IN FC": 2,
                     "VH END": 3, "ENDOSO": 3, "EB": 3,
+                    "IN END": 3,
                     "AP": 4, "POLIZA AP": 4, "AP POL": 4, "AP FRENTE": 4,
                     "VIDA": 5, "POLIZA VD": 5, "COND VD": 5, "VD POL": 5, "VD FRENTE": 5,
                     "FACTURA VD": 6, "FC VD": 6, "AP FC": 6, "VD FC": 6,
@@ -473,10 +480,14 @@ def organizar(base, log, gs_cmd):
                 "FRENTE VH": 0, "FRENTE": 0, "POLIZA VH": 0, "POLIZA": 0,
                 "CARATULA": 0, "O": 0, "POLIZA MH": 0, "POLIZA IN": 0, "MH": 0, "IN": 0,
                 "VH POL": 0, "VH FRENTE": 0,
+                "IN POL": 0, "IN FRENTE": 0,
                 "COND VH": 1, "CONDICIONES VH": 1, "CONDICIONES": 1, "COND": 1,
                 "VH COND": 1, "VH": 1, "PC": 1, "CP VH": 1, "CP VD": 1, "CP": 1, "CERTIFICADO BANCARIO": 1,
+                "IN COND": 1,
                 "VH FC": 2, "FAC VH": 2, "FACTURA VH": 2, "FC VH": 2, "FC VD": 2, "FC": 2, "FACT": 2,
+                "IN FC": 2,
                 "VH END": 3, "ENDOSO": 3, "EB": 3,
+                "IN END": 3,
                 "AP": 4, "POLIZA AP": 4, "AP POL": 4, "AP FRENTE": 4,
                 "VIDA": 5, "POLIZA VD": 5, "COND VD": 5, "VD POL": 5, "VD FRENTE": 5,
                 "FACTURA VD": 6, "FC VD": 6, "AP FC": 6, "VD FC": 6,
