@@ -17,6 +17,7 @@ CAT_PATH     = BASE / "catalogos" / "CATALOGO CONTRATANTES.xlsx"
 RAMO_CODIGO = {
     "VEHICULOS":              "VH",
     "INCENDIO":               "IN",
+    "MULTIRIESGO":            "IN",
     "MULTIHOGAR":             "MH",
     "VIDA":                   "VD",
     "AP":                     "AP",
@@ -36,7 +37,6 @@ ASUNTO_RAMO = {
 FIJOS_SINIESTROS = [
     ("Siniestros Sierra", "Victor Trujillo",  "0984242511", "vtrujillo@reliance.ec"),
     ("Cobranzas Sierra",  "Daniela Peña",     "0979965842", "dpena@reliance.ec"),
-    ("Cobranzas Costa",   "Andrea Veliz",     "0979965826", "aveliz@reliance.ec"),
     ("Siniestros Costa",  "Freddy Falcones",  "0996701405", "siniestrosgye@reliance.ec"),
 ]
 
