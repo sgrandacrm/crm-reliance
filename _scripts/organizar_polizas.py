@@ -243,6 +243,7 @@ def _detectar_sufijo(nombre_sin_ext, sufijos_dict):
         for sep in ['. ', ' ', '_']:
             if n_clean.upper().endswith(sep + suf.upper()):
                 cliente = re.sub(r'\s+', ' ', n_clean[:-(len(suf) + len(sep))].rstrip('.')).strip()
+                cliente = re.sub(r'\.\d+$', '', cliente).strip()
                 return cliente, suf.upper()
     return None, None
 

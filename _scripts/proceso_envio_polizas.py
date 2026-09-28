@@ -124,7 +124,7 @@ def _asunto(codigo_ramo, nombre):
     prefijo = ASUNTO_RAMO.get(codigo_ramo, "Renovación de Póliza de Seguro")
     return f"{prefijo} / {nombre}"
 
-def _parrafo_poliza(fila_principal, codigo_ramo):
+def _parrafo_poliza(fila_principal, codigo_ramo, filas=None):
     poliza  = str(fila_principal.get("POLIZA_EMITIDA", "") or "").strip() or "N/A"
     if codigo_ramo == "VH":
         marca  = str(fila_principal.get("MARCA", "")          or "").strip()
@@ -137,12 +137,29 @@ def _parrafo_poliza(fila_principal, codigo_ramo):
             f"Con esta cobertura, garantizamos su protección y tranquilidad en cada recorrido."
         )
     etiqueta = {"IN": "incendio", "MH": "hogar", "AP": "accidentes personales", "VD": "vida"}.get(codigo_ramo, "seguro")
+    if filas is not None:
+        seen = set(); pols = []
+        for _, r in filas.iterrows():
+            if _ramo_a_codigo(str(r.get("RAMO", "") or "")) == codigo_ramo:
+                p = str(r.get("POLIZA_EMITIDA", "") or "").strip()
+                if p and p not in seen:
+                    seen.add(p); pols.append(p)
+    else:
+        pols = [poliza]
+    if len(pols) > 1:
+        pols_str = (f"{pols[0]} y {pols[1]}" if len(pols) == 2
+                    else ", ".join(pols[:-1]) + f" y {pols[-1]}")
+        return (
+            f"Adjunto encontrará las pólizas de su seguro de {etiqueta} Nos. <strong>{pols_str}</strong>. "
+            f"Con esta cobertura, garantizamos su protección y tranquilidad."
+        )
+    poliza_str = pols[0] if pols else poliza
     return (
-        f"Adjunto encontrará la póliza de su seguro de {etiqueta} No. <strong>{poliza}</strong>. "
+        f"Adjunto encontrará la póliza de su seguro de {etiqueta} No. <strong>{poliza_str}</strong>. "
         f"Con esta cobertura, garantizamos su protección y tranquilidad."
     )
 
-def _html_body(fila, codigo_ramo, forma_pago, num_cuenta, cuotas_str, ejec_info, ejec_nombre_raw, prima_total_sum):
+def _html_body(fila, codigo_ramo, forma_pago, num_cuenta, cuotas_str, ejec_info, ejec_nombre_raw, prima_total_sum, filas=None):
     nombre   = str(fila.get("NOMBRE_CLIENTE", "") or "").strip()
     ci       = str(fila.get("CI", "")             or "").strip()
     celular  = str(fila.get("CELULAR_1", "")      or "").strip()
@@ -154,7 +171,7 @@ def _html_body(fila, codigo_ramo, forma_pago, num_cuenta, cuotas_str, ejec_info,
     ejec_mail   = ejec_info.get("mail", "")
     ejec_cel    = ejec_info.get("celular", "")
     ejec_wa     = _celular_wa(ejec_cel)
-    p_poliza    = _parrafo_poliza(fila, codigo_ramo)
+    p_poliza    = _parrafo_poliza(fila, codigo_ramo, filas)
 
     filas_canales = "".join(
         f"<tr><td>{dep}</td><td>{ejec}</td><td>{cel}</td>"
@@ -326,7 +343,7 @@ def run():
                 for _, r in filas.iterrows()
                 if r.get("PRIMA_TOTAL") not in (None, "", "nan")
             ))
-            html    = _html_body(fila, codigo_ramo, forma_pago, num_cuenta, cuotas_str, ejec_info, ejec_raw, prima_sum)
+            html    = _html_body(fila, codigo_ramo, forma_pago, num_cuenta, cuotas_str, ejec_info, ejec_raw, prima_sum, filas)
             asunto  = _asunto(codigo_ramo, str(fila.get("NOMBRE_CLIENTE", "") or "").strip())
             adjuntos_tarjeta = _buscar_tarjetas_cliente(tarjetas, filas)
 
