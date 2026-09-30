@@ -226,21 +226,36 @@ def generar_polizas_ap_vida(df_otros: pd.DataFrame, catalogo_path: Path):
             al.append(al_grupo)
 
         aseguradora = _get(r, "ASEGURADORA_EMISORA") or ""
-        val_aseg = _val_asegurado(aseguradora)
-        if val_aseg is None:
-            al.append(f"ASEGURADORA '{aseguradora}': VAL_ASEGURADO no definido")
+        val_aseg_cash = _num(_get(r, "VALOR_ASEGURADO"))
+        if val_aseg_cash:
+            val_aseg = val_aseg_cash
+        else:
+            val_aseg = _val_asegurado(aseguradora)
+            if val_aseg is None:
+                al.append(f"ASEGURADORA '{aseguradora}': VAL_ASEGURADO no definido en CASH ni en catalogo")
 
         ubicacion = ciudad if ciudad else None
         if not ubicacion:
             al.append("CIUDAD vacia: UBICACION quedara en blanco")
 
         prima_total = _num(_get(r, "PRIMA_TOTAL"))
-        de  = _num(_get(r, "DERECHOS_EMISION")) or 0
-        sbs = _num(_get(r, "SUPER_BANCOS"))     or 0
-        sc  = _num(_get(r, "SEGURO_CAMPESINO")) or 0
+        de_raw  = _num(_get(r, "DERECHOS_EMISION"))
+        sbs_raw = _num(_get(r, "SUPER_BANCOS"))
+        sc_raw  = _num(_get(r, "SEGURO_CAMPESINO"))
         prima_neta = _num(_get(r, "PRIMA_NETA"))
-        if prima_neta is None and prima_total is not None:
-            prima_neta = round(prima_total - de - sbs - sc, 2)
+
+        if not de_raw and not sbs_raw and not sc_raw and prima_total is not None:
+            de  = 0.50
+            pn  = prima_neta if prima_neta is not None else round((prima_total - de) / 1.04, 2)
+            sbs = round(pn * 0.035, 2)
+            sc  = round(pn * 0.005, 2)
+            prima_neta = pn
+        else:
+            de  = de_raw  or 0
+            sbs = sbs_raw or 0
+            sc  = sc_raw  or 0
+            if prima_neta is None and prima_total is not None:
+                prima_neta = round(prima_total - de - sbs - sc, 2)
 
         seq = seq_ap if ramo == "AP" else seq_vida
         fila = {
