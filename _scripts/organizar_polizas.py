@@ -17,6 +17,7 @@ import threading
 import zipfile
 from collections import defaultdict
 from datetime import datetime
+from pathlib import Path
 from tkinter import (
     Tk, Frame, Label, Button, Text, Scrollbar,
     filedialog, messagebox, StringVar, ttk
@@ -37,10 +38,68 @@ try:
 except ImportError:
     fitz = None
 
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
+
+_PROJECT_ROOT = Path(__file__).parent.parent
+_DIR_OP       = _PROJECT_ROOT / "OPERACIONES" / "salida"
+
 
 # ──────────────────────────────────────────────
 #  Lógica principal
 # ──────────────────────────────────────────────
+
+def _es_directo(garantia):
+    """True si el cliente NO tiene crédito bancario (SIN CREDITO, POS-CREDITO, etc.)."""
+    g = (garantia or "").strip().upper().replace("-", " ")
+    for kw in {"SIN CREDITO", "POST CREDITO", "POS CREDITO", "SEGURO CHECK", "WEB", "RRSS", "NUEVO"}:
+        if kw in g:
+            return True
+    return False
+
+
+def _ci_de_pdf_nombre(nombre_pdf):
+    """Extrae la cédula del nombre de archivo 'NOMBRE - CI.pdf'."""
+    m = re.search(r'-\s*(\d{7,13})\.pdf$', nombre_pdf, re.IGNORECASE)
+    if not m:
+        return None
+    ci = m.group(1).lstrip("0")
+    if len(ci) == 13 and ci.endswith("001"):
+        ci = ci[:-3]
+    return ci
+
+
+def _cargar_garantia_lookup():
+    """Devuelve {CI: GARANTIA} desde el UNIFICADO más reciente."""
+    if pd is None:
+        return {}
+    try:
+        vh_files = sorted(_DIR_OP.glob("UNIFICADO_VEHICULOS_*.xlsx"), reverse=True)
+        ot_files = sorted(_DIR_OP.glob("UNIFICADO_OTROS_*.xlsx"),     reverse=True)
+        dfs = []
+        for ruta in (vh_files[:1] + ot_files[:1]):
+            hojas = pd.read_excel(ruta, dtype=str, sheet_name=None)
+            dfs.append(pd.concat(
+                [v for k, v in hojas.items() if k.upper() != "ALERTAS"],
+                ignore_index=True
+            ))
+        if not dfs:
+            return {}
+        df = pd.concat(dfs, ignore_index=True)
+        lookup = {}
+        for _, row in df.iterrows():
+            ci = str(row.get("CI", "") or "").strip().lstrip("0")
+            if len(ci) == 13 and ci.endswith("001"):
+                ci = ci[:-3]
+            garantia = str(row.get("GARANTIA", "") or "").strip()
+            if ci:
+                lookup[ci] = garantia
+        return lookup
+    except Exception:
+        return {}
+
 
 def detectar_ghostscript():
     """Devuelve el ejecutable de Ghostscript si está disponible."""
@@ -190,9 +249,11 @@ _SUFIJOS_CONOCIDOS = {
     # AP
     "AP", "POLIZA AP", "AP POL", "AP FRENTE", "AP FC",
     # Vida/VD
-    "VIDA", "POLIZA VD", "COND VD", "VD POL", "VD FRENTE", "VD FC",
+    "VIDA", "VD", "POLIZA VD", "COND VD", "VD COND", "VD POL", "VD FRENTE", "VD FC",
     # Factura VD
-    "FACTURA VD", "FC VD",
+    "FACTURA VD", "FC VD", "VD FAC",
+    # Factura VH alternativa
+    "VH FAC",
     # Cuotas
     "CUOTAS", "CUOTAS VH", "CUOTAS VD",
     # Hogar / Incendio (pólizas standalone)
@@ -273,11 +334,17 @@ def organizar(base, log, gs_cmd):
     if pdfplumber is None:
         log("⚠️  pdfplumber no instalado. No se extraerá nombre/cédula automáticamente.")
 
-    output_dir   = os.path.join(base, "POLIZA OUTPUT")
-    clientes_dir = os.path.join(output_dir, "CLIENTES")
-    produbanco_dir_out = os.path.join(output_dir, "PRODUBANCO")
+    output_dir            = os.path.join(base, "POLIZA OUTPUT")
+    clientes_dir          = os.path.join(output_dir, "CLIENTES")
+    clientes_directos_dir = os.path.join(output_dir, "CLIENTES DIRECTOS")
+    produbanco_dir_out    = os.path.join(output_dir, "PRODUBANCO")
     os.makedirs(clientes_dir, exist_ok=True)
+    os.makedirs(clientes_directos_dir, exist_ok=True)
     os.makedirs(produbanco_dir_out, exist_ok=True)
+
+    garantia_lookup = _cargar_garantia_lookup()
+    if not garantia_lookup:
+        log("⚠️  UNIFICADO no encontrado — clientes directos no se separarán automáticamente")
     _sin_endoso_global = []   # clientes VH sin endoso Produbanco
     tmp_work = tempfile.mkdtemp(prefix="polizas_")
 
@@ -345,15 +412,15 @@ def organizar(base, log, gs_cmd):
                     "VH POL": 0, "VH FRENTE": 0,
                     "IN POL": 0, "IN FRENTE": 0,
                     "COND VH": 1, "CONDICIONES VH": 1, "CONDICIONES": 1, "COND": 1,
-                    "VH COND": 1, "VH": 1, "PC": 1, "CP VH": 1, "CP VD": 1, "CP": 1, "CERTIFICADO BANCARIO": 1,
+                    "VH COND": 1, "VD COND": 1, "VH": 1, "PC": 1, "CP VH": 1, "CP VD": 1, "CP": 1, "CERTIFICADO BANCARIO": 1,
                     "IN COND": 1,
-                    "VH FC": 2, "FAC VH": 2, "FACTURA VH": 2, "FC VH": 2, "FC VD": 2, "FC": 2, "FACT": 2,
+                    "VH FC": 2, "VH FAC": 2, "FAC VH": 2, "FACTURA VH": 2, "FC VH": 2, "FC VD": 2, "FC": 2, "FACT": 2,
                     "IN FC": 2,
                     "VH END": 3, "ENDOSO": 3, "EB": 3,
                     "IN END": 3,
                     "AP": 4, "POLIZA AP": 4, "AP POL": 4, "AP FRENTE": 4,
-                    "VIDA": 5, "POLIZA VD": 5, "COND VD": 5, "VD POL": 5, "VD FRENTE": 5,
-                    "FACTURA VD": 6, "FC VD": 6, "AP FC": 6, "VD FC": 6,
+                    "VIDA": 5, "VD": 5, "POLIZA VD": 5, "COND VD": 5, "VD POL": 5, "VD FRENTE": 5,
+                    "FACTURA VD": 6, "FC VD": 6, "VD FAC": 6, "AP FC": 6, "VD FC": 6,
                     "CUOTAS": 7, "CUOTAS VH": 7, "CUOTAS VD": 7,
                     "ENDOSOBEN": 8, "CI": 9,
                 }
@@ -368,12 +435,19 @@ def organizar(base, log, gs_cmd):
                 for cliente, archivos_c in sorted(grupos_tipo.items()):
                     archivos_ord = sorted(archivos_c, key=lambda x: SUFIJOS.get(x[0].upper(), 99))
 
-                    # ── Archivo completo → CLIENTES ──
+                    # ── Archivo completo → CLIENTES / CLIENTES DIRECTOS ──
                     writer_full = PdfWriter()
                     for _, pdf_path in archivos_ord:
                         for page in PdfReader(pdf_path).pages:
                             writer_full.add_page(page)
-                    _guardar_titular(writer_full, base, clientes_dir, cliente, gs_cmd, log)
+                    _nom_guardado = _guardar_titular(writer_full, base, clientes_dir, cliente, gs_cmd, log)
+                    if _nom_guardado:
+                        _ci_arch = _ci_de_pdf_nombre(_nom_guardado)
+                        if _ci_arch and _es_directo(garantia_lookup.get(_ci_arch, "")):
+                            _src = os.path.join(clientes_dir, _nom_guardado)
+                            _dst = os.path.join(clientes_directos_dir, _nom_guardado)
+                            if os.path.exists(_src):
+                                shutil.move(_src, _dst)
 
                     # ── PRODUBANCO: VH-only si tiene VH, completo si no ──
                     archivos_vh = [(s, f) for s, f in archivos_ord if s.upper() in _SUFIJOS_VH]
@@ -483,15 +557,15 @@ def organizar(base, log, gs_cmd):
                 "VH POL": 0, "VH FRENTE": 0,
                 "IN POL": 0, "IN FRENTE": 0,
                 "COND VH": 1, "CONDICIONES VH": 1, "CONDICIONES": 1, "COND": 1,
-                "VH COND": 1, "VH": 1, "PC": 1, "CP VH": 1, "CP VD": 1, "CP": 1, "CERTIFICADO BANCARIO": 1,
+                "VH COND": 1, "VD COND": 1, "VH": 1, "PC": 1, "CP VH": 1, "CP VD": 1, "CP": 1, "CERTIFICADO BANCARIO": 1,
                 "IN COND": 1,
-                "VH FC": 2, "FAC VH": 2, "FACTURA VH": 2, "FC VH": 2, "FC VD": 2, "FC": 2, "FACT": 2,
+                "VH FC": 2, "VH FAC": 2, "FAC VH": 2, "FACTURA VH": 2, "FC VH": 2, "FC VD": 2, "FC": 2, "FACT": 2,
                 "IN FC": 2,
                 "VH END": 3, "ENDOSO": 3, "EB": 3,
                 "IN END": 3,
                 "AP": 4, "POLIZA AP": 4, "AP POL": 4, "AP FRENTE": 4,
-                "VIDA": 5, "POLIZA VD": 5, "COND VD": 5, "VD POL": 5, "VD FRENTE": 5,
-                "FACTURA VD": 6, "FC VD": 6, "AP FC": 6, "VD FC": 6,
+                "VIDA": 5, "VD": 5, "POLIZA VD": 5, "COND VD": 5, "VD POL": 5, "VD FRENTE": 5,
+                "FACTURA VD": 6, "FC VD": 6, "VD FAC": 6, "AP FC": 6, "VD FC": 6,
                 "CUOTAS": 7, "CUOTAS VH": 7, "CUOTAS VD": 7,
                 "ENDOSOBEN": 8, "CI": 9,
             }
@@ -537,6 +611,13 @@ def organizar(base, log, gs_cmd):
                     for page in PdfReader(os.path.join(base, pdf)).pages:
                         writer_full.add_page(page)
                 nombre_archivo = _guardar_titular(writer_full, base, clientes_dir, cliente, gs_cmd, log)
+                if nombre_archivo:
+                    _ci_arch = _ci_de_pdf_nombre(nombre_archivo)
+                    if _ci_arch and _es_directo(garantia_lookup.get(_ci_arch, "")):
+                        _src = os.path.join(clientes_dir, nombre_archivo)
+                        _dst = os.path.join(clientes_directos_dir, nombre_archivo)
+                        if os.path.exists(_src):
+                            shutil.move(_src, _dst)
 
                 # ── Archivo VH → PRODUBANCO (solo si tiene docs de vehículo) ──
                 archivos_vh = [(s, f) for s, f in archivos_ord if s.upper() in _SUFIJOS_VH]
@@ -615,18 +696,22 @@ def organizar(base, log, gs_cmd):
         _warn  = sum(1 for l in _log_lines if "⚠" in l)
         _err   = sum(1 for l in _log_lines if l.strip().startswith("❌"))
 
-        _c_files  = set(f for f in os.listdir(clientes_dir) if f.endswith(".pdf")) \
-                    if os.path.isdir(clientes_dir) else set()
-        _pb_files = set(f for f in os.listdir(produbanco_dir_out) if f.endswith(".pdf")) \
-                    if os.path.isdir(produbanco_dir_out) else set()
-        _clientes_out = len(_c_files)
-        _pb_out       = len(_pb_files)
-        _solo_clientes = sorted(_c_files - _pb_files)   # fueron a CLIENTES pero NO a PRODUBANCO
+        _c_files  = set(f for f in os.listdir(clientes_dir)          if f.endswith(".pdf")) \
+                    if os.path.isdir(clientes_dir)          else set()
+        _cd_files = set(f for f in os.listdir(clientes_directos_dir) if f.endswith(".pdf")) \
+                    if os.path.isdir(clientes_directos_dir) else set()
+        _pb_files = set(f for f in os.listdir(produbanco_dir_out)    if f.endswith(".pdf")) \
+                    if os.path.isdir(produbanco_dir_out)    else set()
+        _clientes_out   = len(_c_files)
+        _clientes_d_out = len(_cd_files)
+        _pb_out         = len(_pb_files)
+        _solo_clientes  = sorted(_c_files - _pb_files)
 
         # Log en pantalla: resumen de carpetas
         _log_orig(f"\n📊 RESUMEN FINAL:")
-        _log_orig(f"   CLIENTES   : {_clientes_out} PDFs")
-        _log_orig(f"   PRODUBANCO : {_pb_out} PDFs")
+        _log_orig(f"   CLIENTES          : {_clientes_out} PDFs")
+        _log_orig(f"   CLIENTES DIRECTOS : {_clientes_d_out} PDFs")
+        _log_orig(f"   PRODUBANCO        : {_pb_out} PDFs")
         if _solo_clientes:
             _log_orig(f"   Solo en CLIENTES ({len(_solo_clientes)}, sin póliza VH):")
             for f in _solo_clientes:
@@ -649,6 +734,7 @@ def organizar(base, log, gs_cmd):
             rf.write("  RESUMEN\n")
             rf.write("-" * 55 + "\n")
             rf.write(f"  PDFs en CLIENTES              : {_clientes_out}\n")
+            rf.write(f"  PDFs en CLIENTES DIRECTOS     : {_clientes_d_out}\n")
             rf.write(f"  PDFs en PRODUBANCO            : {_pb_out}\n")
             rf.write(f"  Diferencia                    : {_clientes_out - _pb_out} (solo CLIENTES, sin póliza VH)\n")
             rf.write(f"  Archivos OK (✓)               : {_ok}\n")

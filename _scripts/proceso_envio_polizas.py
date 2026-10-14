@@ -34,6 +34,14 @@ ASUNTO_RAMO = {
     "VD": "Renovación de Póliza de Seguro de Vida",
 }
 
+ASUNTO_RAMO_DIRECTO = {
+    "VH": "Envío de Póliza de Seguro de Vehículo",
+    "IN": "Envío de Póliza de Seguro de Incendio",
+    "MH": "Envío de Póliza de Seguro de Hogar",
+    "AP": "Envío de Póliza de Seguro de Accidentes Personales",
+    "VD": "Envío de Póliza de Seguro de Vida",
+}
+
 FIJOS_SINIESTROS = [
     ("Siniestros Sierra", "Victor Trujillo",  "0984242511", "vtrujillo@reliance.ec"),
     ("Cobranzas Sierra",  "Daniela Peña",     "0979965842", "dpena@reliance.ec"),
@@ -100,16 +108,32 @@ def _buscar_tarjetas_cliente(tarjetas, filas_cliente):
             adjuntos.append(t)
     return adjuntos
 
+def _extraer_banco_otro(num_cuotas_str, cuenta_str):
+    """Extrae nombre de banco de CUENTA para clientes 'OTROS BANCOS'."""
+    m = re.search(r'[\d/\s]+\s+([A-ZÁÉÍÓÚÑa-záéíóúñ][\w\s]+)$', cuenta_str.strip())
+    if m:
+        return m.group(1).strip().title()
+    for banco in ["PICHINCHA", "GUAYAQUIL", "PACIFICO", "AUSTRO", "INTERNACIONAL",
+                  "SOLIDARIO", "BOLIVARIANO", "RUMIÑAHUI"]:
+        if banco in num_cuotas_str.upper():
+            return banco.title()
+    return "Otro Banco"
+
+
 def _parsear_pago(num_cuotas_raw, cuenta_raw):
+    """Retorna (forma_pago, num_cuenta, cuotas_str, banco)."""
     s = str(num_cuotas_raw or "").upper()
-    es_produbanco = "PRODUBANCO" in s
     es_debito     = "DEBITO" in s or "DÉBITO" in s
+    es_produbanco = "PRODUBANCO" in s
     if es_debito:
         m = re.search(r'\b(\d+)\b', s)
         n = m.group(1) if m else "N/A"
-        cuenta = str(cuenta_raw or "").strip() if es_produbanco else "N/A"
-        return "DÉBITO BANCARIO", cuenta or "N/A", n
-    return "PAGO DIRECTO", "N/A", "N/A"
+        cuenta = str(cuenta_raw or "").strip()
+        if es_produbanco:
+            return "DÉBITO BANCARIO", cuenta or "N/A", n, "Produbanco"
+        banco = _extraer_banco_otro(s, cuenta)
+        return "DÉBITO BANCARIO", "N/A", n, banco
+    return "PAGO DIRECTO", "N/A", "N/A", None
 
 def _fmt_prima(v):
     try:
@@ -122,6 +146,10 @@ def _celular_wa(cel):
 
 def _asunto(codigo_ramo, nombre):
     prefijo = ASUNTO_RAMO.get(codigo_ramo, "Renovación de Póliza de Seguro")
+    return f"{prefijo} / {nombre}"
+
+def _asunto_directo(codigo_ramo, nombre):
+    prefijo = ASUNTO_RAMO_DIRECTO.get(codigo_ramo, "Envío de Póliza de Seguro")
     return f"{prefijo} / {nombre}"
 
 def _parrafo_poliza(fila_principal, codigo_ramo, filas=None):
@@ -227,6 +255,73 @@ Es importante que mantenga su póliza vigente mientras su obligación crediticia
 </div>"""
 
 
+def _html_body_directo(fila, codigo_ramo, forma_pago, banco, cuotas_str, ejec_info, ejec_nombre_raw, prima_total_sum, filas=None):
+    nombre  = str(fila.get("NOMBRE_CLIENTE", "") or "").strip()
+    ci      = str(fila.get("CI", "")             or "").strip()
+    celular = str(fila.get("CELULAR_1", "")      or "").strip()
+    correo  = str(fila.get("CORREO", "")         or "").strip()
+    prima   = prima_total_sum
+
+    ejec_nombre = ejec_nombre_raw.title()
+    ejec_mail   = ejec_info.get("mail", "")
+    ejec_cel    = ejec_info.get("celular", "")
+    ejec_wa     = _celular_wa(ejec_cel)
+    p_poliza    = _parrafo_poliza(fila, codigo_ramo, filas)
+
+    banco_row = f"<tr><td>Banco</td><td>{banco}</td></tr>" if banco else ""
+
+    filas_canales = "".join(
+        f"<tr><td>{dep}</td><td>{ejec}</td><td>{cel}</td>"
+        f"<td><a href='mailto:{mail}'>{mail}</a></td></tr>"
+        for dep, ejec, cel, mail in FIJOS_SINIESTROS
+    )
+
+    return f"""<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;">
+<p>Señor(a) <strong>{nombre}</strong>,</p>
+<p>Agradecemos su confianza en nosotros como su asesor de seguros.</p>
+<p>{p_poliza}</p>
+<p>Si tiene dudas o necesita asistencia, contáctenos a través de nuestros canales oficiales.</p>
+<br>
+<p><strong>Información del Cliente</strong></p>
+<table border="1" cellpadding="5" cellspacing="0"
+       style="border-collapse:collapse;width:60%;font-size:10pt;">
+  <tr style="background:#f2f2f2;">
+    <td><strong>Campo</strong></td><td><strong>Información</strong></td>
+  </tr>
+  <tr><td>CI</td><td>{ci}</td></tr>
+  <tr><td>Nombre Cliente</td><td>{nombre}</td></tr>
+  <tr><td>Celular</td><td>{celular}</td></tr>
+  <tr><td>Correo Electrónico</td>
+      <td><a href="mailto:{correo}">{correo}</a></td></tr>
+  <tr><td>Forma de Pago</td><td>{forma_pago}</td></tr>
+  {banco_row}
+  <tr><td>Cuotas</td><td>{cuotas_str}</td></tr>
+  <tr><td>Monto Total</td><td>{prima}</td></tr>
+</table>
+<br>
+<p><strong>Canales de Comunicación</strong></p>
+<table border="1" cellpadding="5" cellspacing="0"
+       style="border-collapse:collapse;width:70%;font-size:10pt;">
+  <tr style="background:#f2f2f2;">
+    <td><strong>Departamento</strong></td><td><strong>Ejecutivo</strong></td>
+    <td><strong>Celular</strong></td><td><strong>Correo</strong></td>
+  </tr>
+  <tr>
+    <td>Comercial</td><td>{ejec_nombre}</td><td>{ejec_cel}</td>
+    <td><a href="mailto:{ejec_mail}">{ejec_mail}</a></td>
+  </tr>
+  {filas_canales}
+</table>
+<br>
+<p>
+  <strong>{ejec_nombre}</strong><br>
+  Ejecutivo Comercial<br>
+  Reliance S.A.<br><br>
+  <a href="https://wa.me/{ejec_wa}">Contáctame por WhatsApp</a>
+</p>
+</div>"""
+
+
 # ─── proceso principal ────────────────────────────────────────────────────────
 
 def run():
@@ -244,18 +339,24 @@ def run():
         print("  ERROR: No hay carpetas POLIZA OUTPUT en POLIZAS/salida/")
         return
 
-    clientes_dir = carpetas[0] / "CLIENTES"
-    if not clientes_dir.exists():
-        print(f"  ERROR: No existe CLIENTES en {carpetas[0].name}")
+    clientes_dir          = carpetas[0] / "CLIENTES"
+    clientes_directos_dir = carpetas[0] / "CLIENTES DIRECTOS"
+
+    if not clientes_dir.exists() and not clientes_directos_dir.exists():
+        print(f"  ERROR: No existe CLIENTES ni CLIENTES DIRECTOS en {carpetas[0].name}")
         return
 
-    pdfs = sorted(clientes_dir.glob("*.pdf"))
-    if not pdfs:
-        print("  ERROR: No hay PDFs en CLIENTES/")
+    pdfs_cc  = [(p, False) for p in sorted(clientes_dir.glob("*.pdf"))]          if clientes_dir.exists()          else []
+    pdfs_dir = [(p, True)  for p in sorted(clientes_directos_dir.glob("*.pdf"))] if clientes_directos_dir.exists() else []
+    todos_pdfs = pdfs_cc + pdfs_dir
+
+    if not todos_pdfs:
+        print("  ERROR: No hay PDFs en CLIENTES/ ni CLIENTES DIRECTOS/")
         return
 
-    print(f"  Carpeta  : {carpetas[0].name}")
-    print(f"  Clientes : {len(pdfs)} PDFs")
+    print(f"  Carpeta          : {carpetas[0].name}")
+    print(f"  Clientes CC      : {len(pdfs_cc)} PDFs")
+    print(f"  Clientes Directos: {len(pdfs_dir)} PDFs")
     print()
 
     # 2. UNIFICADO
@@ -299,7 +400,7 @@ def run():
 
     ok, errores, omitidos = 0, [], []
 
-    for pdf_path in pdfs:
+    for pdf_path, es_directo in todos_pdfs:
         _ci = ""
         try:
             ci = _ci_de_nombre(pdf_path.name)
@@ -334,7 +435,7 @@ def run():
                 continue
 
             codigo_ramo = _ramo_a_codigo(str(fila.get("RAMO", "") or ""))
-            forma_pago, num_cuenta, cuotas_str = _parsear_pago(
+            forma_pago, num_cuenta, cuotas_str, banco = _parsear_pago(
                 fila.get("NUM_CUOTAS"), fila.get("CUENTA")
             )
 
@@ -343,8 +444,13 @@ def run():
                 for _, r in filas.iterrows()
                 if r.get("PRIMA_TOTAL") not in (None, "", "nan")
             ))
-            html    = _html_body(fila, codigo_ramo, forma_pago, num_cuenta, cuotas_str, ejec_info, ejec_raw, prima_sum, filas)
-            asunto  = _asunto(codigo_ramo, str(fila.get("NOMBRE_CLIENTE", "") or "").strip())
+            nombre_cl_str = str(fila.get("NOMBRE_CLIENTE", "") or "").strip()
+            if es_directo:
+                html   = _html_body_directo(fila, codigo_ramo, forma_pago, banco, cuotas_str, ejec_info, ejec_raw, prima_sum, filas)
+                asunto = _asunto_directo(codigo_ramo, nombre_cl_str)
+            else:
+                html   = _html_body(fila, codigo_ramo, forma_pago, num_cuenta, cuotas_str, ejec_info, ejec_raw, prima_sum, filas)
+                asunto = _asunto(codigo_ramo, nombre_cl_str)
             adjuntos_tarjeta = _buscar_tarjetas_cliente(tarjetas, filas)
 
             mail           = outlook.CreateItem(0)
@@ -357,8 +463,8 @@ def run():
                 mail.Attachments.Add(str(t.resolve()))
             mail.Save()
 
-            nombre = str(fila.get("NOMBRE_CLIENTE", "") or "").strip()
-            print(f"  ✓  {nombre[:40]:<40}  →  {correo}")
+            etiqueta = " [DIRECTO]" if es_directo else ""
+            print(f"  ✓  {nombre_cl_str[:38]:<38}{etiqueta:<10}  →  {correo}")
             ok += 1
 
         except Exception as e:
