@@ -105,7 +105,9 @@ def detectar_ghostscript():
     """Devuelve el ejecutable de Ghostscript si está disponible."""
     for cmd in ["gs", "gswin64c", "gswin32c"]:
         try:
-            r = subprocess.run([cmd, "--version"], capture_output=True, timeout=5)
+            r = subprocess.run([cmd, "--version"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               timeout=5)
             if r.returncode == 0:
                 return cmd
         except Exception:
@@ -182,7 +184,8 @@ def _ocr_pdf(pdf_path):
             pix.save(img_path)
             res = subprocess.run(
                 ["tesseract", img_path, "stdout", "-l", "eng"],
-                capture_output=True, text=True, timeout=30
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=30
             )
             os.remove(img_path)
             texto_total += res.stdout + "\n"
@@ -378,7 +381,8 @@ def organizar(base, log, gs_cmd):
                 try:
                     subprocess.run(
                         ["unzip", "-o", os.path.join(base, archivo), "-d", destino_zip],
-                        capture_output=True, timeout=30
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        timeout=30
                     )
                 except Exception:
                     # Fallback Python
