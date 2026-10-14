@@ -440,8 +440,11 @@ def organizar(base, log, gs_cmd):
                     for _, pdf_path in archivos_ord:
                         for page in PdfReader(pdf_path).pages:
                             writer_full.add_page(page)
-                    _guardar_titular(writer_full, base, clientes_dir, cliente, gs_cmd, log,
-                                     dir_directo=clientes_directos_dir, garantia_lookup=garantia_lookup)
+                    _nom_guardado = _guardar_titular(writer_full, base, clientes_dir, cliente, gs_cmd, log,
+                                                     dir_directo=clientes_directos_dir, garantia_lookup=garantia_lookup)
+                    _ci_cl = _ci_de_pdf_nombre(_nom_guardado) if _nom_guardado else None
+                    if _ci_cl and _es_directo(garantia_lookup.get(_ci_cl, "")):
+                        continue  # directo: no va a PRODUBANCO
 
                     # ── PRODUBANCO: VH-only si tiene VH, completo si no ──
                     archivos_vh = [(s, f) for s, f in archivos_ord if s.upper() in _SUFIJOS_VH]
@@ -606,6 +609,9 @@ def organizar(base, log, gs_cmd):
                         writer_full.add_page(page)
                 nombre_archivo = _guardar_titular(writer_full, base, clientes_dir, cliente, gs_cmd, log,
                                                   dir_directo=clientes_directos_dir, garantia_lookup=garantia_lookup)
+                _ci_cl = _ci_de_pdf_nombre(nombre_archivo) if nombre_archivo else None
+                if _ci_cl and _es_directo(garantia_lookup.get(_ci_cl, "")):
+                    continue  # directo: no va a PRODUBANCO
 
                 # ── Archivo VH → PRODUBANCO (solo si tiene docs de vehículo) ──
                 archivos_vh = [(s, f) for s, f in archivos_ord if s.upper() in _SUFIJOS_VH]
@@ -663,11 +669,15 @@ def organizar(base, log, gs_cmd):
                         # Usar nombre del archivo quitando números entre paréntesis
                         nombre_final = re.sub(r'\s*\(\d+\)', '', nombre_archivo).strip()
                         log(f"  ⚠️ Sin datos en {nombre_archivo}")
-                _guardar_comprimido(src_pdf, clientes_dir, nombre_final,
+                _ci_final = _ci_de_pdf_nombre(nombre_final)
+                _destino  = (clientes_directos_dir
+                             if _ci_final and _es_directo(garantia_lookup.get(_ci_final, ""))
+                             else clientes_dir)
+                _guardar_comprimido(src_pdf, _destino, nombre_final,
                                     orig_kb, base, gs_cmd, log)
-                # Todos los PDFs sueltos también van a PRODUBANCO
-                _guardar_comprimido(src_pdf, produbanco_dir_out, nombre_final,
-                                    orig_kb, base, gs_cmd, log)
+                if _destino != clientes_directos_dir:
+                    _guardar_comprimido(src_pdf, produbanco_dir_out, nombre_final,
+                                        orig_kb, base, gs_cmd, log)
         else:
             log("⚠️  No se encontraron archivos para procesar.")
 
