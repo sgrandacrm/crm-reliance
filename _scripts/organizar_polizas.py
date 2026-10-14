@@ -435,19 +435,13 @@ def organizar(base, log, gs_cmd):
                 for cliente, archivos_c in sorted(grupos_tipo.items()):
                     archivos_ord = sorted(archivos_c, key=lambda x: SUFIJOS.get(x[0].upper(), 99))
 
-                    # ── Archivo completo → CLIENTES / CLIENTES DIRECTOS ──
+                    # ── Archivo completo → CLIENTES o CLIENTES DIRECTOS ──
                     writer_full = PdfWriter()
                     for _, pdf_path in archivos_ord:
                         for page in PdfReader(pdf_path).pages:
                             writer_full.add_page(page)
-                    _nom_guardado = _guardar_titular(writer_full, base, clientes_dir, cliente, gs_cmd, log)
-                    if _nom_guardado:
-                        _ci_arch = _ci_de_pdf_nombre(_nom_guardado)
-                        if _ci_arch and _es_directo(garantia_lookup.get(_ci_arch, "")):
-                            _src = os.path.join(clientes_dir, _nom_guardado)
-                            _dst = os.path.join(clientes_directos_dir, _nom_guardado)
-                            if os.path.exists(_src):
-                                shutil.move(_src, _dst)
+                    _guardar_titular(writer_full, base, clientes_dir, cliente, gs_cmd, log,
+                                     dir_directo=clientes_directos_dir, garantia_lookup=garantia_lookup)
 
                     # ── PRODUBANCO: VH-only si tiene VH, completo si no ──
                     archivos_vh = [(s, f) for s, f in archivos_ord if s.upper() in _SUFIJOS_VH]
@@ -610,14 +604,8 @@ def organizar(base, log, gs_cmd):
                 for _, pdf in archivos_ord:
                     for page in PdfReader(os.path.join(base, pdf)).pages:
                         writer_full.add_page(page)
-                nombre_archivo = _guardar_titular(writer_full, base, clientes_dir, cliente, gs_cmd, log)
-                if nombre_archivo:
-                    _ci_arch = _ci_de_pdf_nombre(nombre_archivo)
-                    if _ci_arch and _es_directo(garantia_lookup.get(_ci_arch, "")):
-                        _src = os.path.join(clientes_dir, nombre_archivo)
-                        _dst = os.path.join(clientes_directos_dir, nombre_archivo)
-                        if os.path.exists(_src):
-                            shutil.move(_src, _dst)
+                nombre_archivo = _guardar_titular(writer_full, base, clientes_dir, cliente, gs_cmd, log,
+                                                  dir_directo=clientes_directos_dir, garantia_lookup=garantia_lookup)
 
                 # ── Archivo VH → PRODUBANCO (solo si tiene docs de vehículo) ──
                 archivos_vh = [(s, f) for s, f in archivos_ord if s.upper() in _SUFIJOS_VH]
@@ -768,8 +756,11 @@ def organizar(base, log, gs_cmd):
         _log_orig(f"⚠️  No se pudo escribir el reporte: {e}")
 
 
-def _guardar_titular(writer, base, output_dir, carpeta, gs_cmd, log):
-    """Guarda el PDF combinado de un titular, extrae nombre/cédula y comprime. Devuelve nombre final."""
+def _guardar_titular(writer, base, output_dir, carpeta, gs_cmd, log,
+                     dir_directo=None, garantia_lookup=None):
+    """Guarda el PDF combinado de un titular, extrae nombre/cédula y comprime. Devuelve nombre final.
+    Si se pasan dir_directo y garantia_lookup, guarda directamente en dir_directo cuando el CI
+    corresponde a un cliente directo (sin crédito bancario)."""
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False,
                                       dir=tempfile.gettempdir()) as tf:
         tmp_pdf = tf.name
@@ -781,6 +772,12 @@ def _guardar_titular(writer, base, output_dir, carpeta, gs_cmd, log):
 
     if nombre and cedula:
         nombre_archivo = f"{nombre} - {cedula}.pdf"
+        if dir_directo is not None and garantia_lookup is not None:
+            ci_norm = cedula.lstrip("0")
+            if len(ci_norm) == 13 and ci_norm.endswith("001"):
+                ci_norm = ci_norm[:-3]
+            if _es_directo(garantia_lookup.get(ci_norm, "")):
+                output_dir = dir_directo
     else:
         nombre_archivo = f"{carpeta.replace('_', ' ')}.pdf"
         log(f"  ⚠️  Sin datos en {carpeta}, usando nombre de carpeta")
