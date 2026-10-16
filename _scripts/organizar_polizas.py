@@ -450,8 +450,10 @@ def organizar(base, log, gs_cmd):
                     for _, pdf_path in archivos_ord:
                         for page in PdfReader(pdf_path).pages:
                             writer_full.add_page(page)
+                    ci_hint = _extraer_ci_de_fuentes([ruta_f for _, ruta_f in archivos_ord])
                     _nom_guardado = _guardar_titular(writer_full, base, clientes_dir, cliente, gs_cmd, log,
-                                                     dir_directo=clientes_directos_dir, garantia_lookup=garantia_lookup)
+                                                     dir_directo=clientes_directos_dir, garantia_lookup=garantia_lookup,
+                                                     ci_hint=ci_hint)
                     _ci_cl = _ci_de_pdf_nombre(_nom_guardado) if _nom_guardado else None
                     if _ci_cl and _es_directo(garantia_lookup.get(_ci_cl, "")):
                         continue  # directo: no va a PRODUBANCO
@@ -621,8 +623,10 @@ def organizar(base, log, gs_cmd):
                 for _, pdf in archivos_ord:
                     for page in PdfReader(os.path.join(base, pdf)).pages:
                         writer_full.add_page(page)
+                ci_hint = _extraer_ci_de_fuentes([os.path.join(base, pdf) for _, pdf in archivos_ord])
                 nombre_archivo = _guardar_titular(writer_full, base, clientes_dir, cliente, gs_cmd, log,
-                                                  dir_directo=clientes_directos_dir, garantia_lookup=garantia_lookup)
+                                                  dir_directo=clientes_directos_dir, garantia_lookup=garantia_lookup,
+                                                  ci_hint=ci_hint)
                 _ci_cl = _ci_de_pdf_nombre(nombre_archivo) if nombre_archivo else None
                 if _ci_cl and _es_directo(garantia_lookup.get(_ci_cl, "")):
                     continue  # directo: no va a PRODUBANCO
@@ -780,9 +784,21 @@ def organizar(base, log, gs_cmd):
         _log_orig(f"⚠️  No se pudo escribir el reporte: {e}")
 
 
+def _extraer_ci_de_fuentes(rutas):
+    """Intenta extraer CI de los PDFs fuente antes de fusionar.
+    Pypdf puede perder el CMap de fuentes al copiar páginas, así que extraemos
+    el CI de los originales (donde pdfplumber sí funciona) como fallback."""
+    for ruta in rutas:
+        _, cedula = extraer_datos_pdf(ruta)
+        if cedula:
+            return cedula
+    return None
+
+
 def _guardar_titular(writer, base, output_dir, carpeta, gs_cmd, log,
-                     dir_directo=None, garantia_lookup=None):
+                     dir_directo=None, garantia_lookup=None, ci_hint=None):
     """Guarda el PDF combinado de un titular, extrae nombre/cédula y comprime. Devuelve nombre final.
+    ci_hint: CI pre-extraído de los PDFs fuente; se usa cuando pdfplumber falla en el fusionado.
     Si se pasan dir_directo y garantia_lookup, guarda directamente en dir_directo cuando el CI
     corresponde a un cliente directo (sin crédito bancario)."""
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False,
@@ -793,9 +809,12 @@ def _guardar_titular(writer, base, output_dir, carpeta, gs_cmd, log,
 
     orig_kb = os.path.getsize(tmp_pdf) // 1024
     nombre, cedula = extraer_datos_pdf(tmp_pdf)
+    if not cedula and ci_hint:
+        cedula = ci_hint
 
-    if nombre and cedula:
-        nombre_archivo = f"{nombre} - {cedula}.pdf"
+    if cedula:
+        nombre_base = nombre if nombre else carpeta.replace('_', ' ')
+        nombre_archivo = f"{nombre_base} - {cedula}.pdf"
         if dir_directo is not None and garantia_lookup is not None:
             ci_norm = cedula.lstrip("0")
             if len(ci_norm) == 13 and ci_norm.endswith("001"):
