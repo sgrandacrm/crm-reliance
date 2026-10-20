@@ -130,8 +130,19 @@ def comprimir_pdf(src, gs_cmd):
     return None
 
 
+def _normalizar_pua(text):
+    """Convierte caracteres PUA U+F000-U+F0FF al ASCII real (offset -0xF000).
+    Los PDFs de Equisuiza POL usan una fuente con encoding privado donde cada
+    carácter está desplazado 0xF000 respecto al código ASCII estándar."""
+    return ''.join(
+        chr(ord(c) - 0xF000) if 0xF000 <= ord(c) <= 0xF0FF else c
+        for c in text
+    )
+
+
 def _extraer_de_texto(text):
     """Aplica todos los patrones de regex sobre un bloque de texto. Devuelve (nombre, cedula) o (None, None)."""
+    text = _normalizar_pua(text)
     # Aseguradora del Sur
     m_as = re.search(r'ASEGURADO:\s*([A-ZÁÉÍÓÚÑ ]+?)\s+TELF.*?RUC/CED:\s*(\d{7,})', text, re.DOTALL)
     def _norm(s):
