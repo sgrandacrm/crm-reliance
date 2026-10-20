@@ -89,13 +89,17 @@ def _validar(modulo: str) -> tuple:
         if not carpetas:
             errores.append("No hay POLIZA OUTPUT en POLIZAS/salida/\n→ Ejecuta PÓLIZAS primero")
         else:
-            clientes = carpetas[0] / "CLIENTES"
-            pdfs = list(clientes.glob("*.pdf")) if clientes.exists() else []
-            if not pdfs:
-                errores.append(f"No hay PDFs en {carpetas[0].name}/CLIENTES/")
+            clientes       = carpetas[0] / "CLIENTES"
+            clientes_dir   = carpetas[0] / "CLIENTES DIRECTOS"
+            pdfs_cc  = list(clientes.glob("*.pdf"))     if clientes.exists()     else []
+            pdfs_dir = list(clientes_dir.glob("*.pdf")) if clientes_dir.exists() else []
+            total_pdfs = len(pdfs_cc) + len(pdfs_dir)
+            if not total_pdfs:
+                errores.append(f"No hay PDFs en {carpetas[0].name}/CLIENTES/ ni CLIENTES DIRECTOS/")
             else:
                 advertencias.append(
-                    f"Se generarán {len(pdfs)} borradores de correo.\n¿Continuar?"
+                    f"Se generarán {total_pdfs} borradores de correo "
+                    f"({len(pdfs_cc)} CC + {len(pdfs_dir)} Directos).\n¿Continuar?"
                 )
 
     return errores, advertencias
@@ -139,9 +143,12 @@ def _resumen_salida(modulo: str) -> str:
         carpetas = [f for f in folder.iterdir() if today in f.name and f.is_dir()]
         if not carpetas:
             return ""
-        clientes = carpetas[0] / "CLIENTES"
-        pdfs = list(clientes.glob("*.pdf")) if clientes.exists() else []
-        return f"  {len(pdfs)} PDFs combinados en CLIENTES/"
+        clientes     = carpetas[0] / "CLIENTES"
+        clientes_dir = carpetas[0] / "CLIENTES DIRECTOS"
+        pdfs_cc  = list(clientes.glob("*.pdf"))     if clientes.exists()     else []
+        pdfs_dir = list(clientes_dir.glob("*.pdf")) if clientes_dir.exists() else []
+        total = len(pdfs_cc) + len(pdfs_dir)
+        return f"  {total} PDFs combinados ({len(pdfs_cc)} CC + {len(pdfs_dir)} Directos)"
 
     items = [f for f in folder.iterdir() if today in f.name and f.is_file()]
     if not items:
