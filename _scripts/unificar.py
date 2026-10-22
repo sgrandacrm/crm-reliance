@@ -168,9 +168,9 @@ _RAMO_ALIASES = {
 def _normalizar_ramo(v):
     """Normaliza el valor de RAMO del CASH a la forma canónica."""
     if not v:
-        return v
+        return None
     u = str(v).strip().upper()
-    return _RAMO_ALIASES.get(u, str(v).strip())
+    return _RAMO_ALIASES.get(u, str(v).strip()) or None
 
 
 def _normalizar_pol_simple(s):
@@ -204,7 +204,7 @@ def _extraer_poliza_parte(s, ramo):
     (p.ej. 'VH 08D-4851161-VIDA 02D-0100060'), extrae solo la del RAMO actual.
     Retorna (poliza_str_o_None, alerta_o_None).
     """
-    labels = _RAMO_LABEL.get((ramo or "").strip().upper(), [])
+    labels = _RAMO_LABEL.get(str(ramo or "").strip().upper(), [])
     # Separar el campo en pares (LABEL, VALOR) usando los labels como delimitadores
     # Ejemplo: ['', 'VH', '08D-4851161', 'VIDA', '02D-0100060 ']
     partes = re.split(r'[-\s]*(VH|VIDA|AP|IN|MR)\s+', s.strip(), flags=re.I)
@@ -255,7 +255,7 @@ def _extraer_factura_parte(s, ramo):
     Retorna (digitos_str_o_None, alerta_o_None).
     """
     partes = [p.strip() for p in s.split(";")]
-    labels = _RAMO_LABEL.get((ramo or "").strip().upper(), [])
+    labels = _RAMO_LABEL.get(str(ramo or "").strip().upper(), [])
     for lbl in labels:
         for parte in partes:
             if parte.upper().startswith(lbl):
@@ -286,7 +286,7 @@ def normalizar_factura(v, ramo=None, aseguradora=None):
     if "PROFORMA" in s.upper():
         alertas.append("FACTURA: ES PROFORMA")
 
-    es_alianza = "ALIANZA" in (aseguradora or "").upper()
+    es_alianza = "ALIANZA" in str(aseguradora or "").upper()
 
     # Campo con multiples facturas separadas por ';'
     if ";" in s and ramo:
@@ -346,141 +346,144 @@ def unificar(archivos: list, hoy: date = None) -> tuple:
             for fila_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 if all(row[i] in (None, "") for i in (0, 1) if i < len(row)):
                     continue
-                reg = {
-                    "ARCHIVO_ORIGEN": nombre,
-                    "HOJA_ORIGEN": ws.title.strip(),
-                    "FILA_ORIGEN": fila_idx,
-                    "LAYOUT": layout,
-                }
-                for canon, ivh, iin in MAPEO:
-                    idx = ivh if layout == "VH" else iin
-                    reg[canon] = _limpiar(row[idx]) if idx is not None and idx < len(row) else None
+                try:
+                    reg = {
+                        "ARCHIVO_ORIGEN": nombre,
+                        "HOJA_ORIGEN": ws.title.strip(),
+                        "FILA_ORIGEN": fila_idx,
+                        "LAYOUT": layout,
+                    }
+                    for canon, ivh, iin in MAPEO:
+                        idx = ivh if layout == "VH" else iin
+                        reg[canon] = _limpiar(row[idx]) if idx is not None and idx < len(row) else None
 
-                reg["RAMO"] = _normalizar_ramo(reg.get("RAMO"))
+                    reg["RAMO"] = _normalizar_ramo(reg.get("RAMO"))
 
-                # Fallback celular: col J vacía → usar col BM (CELULAR_BANCO)
-                if not reg.get("CELULAR_1") and reg.get("CELULAR_BANCO"):
-                    reg["CELULAR_1"] = reg["CELULAR_BANCO"]
+                    # Fallback celular: col J vacía → usar col BM (CELULAR_BANCO)
+                    if not reg.get("CELULAR_1") and reg.get("CELULAR_BANCO"):
+                        reg["CELULAR_1"] = reg["CELULAR_BANCO"]
 
-                alertas = []
+                    alertas = []
 
-                fnac, alerta_f = normalizar_fecha(reg["FECHA_NACIMIENTO"], hoy)
-                if alerta_f:
-                    alertas.append(alerta_f)
-                reg["FECHA_NACIMIENTO_NORM"] = fnac
-                reg["EDAD_CALCULADA"] = (
-                    hoy.year - fnac.year - ((hoy.month, hoy.day) < (fnac.month, fnac.day))
-                    if fnac else None
-                )
+                    fnac, alerta_f = normalizar_fecha(reg["FECHA_NACIMIENTO"], hoy)
+                    if alerta_f:
+                        alertas.append(alerta_f)
+                    reg["FECHA_NACIMIENTO_NORM"] = fnac
+                    reg["EDAD_CALCULADA"] = (
+                        hoy.year - fnac.year - ((hoy.month, hoy.day) < (fnac.month, fnac.day))
+                        if fnac else None
+                    )
 
-                ci = str(reg["CI"]).strip() if reg["CI"] is not None else ""
-                # Padding: 9 digitos -> CI ecuatoriana (10), 12 digitos -> RUC (13)
-                if ci.isdigit():
-                    if len(ci) == 9:
-                        ci = "0" + ci
-                        alertas.append("CI completada: 9 digitos, se antepuso 0")
-                    elif len(ci) == 12:
-                        ci = "0" + ci
-                        alertas.append("RUC completado: 12 digitos, se antepuso 0")
-                reg["CI"] = ci if ci else None
-                if not ci:
-                    alertas.append("CI vacia")
-                elif not re.fullmatch(r"\d{10}|\d{13}", ci):
-                    alertas.append(f"CI con formato invalido ({ci})")
+                    ci = str(reg["CI"]).strip() if reg["CI"] is not None else ""
+                    # Padding: 9 digitos -> CI ecuatoriana (10), 12 digitos -> RUC (13)
+                    if ci.isdigit():
+                        if len(ci) == 9:
+                            ci = "0" + ci
+                            alertas.append("CI completada: 9 digitos, se antepuso 0")
+                        elif len(ci) == 12:
+                            ci = "0" + ci
+                            alertas.append("RUC completado: 12 digitos, se antepuso 0")
+                    reg["CI"] = ci if ci else None
+                    if not ci:
+                        alertas.append("CI vacia")
+                    elif not re.fullmatch(r"\d{10}|\d{13}", ci):
+                        alertas.append(f"CI con formato invalido ({ci})")
 
-                # Normalizar TASA: quitar '%', convertir a float
-                # Si el valor esta en decimal (0.04) convertir a porcentaje (4.00)
-                tasa_raw = reg.get("TASA")
-                if tasa_raw is not None:
-                    try:
-                        tasa_clean = str(tasa_raw).replace("%", "").strip()
-                        tasa_val = float(tasa_clean) if tasa_clean else None
-                        if tasa_val is not None and 0 < tasa_val < 1:
-                            tasa_val = round(tasa_val * 100, 4)  # 0.04 -> 4.0
-                        reg["TASA"] = tasa_val
-                    except (ValueError, TypeError):
-                        alertas.append(f"TASA con formato no reconocido ({tasa_raw})")
+                    # Normalizar TASA: quitar '%', convertir a float
+                    # Si el valor esta en decimal (0.04) convertir a porcentaje (4.00)
+                    tasa_raw = reg.get("TASA")
+                    if tasa_raw is not None:
+                        try:
+                            tasa_clean = str(tasa_raw).replace("%", "").strip()
+                            tasa_val = float(tasa_clean) if tasa_clean else None
+                            if tasa_val is not None and 0 < tasa_val < 1:
+                                tasa_val = round(tasa_val * 100, 4)  # 0.04 -> 4.0
+                            reg["TASA"] = tasa_val
+                        except (ValueError, TypeError):
+                            alertas.append(f"TASA con formato no reconocido ({tasa_raw})")
 
-                obs = (reg["OBS_POLIZA"] or "").upper()
-                if "ANULADA" in obs:
-                    alertas.append("POLIZA ANULADA segun OBS_POLIZA (se conserva, revisar)")
-                if reg["RAMO"] is None:
-                    # Para layout VH: inferir VEHICULOS si hay datos de marca/modelo
-                    if layout == "VH" and reg.get("MARCA"):
-                        reg["RAMO"] = "VEHICULOS"
-                        alertas.append("RAMO vacio en CASH: asumido VEHICULOS por presencia de MARCA")
-                    else:
-                        alertas.append("RAMO vacio")
-                if reg["POLIZA_EMITIDA"] is None:
-                    alertas.append("POLIZA_EMITIDA vacia")
+                    obs = str(reg["OBS_POLIZA"] or "").upper()
+                    if "ANULADA" in obs:
+                        alertas.append("POLIZA ANULADA segun OBS_POLIZA (se conserva, revisar)")
+                    if reg["RAMO"] is None:
+                        # Para layout VH: inferir VEHICULOS si hay datos de marca/modelo
+                        if layout == "VH" and reg.get("MARCA"):
+                            reg["RAMO"] = "VEHICULOS"
+                            alertas.append("RAMO vacio en CASH: asumido VEHICULOS por presencia de MARCA")
+                        else:
+                            alertas.append("RAMO vacio")
+                    if reg["POLIZA_EMITIDA"] is None:
+                        alertas.append("POLIZA_EMITIDA vacia")
 
-                reg["POLIZA_EMITIDA_ORIGINAL"] = reg["POLIZA_EMITIDA"]
-                pol_norm, alerta_pol = normalizar_poliza(
-                    reg["POLIZA_EMITIDA"], ramo=reg.get("RAMO")
-                )
-                reg["POLIZA_EMITIDA"] = pol_norm
-                if alerta_pol:
-                    alertas.append(alerta_pol)
+                    reg["POLIZA_EMITIDA_ORIGINAL"] = reg["POLIZA_EMITIDA"]
+                    pol_norm, alerta_pol = normalizar_poliza(
+                        reg["POLIZA_EMITIDA"], ramo=reg.get("RAMO")
+                    )
+                    reg["POLIZA_EMITIDA"] = pol_norm
+                    if alerta_pol:
+                        alertas.append(alerta_pol)
 
-                reg["FACTURA_ASEGURADORA_ORIGINAL"] = reg["FACTURA_ASEGURADORA"]
-                fac_norm, alertas_fac = normalizar_factura(
-                    reg["FACTURA_ASEGURADORA"], ramo=reg.get("RAMO"),
-                    aseguradora=reg.get("ASEGURADORA_EMISORA"),
-                )
-                reg["FACTURA_ASEGURADORA"] = fac_norm
-                alertas.extend(alertas_fac)
+                    reg["FACTURA_ASEGURADORA_ORIGINAL"] = reg["FACTURA_ASEGURADORA"]
+                    fac_norm, alertas_fac = normalizar_factura(
+                        reg["FACTURA_ASEGURADORA"], ramo=reg.get("RAMO"),
+                        aseguradora=reg.get("ASEGURADORA_EMISORA"),
+                    )
+                    reg["FACTURA_ASEGURADORA"] = fac_norm
+                    alertas.extend(alertas_fac)
 
-                # Homologacion de nombres de aseguradora
-                _aseg = (reg["ASEGURADORA_EMISORA"] or "").strip().upper()
-                if _aseg in ("LATINA", "LATINA SEGUROS"):
-                    reg["ASEGURADORA_EMISORA"] = "LATINA SEGUROS"
+                    # Homologacion de nombres de aseguradora
+                    _aseg = str(reg["ASEGURADORA_EMISORA"] or "").strip().upper()
+                    if _aseg in ("LATINA", "LATINA SEGUROS"):
+                        reg["ASEGURADORA_EMISORA"] = "LATINA SEGUROS"
 
-                if reg["ASEGURADORA_EMISORA"] is None:
-                    alertas.append("ASEGURADORA_EMISORA vacia")
+                    if reg["ASEGURADORA_EMISORA"] is None:
+                        alertas.append("ASEGURADORA_EMISORA vacia")
 
-                # Validar vigencia: debe ser 365 o 366 dias
-                vd_raw = reg.get("VIGENCIA_DESDE")
-                vh_raw = reg.get("VIGENCIA_HASTA")
-                if vd_raw is not None and vh_raw is not None:
-                    try:
-                        def _to_date(v):
-                            if isinstance(v, datetime):
-                                return v.date()
-                            if isinstance(v, date):
-                                return v
-                            return pd.to_datetime(str(v), dayfirst=True).date()
-                        vd_d = _to_date(vd_raw)
-                        vh_d = _to_date(vh_raw)
-                        dias = (vh_d - vd_d).days
-                        # Bisiesto: Feb 29 cae dentro del periodo
-                        tiene_29feb = any(
-                            calendar.isleap(y) and date(y, 2, 29) >= vd_d and date(y, 2, 29) < vh_d
-                            for y in range(vd_d.year, vh_d.year + 1)
-                            if calendar.isleap(y)
-                        )
-                        esperado = 366 if tiene_29feb else 365
-                        if dias != esperado:
-                            alertas.append(
-                                f"VIGENCIA: {dias} dias (se esperan {esperado})"
+                    # Validar vigencia: debe ser 365 o 366 dias
+                    vd_raw = reg.get("VIGENCIA_DESDE")
+                    vh_raw = reg.get("VIGENCIA_HASTA")
+                    if vd_raw is not None and vh_raw is not None:
+                        try:
+                            def _to_date(v):
+                                if isinstance(v, datetime):
+                                    return v.date()
+                                if isinstance(v, date):
+                                    return v
+                                return pd.to_datetime(str(v), dayfirst=True).date()
+                            vd_d = _to_date(vd_raw)
+                            vh_d = _to_date(vh_raw)
+                            dias = (vh_d - vd_d).days
+                            # Bisiesto: Feb 29 cae dentro del periodo
+                            tiene_29feb = any(
+                                calendar.isleap(y) and date(y, 2, 29) >= vd_d and date(y, 2, 29) < vh_d
+                                for y in range(vd_d.year, vh_d.year + 1)
+                                if calendar.isleap(y)
                             )
-                    except Exception:
-                        pass  # fechas no parseables ya generan otra alerta
+                            esperado = 366 if tiene_29feb else 365
+                            if dias != esperado:
+                                alertas.append(
+                                    f"VIGENCIA: {dias} dias (se esperan {esperado})"
+                                )
+                        except Exception:
+                            pass  # fechas no parseables ya generan otra alerta
 
-                g = (str(reg["GENERO"]) if reg["GENERO"] else "").upper()
-                if layout == "VH" and ("NO ENCONTRADO" in g or g == ""):
-                    alertas.append("GENERO no disponible")
+                    g = (str(reg["GENERO"]) if reg["GENERO"] else "").upper()
+                    if layout == "VH" and ("NO ENCONTRADO" in g or g == ""):
+                        alertas.append("GENERO no disponible")
 
-                ec = (str(reg["ESTADO_CIVIL"]) if reg["ESTADO_CIVIL"] else "").upper()
-                if layout == "VH" and ("NO ENCONTRADO" in ec or ec == ""):
-                    alertas.append("ESTADO_CIVIL no disponible")
+                    ec = (str(reg["ESTADO_CIVIL"]) if reg["ESTADO_CIVIL"] else "").upper()
+                    if layout == "VH" and ("NO ENCONTRADO" in ec or ec == ""):
+                        alertas.append("ESTADO_CIVIL no disponible")
 
-                if reg["DIRECCION_DOM"] is None:
-                    alertas.append("DIRECCION_DOM vacia")
+                    if reg["DIRECCION_DOM"] is None:
+                        alertas.append("DIRECCION_DOM vacia")
 
-                reg["ALERTAS"] = " | ".join(alertas) if alertas else None
-                reg["NUM_ALERTAS"] = len(alertas)
-                registros.append(reg)
-                n += 1
+                    reg["ALERTAS"] = " | ".join(alertas) if alertas else None
+                    reg["NUM_ALERTAS"] = len(alertas)
+                    registros.append(reg)
+                    n += 1
+                except Exception as _e:
+                    log.append(f"ERROR fila {fila_idx} de '{nombre}' [{ws.title}]: {type(_e).__name__}: {_e}")
 
             log.append(f"OK: '{nombre}' / '{ws.title}' -> layout {layout}, {n} filas")
         wb.close()
